@@ -4,35 +4,36 @@ A VS Code extension that keeps "vibe coders" grounded in the codebase by renderi
 
 ## 🎯 Features
 
-- **📊 Living Codebase Map**: Interactive, force-directed graph visualization of your entire project
+- **📊 Living Codebase Map**: Interactive, force-directed graph visualization with color-coded components
+- **🎨 Component Architecture View**: Define logical components in `radium.yaml` for clean architectural visualization
+- **🌈 Persistent Colors**: Each component gets a unique color (hashed from name) that persists across sessions
 - **🤖 LLM Change Tracking**: Track and visualize all LLM-originated edits with overlays, diffs, and timelines
 - **🔍 Smart Indexing**: Real-time parsing of TypeScript, JavaScript, and Python using tree-sitter
 - **🌳 Code Navigation**: Tree views for code slices, recent sessions, and issues
 - **🔄 Change Orchestration**: Preview, apply, and rollback LLM-generated changes with atomic operations
 - **📈 Impact Analysis**: Understand dependencies, call graphs, and blast radius before making changes
 - **⚡ Real-time Updates**: File system watching with incremental re-indexing
-- **🎨 Visual Overlays**: Session heatmaps, change highlights, and relationship views
 - **🧪 Test Integration**: Track affected tests and run them automatically
 
 ## 🚀 Getting Started
 
 1. Install the extension from the marketplace
 2. Open a workspace folder
-3. Run command: **Vibe: Open Map**
+3. Run command: **Radium: Open Map**
 4. Watch as Radium indexes your codebase
 
 The extension will automatically start indexing your workspace in the background.
 
 ## 📋 Commands
 
-- **Vibe: Open Map** - Open the interactive codebase visualization
-- **Vibe: Show Changes** - View recent LLM sessions and changes
-- **Vibe: Preview LLM Plan from Clipboard** - Preview changes from LLM plan JSON
-- **Vibe: Apply LLM Plan** - Apply previewed changes to workspace
-- **Vibe: Undo Last LLM Session** - Rollback the last session
-- **Vibe: Explain Selection** - Get LLM explanation of selected code
-- **Vibe: Find Impact** - Analyze impact of changing a symbol
-- **Vibe: Export Session Patch** - Export session as a patch file
+- **Radium: Open Map** - Open the interactive codebase visualization
+- **Radium: Show Changes** - View recent LLM sessions and changes
+- **Radium: Preview LLM Plan from Clipboard** - Preview changes from LLM plan JSON
+- **Radium: Apply LLM Plan** - Apply previewed changes to workspace
+- **Radium: Undo Last LLM Session** - Rollback the last session
+- **Radium: Explain Selection** - Get LLM explanation of selected code
+- **Radium: Find Impact** - Analyze impact of changing a symbol
+- **Radium: Export Session Patch** - Export session as a patch file
 
 ## 🎨 Views
 
@@ -61,7 +62,7 @@ View static analysis results and problems detected during indexing
 
 ### Component-Based Visualization (radium.yaml)
 
-Create a `radium.yaml` file at your project root to define custom logical components for the map visualization. This overrides the default directory-based grouping:
+Create a `radium.yaml` file at your project root to define custom logical components for the map visualization:
 
 ```yaml
 project-spec:
@@ -89,17 +90,20 @@ project-spec:
 ```
 
 **Features:**
+- **Color-coded components**: Each component gets a unique, persistent color based on its name hash
+- **Visual consistency**: Files inherit their component's color as a border
+- **Large, prominent boxes**: Component boxes are twice the size of regular elements for better visibility
+- **Connection lines**: All lines from a component match its color for easy tracing
 - Define logical components that map to multiple directories
 - Add descriptions for component tooltips
 - Support for glob patterns (`**`, `*`) in file paths
-- Components appear as cyan boxes in the map visualization
-- Files without matching components fall back to directory grouping
+- Without `radium.yaml`, files are displayed without directory grouping
 
 See `radium.yaml.example` for a complete example.
 
 ## 🔧 LLM Plan Format
 
-To apply LLM changes, copy a JSON plan to clipboard and run **Vibe: Preview LLM Plan**:
+To apply LLM changes, copy a JSON plan to clipboard and run **Radium: Preview LLM Plan**:
 
 ```json
 {
@@ -124,21 +128,45 @@ To apply LLM changes, copy a JSON plan to clipboard and run **Vibe: Preview LLM 
 
 ## 🗺️ Graph Visualization
 
-The map uses D3.js to render an interactive force-directed graph where:
+The map uses D3.js to render an interactive force-directed graph with a **clean, architecture-focused view**:
 
-- **Components** represent logical groupings from radium.yaml (large color-coded boxes)
-  - Each component has a unique persistent color based on its name
-  - Files within a component have matching colored borders
-- **Files** represent individual source files
-- **Edges** represent relationships (imports between files)
+### Visual Elements
+
+**Components** (requires `radium.yaml`)
+- Large, prominent boxes (2x standard size)
+- Unique persistent colors generated from component name hash
+- 28px bold text labels for maximum readability
+- Hover to see component descriptions
+
+**Files**
+- Standard-sized boxes with file names
+- Border color matches parent component for visual grouping
+- Click to navigate to the file
+
+**Connection Lines**
+- Component-to-file lines: Match the component's color
+- File-to-file import lines: Match the source file's component color
+- Width and opacity indicate relationship strength
+- Create visual "flow" showing architectural boundaries
+
+### Interaction
 - **Hover** for details and mini-diffs
 - **Click** to navigate to code
-- **Drag** to rearrange
+- **Drag** nodes to rearrange
 - **Zoom/Pan** to explore
+- **Mouse wheel** to zoom in/out
+
+### What's NOT Shown
+To keep the visualization clean and focused on architecture:
+- ❌ Directory nodes (only components and files)
+- ❌ Individual classes, interfaces, types
+- ❌ Function nodes
+- Focus is on **file-level relationships** and **component boundaries**
 
 ### Legend
-- 🎨 Component (color-coded by name hash)
-- 📄 File (border matches component color)
+- 🎨 **Component** - Color-coded by name hash (persistent across sessions)
+- 📄 **File** - Border color matches parent component
+- 🔗 **Lines** - Component color shows architectural flow
 
 ## 📊 Supported Languages
 

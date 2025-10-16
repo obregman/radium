@@ -1,0 +1,30 @@
+## Task description
+The component boxes in the Radium map visualization have unique colors (generated via hash of component name), but all the connection lines between components and files remain gray instead of matching their source component's color.
+
+User requirements:
+1. Lines from component boxes to files should be the same color as the component box
+2. Lines between files (imports) should use the source file's component color
+3. Colors should be visible and persistent
+
+## Insights
+- Component colors are correctly generated using HSL hash function in buildComponentBasedGraph()
+- Each component node has a `color` property set correctly
+- Each file node has a `componentColor` property set to its parent component's color
+- D3's force simulation converts edge `source` and `target` from IDs to node object references during simulation
+- Edge colors need to be accessed AFTER D3 has converted IDs to objects
+
+## Solutions that were tried and did not work
+1. **Setting color property on edge objects** - Color property was added to edges during graph building, but wasn't accessible during D3 rendering
+2. **Reading d.color in initial attr('stroke')** - Failed because d.source was still an ID (number) when attr() was called initially
+3. **Moving color logic to tick function** - Added stroke color setting in tick function, but lines still appear gray
+
+## Action items
+[x] Add console logging to verify component colors are actually being generated
+[x] Add logging in tick function to check if stroke color logic is executing
+[x] Log edge data structure on first tick to see what properties are available
+[ ] NEXT: User needs to reload VS Code window and check Developer Console for logs
+[ ] Analyze console output to determine why colors aren't being applied
+
+## Resolution (only once the issue was solved) 
+(Issue solution pending)
+

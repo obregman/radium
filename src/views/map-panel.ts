@@ -59,6 +59,9 @@ export class MapPanel {
       case 'node:selected':
         await this.handleNodeSelected(message.nodeId);
         break;
+      case 'file:open':
+        await this.handleFileOpen(message.filePath);
+        break;
       case 'edge:path':
         await this.handleEdgePath(message.srcId, message.dstId);
         break;
@@ -81,6 +84,12 @@ export class MapPanel {
     } else {
       vscode.window.showInformationMessage('No recent sessions found');
     }
+  }
+
+  private async handleFileOpen(filePath: string) {
+    // Open file in editor
+    const uri = vscode.Uri.file(filePath);
+    await vscode.window.showTextDocument(uri);
   }
 
   private async handleNodeSelected(nodeId: number) {
@@ -719,7 +728,6 @@ export class MapPanel {
       pointer-events: none;
     }
     .link {
-      stroke: var(--vscode-editorIndentGuide-background);
       stroke-opacity: 0.6;
       stroke-width: 1.5px;
     }
@@ -971,7 +979,7 @@ export class MapPanel {
         .join('line')
         .attr('class', 'link')
         .attr('stroke-width', d => {
-          if (d.kind === 'contains') return 3;
+          if (d.kind === 'contains') return 9;
           if (d.kind === 'defines') return 1.5;
           return d.weight * 2;
         })
@@ -1014,8 +1022,8 @@ export class MapPanel {
         .attr('stroke-width', d => d.componentColor ? 3 : 2)
         .on('click', (event, d) => {
           vscode.postMessage({
-            type: 'node:selected',
-            nodeId: d.originalId || d.id
+            type: 'file:open',
+            filePath: d.path
           });
         });
 
@@ -1060,6 +1068,10 @@ export class MapPanel {
           });
         });
 
+      // Add description as tooltip for component boxes
+      componentGroups.append('title')
+        .text(d => d.description || d.name);
+
       componentGroups.append('text')
         .attr('class', 'component-label')
         .attr('x', 0)
@@ -1070,11 +1082,6 @@ export class MapPanel {
         .attr('fill', '#FFFFFF')
         .attr('text-shadow', '2px 2px 4px rgba(0,0,0,0.5)')
         .text(d => d.name);
-      
-      // Add description as tooltip for components
-      componentGroups.filter(d => d.description)
-        .append('title')
-        .text(d => d.description);
 
       // Debug logging
       console.log('[Radium Map] Graph data:', {
@@ -1101,30 +1108,36 @@ export class MapPanel {
               .attr('x2', d => d.target.x)
               .attr('y2', d => d.target.y)
               .attr('stroke', d => {
-                // Set color based on source node (now that d.source is a node object)
+                // Debug on first tick
                 if (tickCount === 1) {
-                  // Log on first tick to debug
-                  console.log('[Radium Map] Edge:', {
+                  console.log('[Radium Map] Edge debug:', {
                     kind: d.kind,
-                    sourceType: typeof d.source,
-                    sourceIsObject: typeof d.source === 'object',
-                    sourceHasColor: d.source && d.source.color,
-                    sourceColor: d.source && d.source.color,
-                    sourceComponentColor: d.source && d.source.componentColor
+                    sourceKind: d.source.kind,
+                    sourceColor: d.source.color,
+                    sourceComponentColor: d.source.componentColor,
+                    sourceName: d.source.name
                   });
                 }
                 
+                // Color lines based on their source node
+                // For 'contains' edges (component → file), use component color
                 if (d.kind === 'contains' && d.source.color) {
                   return d.source.color;
                 }
+                // For 'imports' edges (file → file), use file's component color
                 if (d.kind === 'imports' && d.source.componentColor) {
                   return d.source.componentColor;
                 }
-                // Fallback colors
-                if (d.kind === 'contains') return '#555';
-                if (d.kind === 'defines') return '#666';
-                if (d.kind === 'imports') return '#2196F3';
-                return '#777';
+                // For other edges from components, use component color
+                if (d.source.color) {
+                  return d.source.color;
+                }
+                // For other edges from files, use component color
+                if (d.source.componentColor) {
+                  return d.source.componentColor;
+                }
+                // Fallback to default colors
+                return '#555';
               });
 
             // Position file boxes

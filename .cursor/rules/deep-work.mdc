@@ -1,0 +1,36 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: This is a process to execute deep work efficiently
+globs: 
+---
+
+- Create a new work log file the summarizes the problem or task. The file should include the description of the problem and describe what was already tried and any insights gathered. Also write and maintain a list of action items required to solve the problem or complete the task
+- Place the task file under ai-context directory and name it <task name>_deep_work_log.txt
+- The work log should have the following sections:
+```
+## Task description
+(Task description here)
+
+## Insights
+- Insight 1
+- Insight 2
+
+## Solutions that were tried and did not work
+- Solution 1
+- Solution 2
+
+## Action items
+[x] Action 3 (that was alreay executed)
+[ ] Action 4
+
+## Resolution (only once the issue was solved) 
+(Issue solution here)
+```
+- After taking an action, always stop and update the work log
+- Always document the actions you took to solve the problem and didn't work and do not repeat them
+- Stop to think what would be the best way to solve the issue, create an action item in the file and proceed to execute it
+- Once a problem was solved, rename the work log file: add a "_solved" suffix to the filename (e.g some_bug_deep_work_log_solved.txt)

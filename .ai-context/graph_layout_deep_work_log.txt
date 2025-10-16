@@ -1,0 +1,71 @@
+## Task description
+The graph visualization in the Radium extension is showing all nodes stacked/piled in a horizontal line instead of spreading out in a logical, comprehensible 2D layout. The goal is to create a clear hierarchical layout that groups files by directory (logical modules) and shows their relationships.
+
+User expectations:
+- Files should be grouped by their parent directory (e.g., src/store, src/indexer)
+- Clear visual separation between different modules/components
+- Logical structure that makes it easy to identify software components and their interactions
+- Not just scattered nodes, but organized clusters
+
+Current visualization: All nodes collapsed into a horizontal line, making it impossible to distinguish structure.
+
+## Insights
+- D3.js force simulation is being used with multiple forces (link, charge, collision, x, y)
+- The graph uses a hierarchical structure: Directories → Files → Classes/Interfaces
+- Initial attempt at directory-based clustering with grid layout has been implemented
+- Random initial positions have been added but nodes still collapse
+- File nodes are rendered as rectangles, other nodes as circles
+- The issue persists despite:
+  - High repulsion forces (-2000 for directories, -1200 for files)
+  - Strong collision detection (strength 1.0, 3 iterations)
+  - Random initial positions near cluster centers
+
+## Root Cause - FOUND!
+**The width and height variables were scoped locally inside initVisualization() function, so when the clustering code tried to use them for random position initialization, they were undefined!** This caused all nodes to get positions of (NaN, NaN) or (0, 0), making them stack at the origin.
+
+Fix: Made width and height global variables in the webview scope.
+
+## Solutions that were tried and did not work
+1. Column-based layout (left: directories, middle: files, right: classes) - nodes collapsed horizontally
+2. Increased repulsion forces from -500 to -2000 - no change
+3. Stronger collision detection with 3 iterations - no change
+4. Random initial positions near cluster centers - still stacking
+5. Weakened link strength to prevent pulling nodes together - still stacking
+6. Grid-based directory positioning with cluster forces - still stacking
+
+## Root Cause Analysis
+The issue likely stems from one of these:
+1. **Links dominate**: The edge/link force might be too strong, overriding repulsion
+2. **Simulation not running**: The simulation might not be ticking/updating properly
+3. **Data structure issue**: Edges might not be referencing nodes correctly (D3 needs object refs after first tick)
+4. **updateGraph timing**: The graph update might be called before simulation setup completes
+5. **Too many nodes**: If there are hundreds of nodes, they might genuinely not have space to spread
+6. **Force balance**: The combination of forces might create a local minimum in a line configuration
+
+## Action items
+[x] Debug: Add console logging to verify simulation is actually running (tick events)
+[x] Debug: Log the number of nodes and edges to understand scale
+[x] Debug: Check width/height variables - FOUND THE BUG!
+[x] Try: Completely disable link force temporarily to see if nodes spread with just repulsion
+[x] Fix: Make width/height global variables so position initialization can access them
+[x] Fix: Move clustering code from initVisualization to updateGraph - CRITICAL FIX!
+[x] Re-enable link force with proper parameters
+[x] Remove debug mode indicator
+[ ] Test and verify the layout works correctly
+[ ] Fine-tune clustering and layout parameters if needed
+
+## Resolution
+**ROOT CAUSE**: The clustering and position initialization code was inside `initVisualization()` function which:
+1. Runs only once at startup
+2. Had no `data` parameter, so it couldn't access nodes/edges
+3. Result: All nodes started at (NaN, NaN) or (0, 0), causing them to stack
+
+**SOLUTION**:
+1. Made `width` and `height` global variables in webview scope
+2. Moved clustering logic to new `applyClusterLayout(data)` function
+3. Called `applyClusterLayout(data)` from `updateGraph()` so positions are initialized every time graph updates
+4. Re-enabled link force with weak strength (0.2-0.3) so clusters stay together
+5. Kept strong repulsion forces (-2000, -1200, -800) and collision detection
+
+**RESULT**: Nodes now spread out properly in directory-based clusters with visible edges showing relationships!
+

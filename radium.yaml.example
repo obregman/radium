@@ -1,0 +1,44 @@
+project-spec:
+  components:
+    - views:
+        name: Views
+        description: UI components and visualization panels
+        files:
+          - src/views/**
+    
+    - store:
+        name: Data Store
+        description: Database schema and storage adapter
+        files:
+          - src/store/**
+    
+    - indexer:
+        name: Code Indexer
+        description: Parses and indexes source code files
+        files:
+          - src/indexer/**
+    
+    - git:
+        name: Git Integration
+        description: Tracks git changes and diffs
+        files:
+          - src/git/**
+    
+    - analysis:
+        name: Code Analysis
+        description: Analyzes code impact and dependencies
+        files:
+          - src/analysis/**
+    
+    - orchestrator:
+        name: LLM Orchestrator
+        description: Coordinates LLM interactions and plan execution
+        files:
+          - src/orchestrator/**
+    
+    - config:
+        name: Configuration
+        description: Configuration loader and management
+        files:
+          - src/config/**
+

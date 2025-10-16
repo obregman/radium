@@ -1,0 +1,25 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: Base rule file that must always be followed
+globs: 
+---
+
+- Write production grade code. Do not write demo code or mocks unless they are used in unit tests. Assume the code will be used by an actual end-user.
+- If what the user asks for code changes that are simply wrong or impossible or otherwise have very low likelyhood to work, explain this to the user and do not continue without their explicity approval
+- Maintain readme.md file at the root project folder. Review and update it after significant code changes
+- Do not make any changes, refactoring or deletions to the code that are not directly required by the specific task you are trying to accomplish
+- Do not proclaim that an issue was solved unless you have verified it was solved by a specific test
+- Keep your responses as short as possible and avoid exaggurating
+- Avoid flattering the user. Try to be honest
+- Prioritize your communication and always begin with the fundamental and important items
+- Try to use emojis in your responses where appropriate
+- If you tried to solve a bug and failed twice, perform an extensive review of the code and prepare a plan for fixing the bug before beginning to change the code
+- Do not run 'npm run dev', i will run it myself
+- Do not perform git add, commit or push
+- The README.md file should not hold implementation details. Only general overview of the project, the features, usage and build
+- UI should not contain implementation or underlying logic text (e.g. what is the interval of an internal check)
+- When writing documentation write it in the ./docs directory

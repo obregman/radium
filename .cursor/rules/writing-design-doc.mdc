@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+---
+- A design doc should contain the following sections:
+    - Introduction
+    - Feature requirements
+    - Brief high level technical overview (2-3 sentences)
+    - Detailed technical spec
+    - Risk table
+
+- Write the design doc as an md file under the .ai-context directory

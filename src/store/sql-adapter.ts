@@ -1,5 +1,6 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import * as fs from 'fs';
+import * as path from 'path';
 
 export class DatabaseAdapter {
   private db: SqlJsDatabase | null = null;
@@ -10,7 +11,16 @@ export class DatabaseAdapter {
   }
 
   async init(): Promise<void> {
-    const SQL = await initSqlJs();
+    // Locate the WASM file relative to this module
+    const wasmPath = path.join(__dirname, '../../node_modules/sql.js/dist/sql-wasm.wasm');
+    const SQL = await initSqlJs({
+      locateFile: (file) => {
+        if (file === 'sql-wasm.wasm') {
+          return wasmPath;
+        }
+        return file;
+      }
+    });
     
     // Try to load existing database
     if (fs.existsSync(this.dbPath)) {

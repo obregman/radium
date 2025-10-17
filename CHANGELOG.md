@@ -5,7 +5,8 @@ All notable changes to the Radium extension will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- Command registration now handles initialization gracefully - prevents "command not found" errors when extension is still loading
+- **Extension activation issue**: sql.js WASM file is now properly bundled with the extension, fixing "command not found" errors
+- Command registration now handles initialization gracefully - prevents errors when extension is still loading
 
 ### Added
 - **radium.yaml Configuration**: Define custom logical components for map visualization

@@ -127,16 +127,14 @@ npm run package
 
 This creates a `.vsix` file you can install.
 
-## Creating a Release
+## Automatic Releases
 
-For maintainers:
+Every push to `main` automatically:
+1. Builds the extension
+2. Creates a `.vsix` package
+3. Publishes a GitHub Release with the build
 
-```bash
-npm version [patch|minor|major]
-git push origin main --tags
-```
-
-See [.github/RELEASE_GUIDE.md](.github/RELEASE_GUIDE.md) for details.
+The release is tagged with the version from `package.json` and the commit SHA.
 
 ## Documentation
 

@@ -2,37 +2,32 @@
 
 This guide is for maintainers who want to create a new release.
 
-## Prerequisites
+## Automatic Release Process
 
-- Write access to the repository
-- All changes merged to `main` branch
-- Updated CHANGELOG.md with release notes
+Every push to `main` triggers an automatic build and release:
 
-## Release Process
+1. The GitHub Actions workflow runs
+2. Extension is built and packaged
+3. A GitHub Release is created automatically
+4. Release is tagged with version from `package.json` and commit SHA (e.g., `v0.1.0-abc1234`)
 
-### 1. Update Version
+## Updating the Version
 
-Update the version in `package.json`:
+To release a new version:
 
-```bash
-# For patch release (0.1.0 -> 0.1.1)
-npm version patch
+### 1. Update package.json
 
-# For minor release (0.1.0 -> 0.2.0)
-npm version minor
+Edit the version number in `package.json`:
 
-# For major release (0.1.0 -> 1.0.0)
-npm version major
+```json
+{
+  "version": "0.1.1"
+}
 ```
-
-This automatically:
-- Updates `package.json` version
-- Creates a git commit
-- Creates a git tag (e.g., `v0.1.1`)
 
 ### 2. Update CHANGELOG.md
 
-Before tagging, ensure `CHANGELOG.md` has an entry for the new version:
+Add an entry for the new version:
 
 ```markdown
 ## [0.1.1] - 2025-10-17
@@ -48,25 +43,17 @@ Before tagging, ensure `CHANGELOG.md` has an entry for the new version:
 - Improved performance of feature W
 ```
 
-### 3. Push the Tag
-
-Push the version commit and tag to GitHub:
+### 3. Commit and Push
 
 ```bash
+git add package.json CHANGELOG.md
+git commit -m "Bump version to 0.1.1"
 git push origin main
-git push origin --tags
 ```
 
-### 4. Automated Build
+The workflow automatically builds and releases.
 
-The GitHub Actions workflow will automatically:
-1. Detect the new tag
-2. Install dependencies
-3. Compile TypeScript
-4. Package the `.vsix` file
-5. Create a GitHub Release with the `.vsix` attached
-
-### 5. Verify Release
+### 4. Verify Release
 
 1. Go to: `https://github.com/[owner]/radium/releases`
 2. Verify the new release appears

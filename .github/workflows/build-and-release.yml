@@ -1,9 +1,9 @@
-name: Release
+name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 jobs:
   build-and-release:
@@ -31,17 +31,25 @@ jobs:
       - name: Package extension
         run: npm run package
       
-      - name: Get version from tag
+      - name: Get version from package.json
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+      
+      - name: Get commit SHA (short)
+        id: get_sha
+        run: echo "SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}-${{ steps.get_sha.outputs.SHA }}
+          name: Radium v${{ steps.get_version.outputs.VERSION }} (${{ steps.get_sha.outputs.SHA }})
           files: |
             *.vsix
           body: |
             ## Radium v${{ steps.get_version.outputs.VERSION }}
+            
+            Build from commit: `${{ steps.get_sha.outputs.SHA }}`
             
             ### Installation
             
@@ -66,11 +74,6 @@ jobs:
             ### Requirements
             
             - VS Code ^1.85.0 or later
-            
-            ### Support
-            
-            - 📖 [Documentation](https://github.com/${{ github.repository }}/tree/main/docs)
-            - 🐛 [Report Issues](https://github.com/${{ github.repository }}/issues)
           draft: false
           prerelease: false
         env:

@@ -172,7 +172,8 @@
     "pretest": "npm run compile",
     "test": "node ./out/test/runTest.js",
     "lint": "eslint src --ext ts",
-    "package": "vsce package"
+    "package": "vsce package",
+    "package:safe": "source ~/.nvm/nvm.sh && nvm use && npm run package"
   },
   "devDependencies": {
     "@electron/rebuild": "3.7.2",

@@ -81,6 +81,10 @@ export async function activate(context: vscode.ExtensionContext) {
 function registerCommands(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('radium.openMap', () => {
+      if (!store) {
+        vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
+        return;
+      }
       MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
     }),
 

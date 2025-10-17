@@ -1,75 +1,40 @@
-# Radium - Vibe Coding Visualizer
+# Radium
 
-A VS Code extension that keeps "vibe coders" grounded in the codebase by rendering a living, zoomable map of the project and visually highlighting **everything the LLM touches**.
+A VS Code extension that visualizes your codebase as an interactive graph and tracks changes made by LLMs.
 
-## 🎯 Features
+## What It Does
 
-- **📊 Living Codebase Map**: Interactive, force-directed graph visualization with color-coded components
-- **🎨 Component Architecture View**: Define logical components in `radium.yaml` for clean architectural visualization
-- **🌈 Persistent Colors**: Each component gets a unique color (hashed from name) that persists across sessions
-- **🤖 LLM Change Tracking**: Track and visualize all LLM-originated edits with overlays, diffs, and timelines
-- **🔍 Smart Indexing**: Real-time parsing of TypeScript, JavaScript, and Python using tree-sitter
-- **🌳 Code Navigation**: Tree views for code slices, recent sessions, and issues
-- **🔄 Change Orchestration**: Preview, apply, and rollback LLM-generated changes with atomic operations
-- **📈 Impact Analysis**: Understand dependencies, call graphs, and blast radius before making changes
-- **⚡ Real-time Updates**: File system watching with incremental re-indexing
-- **🧪 Test Integration**: Track affected tests and run them automatically
+Radium indexes your codebase and creates a visual map showing files, their relationships, and how they're organized into components. When working with LLMs, it tracks all changes made to your code, allowing you to review, apply, or rollback them.
 
-## 🚀 Getting Started
+## Features
 
-1. Install the extension from the marketplace
-2. Open a workspace folder
-3. Run command: **Radium: Open Map**
-4. Watch as Radium indexes your codebase
+- Interactive graph visualization of your codebase
+- Component-based architecture view (defined in `radium.yaml`)
+- Track and manage LLM-generated changes
+- Impact analysis for code modifications
+- Support for TypeScript, JavaScript, and Python
+- Session history and rollback capability
 
-The extension will automatically start indexing your workspace in the background.
+## Usage
 
-## 📋 Commands
+### Basic Setup
 
-- **Radium: Open Map** - Open the interactive codebase visualization
-- **Radium: Show Changes** - View recent LLM sessions and changes
-- **Radium: Preview LLM Plan from Clipboard** - Preview changes from LLM plan JSON
-- **Radium: Apply LLM Plan** - Apply previewed changes to workspace
-- **Radium: Undo Last LLM Session** - Rollback the last session
-- **Radium: Explain Selection** - Get LLM explanation of selected code
-- **Radium: Find Impact** - Analyze impact of changing a symbol
-- **Radium: Export Session Patch** - Export session as a patch file
+1. Install the extension
+2. Open your project in VS Code
+3. Run command: `Radium: Open Map`
 
-## 🎨 Views
+The extension indexes your workspace and displays an interactive graph.
 
-### Code Slices
-Browse your codebase organized by files and symbols (classes, functions, interfaces)
+### Defining Components
 
-### Recent Sessions
-Track all LLM and user sessions with detailed change history
-
-### Issues
-View static analysis results and problems detected during indexing
-
-## ⚙️ Configuration
-
-### VS Code Settings
-
-```json
-{
-  "vibe.indexer.maxCPU": 2,
-  "vibe.privacy.upload": "none",
-  "vibe.graph.layout": "force",
-  "vibe.layers.default": ["structure", "relations", "changes"],
-  "vibe.tests.autoRun": true
-}
-```
-
-### Component-Based Visualization (radium.yaml)
-
-Create a `radium.yaml` file at your project root to define custom logical components for the map visualization:
+Create a `radium.yaml` file in your project root:
 
 ```yaml
 project-spec:
   components:
     - frontend:
         name: Frontend
-        description: React UI components and views
+        description: UI components
         files:
           - src/components/**
           - src/views/**
@@ -80,35 +45,18 @@ project-spec:
         files:
           - src/api/**
           - src/services/**
-    
-    - database:
-        name: Database
-        description: Data models and storage
-        files:
-          - src/models/**
-          - src/store/**
 ```
 
-**Features:**
-- **Color-coded components**: Each component gets a unique, persistent color based on its name hash
-- **Visual consistency**: Files inherit their component's color as a border
-- **Large, prominent boxes**: Component boxes are twice the size of regular elements for better visibility
-- **Connection lines**: All lines from a component match its color for easy tracing
-- Define logical components that map to multiple directories
-- Add descriptions for component tooltips
-- Support for glob patterns (`**`, `*`) in file paths
-- Without `radium.yaml`, files are displayed without directory grouping
+Components appear as color-coded boxes in the graph. Files are grouped by their component.
 
-See `radium.yaml.example` for a complete example.
+### Working with LLM Changes
 
-## 🔧 LLM Plan Format
-
-To apply LLM changes, copy a JSON plan to clipboard and run **Radium: Preview LLM Plan**:
+1. Get a change plan from your LLM in JSON format:
 
 ```json
 {
-  "intent": "add feature",
-  "rationale": "Adding new authentication flow",
+  "intent": "add authentication",
+  "rationale": "Adding user login flow",
   "edits": [
     {
       "path": "src/auth.ts",
@@ -116,7 +64,7 @@ To apply LLM changes, copy a JSON plan to clipboard and run **Radium: Preview LL
         {
           "type": "replace",
           "range": { "start": [10, 0], "end": [20, 0] },
-          "text": "// New code here"
+          "text": "export function authenticate(token: string) {\n  return verifyToken(token);\n}"
         }
       ]
     }
@@ -126,80 +74,50 @@ To apply LLM changes, copy a JSON plan to clipboard and run **Radium: Preview LL
 }
 ```
 
-## 🗺️ Graph Visualization
+2. Copy the JSON to clipboard
+3. Run: `Radium: Preview LLM Plan from Clipboard`
+4. Review the changes in the graph
+5. Run: `Radium: Apply LLM Plan` to apply, or reject them
 
-The map uses D3.js to render an interactive force-directed graph with a **clean, architecture-focused view**:
+### Available Commands
 
-### Visual Elements
+- `Radium: Open Map` - Show the codebase graph
+- `Radium: Show Changes` - View recent sessions
+- `Radium: Preview LLM Plan from Clipboard` - Preview changes
+- `Radium: Apply LLM Plan` - Apply previewed changes
+- `Radium: Undo Last LLM Session` - Rollback a session
+- `Radium: Find Impact` - Analyze impact of selected code
+- `Radium: Export Session Patch` - Export session as patch file
 
-**Components** (requires `radium.yaml`)
-- Large, prominent boxes (2x standard size)
-- Unique persistent colors generated from component name hash
-- 28px bold text labels for maximum readability
-- Hover to see component descriptions
+## Configuration
 
-**Files**
-- Standard-sized boxes with file names
-- Border color matches parent component for visual grouping
-- Click to navigate to the file
+Available settings:
 
-**Connection Lines**
-- Component-to-file lines: Match the component's color
-- File-to-file import lines: Match the source file's component color
-- Width and opacity indicate relationship strength
-- Create visual "flow" showing architectural boundaries
-
-### Interaction
-- **Hover** for details and mini-diffs
-- **Click** to navigate to code
-- **Drag** nodes to rearrange
-- **Zoom/Pan** to explore
-- **Mouse wheel** to zoom in/out
-
-### What's NOT Shown
-To keep the visualization clean and focused on architecture:
-- ❌ Directory nodes (only components and files)
-- ❌ Individual classes, interfaces, types
-- ❌ Function nodes
-- Focus is on **file-level relationships** and **component boundaries**
-
-### Legend
-- 🎨 **Component** - Color-coded by name hash (persistent across sessions)
-- 📄 **File** - Border color matches parent component
-- 🔗 **Lines** - Component color shows architectural flow
-
-## 📊 Supported Languages
-
-- TypeScript (`.ts`, `.tsx`)
-- JavaScript (`.js`, `.jsx`)
-- Python (`.py`)
-
-More languages coming soon!
-
-## 🛡️ Privacy & Security
-
-- **Local by default** - No code leaves your machine
-- **Optional cloud indexing** - Control with `vibe.privacy.upload`
-- **Sandboxed edits** - All LLM changes go through orchestrator
-- **Secrets hygiene** - Automatically redacts sensitive data
-
-## 🧪 Development
-
-```bash
-# Install dependencies
-npm install
-
-# Compile TypeScript
-npm run compile
-
-# Watch mode
-npm run watch
-
-# Package extension
-npm run package
+```json
+{
+  "vibe.indexer.maxCPU": 2,
+  "vibe.privacy.upload": "none",
+  "vibe.graph.layout": "force",
+  "vibe.tests.autoRun": true
+}
 ```
 
-## 📦 Building from Source
+## Installation
+
+### From GitHub Releases
+
+Download the `.vsix` file from the [Releases page](https://github.com/[owner]/radium/releases).
+
+Install via VS Code:
+1. Extensions view → `...` menu → "Install from VSIX..."
+2. Select the downloaded file
+
+Or via command line:
+```bash
+code --install-extension radium-0.1.0.vsix
+```
+
+### Building from Source
 
 ```bash
 npm install
@@ -207,32 +125,25 @@ npm run compile
 npm run package
 ```
 
-This creates a `.vsix` file you can install manually.
+This creates a `.vsix` file you can install.
 
-## 🤝 Contributing
+## Creating a Release
 
-Contributions welcome! This is a production-ready extension designed to handle real-world codebases.
+For maintainers:
 
-## 📄 License
+```bash
+npm version [patch|minor|major]
+git push origin main --tags
+```
+
+See [.github/RELEASE_GUIDE.md](.github/RELEASE_GUIDE.md) for details.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Usage Guide](docs/usage-guide.md)
+- [radium.yaml Format](docs/radium-yaml.md)
+
+## License
 
 MIT
-
-## 🔮 Roadmap
-
-- **v0.1 (MVP)**: TS/JS + Python indexing, map + session overlays, basic diffs
-- **v0.2**: Call graph analysis, impact analysis, test runner integration
-- **v0.3**: Go/Java support, coverage ingestion, hotspots, replay timeline
-- **v0.4**: Model-agnostic LLM adapters, policy guardrails, cloud index
-
-## 💡 Use Cases
-
-- **LLM Collaboration**: Track what the AI changed and why
-- **Code Review**: Visualize impact of changes before committing
-- **Onboarding**: Explore unfamiliar codebases with interactive maps
-- **Refactoring**: Understand dependencies before making changes
-- **Architecture**: See the big picture of your system
-
----
-
-**Stay in flow, never lose the plot.**
-

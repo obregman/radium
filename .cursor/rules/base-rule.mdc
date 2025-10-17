@@ -20,6 +20,6 @@ globs:
 - If you tried to solve a bug and failed twice, perform an extensive review of the code and prepare a plan for fixing the bug before beginning to change the code
 - Do not run 'npm run dev', i will run it myself
 - Do not perform git add, commit or push
-- The README.md file should explain the project in high level, without "selling" and without exaguration. Do not add low level or implementation details to the README.md. Also include simple usage explanation and example.
+- The README.md file should explain the project in high level, without "selling" and without exaggeration. Do not add low level or implementation details to the README.md. Also include simple usage explanation and example.
 - UI should not contain implementation or underlying logic text (e.g. what is the interval of an internal check)
 - When writing documentation write it in the ./docs directory

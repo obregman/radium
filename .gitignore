@@ -1,8 +1,7 @@
 node_modules
 out
 *.vsix
-.vscode-test
-*.db
-*.db-journal
+.vscode-test/
+.vscode
+*.log
 .DS_Store
-

@@ -429,6 +429,39 @@ function registerCommands(context: vscode.ExtensionContext) {
       vscode.window.showInformationMessage(
         `Change to ${hunks.filePath}: ${change.summary || 'No summary'}`
       );
+    }),
+
+    vscode.commands.registerCommand('radium.reindex', async () => {
+      if (!indexer || !store) {
+        vscode.window.showWarningMessage('Radium not initialized');
+        return;
+      }
+
+      vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Radium: Re-indexing workspace',
+        cancellable: false
+      }, async (progress) => {
+        try {
+          console.log('RADIUM: Manual re-index started');
+          await indexer.start();
+          progress.report({ increment: 100 });
+          
+          const fileCount = store.getAllFiles().length;
+          vscode.window.showInformationMessage(
+            `Radium: Indexed ${fileCount} file(s) successfully`
+          );
+          console.log(`RADIUM: Re-index complete, ${fileCount} files indexed`);
+          
+          // Refresh views
+          if (sessionsTreeProvider) sessionsTreeProvider.refresh();
+          if (codeSlicesTreeProvider) codeSlicesTreeProvider.refresh();
+          if (MapPanel.currentPanel) MapPanel.currentPanel.updateGraph();
+        } catch (error) {
+          console.error('RADIUM: Re-indexing failed:', error);
+          vscode.window.showErrorMessage(`Radium re-indexing failed: ${error}`);
+        }
+      });
     })
   );
 }

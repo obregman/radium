@@ -17,6 +17,7 @@ All notable changes to the Radium extension will be documented in this file.
 - Improved error handling during store initialization
 
 ### Added
+- **Manual re-index command**: `Radium: Re-index Workspace` to manually trigger indexing
 - **radium.yaml Configuration**: Define custom logical components for map visualization
   - Component-based grouping overrides default directory structure
   - Support for glob patterns in file paths (`**`, `*`)

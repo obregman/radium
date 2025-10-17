@@ -70,6 +70,11 @@
         "command": "radium.createTestSession",
         "title": "Radium: Create Test Session (Demo)",
         "icon": "$(beaker)"
+      },
+      {
+        "command": "radium.reindex",
+        "title": "Radium: Re-index Workspace",
+        "icon": "$(sync)"
       }
     ],
     "viewsContainers": {

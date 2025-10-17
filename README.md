@@ -106,7 +106,7 @@ Available settings:
 
 ### From GitHub Releases
 
-Download the `.vsix` file from the [Releases page](https://github.com/[owner]/radium/releases).
+Download the `.vsix` file from the [Releases page](https://github.com/obregman/radium/releases).
 
 Install via VS Code:
 1. Extensions view → `...` menu → "Install from VSIX..."
@@ -118,6 +118,8 @@ code --install-extension radium-0.1.0.vsix
 ```
 
 ### Building from Source
+
+**Requirements:** Node.js 20 or later
 
 ```bash
 npm install

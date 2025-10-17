@@ -4,6 +4,10 @@
   "description": "A living, zoomable map of your codebase that visualizes everything the LLM touches",
   "version": "0.1.0",
   "publisher": "radium",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/obregman/radium.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },

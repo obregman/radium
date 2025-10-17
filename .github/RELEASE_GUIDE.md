@@ -55,7 +55,7 @@ The workflow automatically builds and releases.
 
 ### 4. Verify Release
 
-1. Go to: `https://github.com/[owner]/radium/releases`
+1. Go to: `https://github.com/obregman/radium/releases`
 2. Verify the new release appears
 3. Download and test the `.vsix` file
 4. Confirm installation instructions work
@@ -71,7 +71,7 @@ npm run compile
 npm run package
 
 # Create a GitHub release manually
-# 1. Go to: https://github.com/[owner]/radium/releases/new
+# 1. Go to: https://github.com/obregman/radium/releases/new
 # 2. Choose the tag (e.g., v0.1.1)
 # 3. Add release notes
 # 4. Upload the .vsix file

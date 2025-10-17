@@ -1,27 +1,36 @@
 import * as vscode from 'vscode';
 import { GraphStore, Node, Edge } from '../store/schema';
 import { RadiumConfigLoader } from '../config/radium-config';
+import { GitDiffTracker } from '../git/git-diff-tracker';
 
 export class MapPanel {
   public static currentPanel: MapPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
+  private static outputChannel: vscode.OutputChannel;
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
     private store: GraphStore,
-    private configLoader: RadiumConfigLoader
+    private configLoader: RadiumConfigLoader,
+    private gitDiffTracker?: GitDiffTracker
   ) {
     this.panel = panel;
-    this.panel.webview.html = this.getHtmlContent(extensionUri);
-
-    // Listen for messages from webview
+    
+    // Listen for messages from webview BEFORE setting HTML
+    MapPanel.outputChannel.appendLine('Registering message handler');
     this.panel.webview.onDidReceiveMessage(
-      message => this.handleMessage(message),
+      message => {
+        MapPanel.outputChannel.appendLine(`Message received: ${message.type}`);
+        this.handleMessage(message);
+      },
       null,
       this.disposables
     );
+
+    // Set HTML content after registering listener
+    this.panel.webview.html = this.getHtmlContent(extensionUri);
 
     // Clean up when panel is closed
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -30,15 +39,29 @@ export class MapPanel {
     this.updateGraph();
   }
 
-  public static createOrShow(extensionUri: vscode.Uri, store: GraphStore, configLoader: RadiumConfigLoader) {
+  public static createOrShow(extensionUri: vscode.Uri, store: GraphStore, configLoader: RadiumConfigLoader, gitDiffTracker?: GitDiffTracker) {
+    // Initialize output channel if needed
+    if (!MapPanel.outputChannel) {
+      MapPanel.outputChannel = vscode.window.createOutputChannel('Radium Map');
+    }
+    
+    MapPanel.outputChannel.appendLine('createOrShow called');
+    
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
     if (MapPanel.currentPanel) {
+      MapPanel.outputChannel.appendLine('Panel already exists, revealing');
+      // Update the git diff tracker if provided
+      if (gitDiffTracker) {
+        MapPanel.currentPanel.gitDiffTracker = gitDiffTracker;
+      }
       MapPanel.currentPanel.panel.reveal(column);
       return;
     }
+    
+    MapPanel.outputChannel.appendLine('Creating new panel');
 
     const panel = vscode.window.createWebviewPanel(
       'vibeMap',
@@ -51,10 +74,11 @@ export class MapPanel {
       }
     );
 
-    MapPanel.currentPanel = new MapPanel(panel, extensionUri, store, configLoader);
+    MapPanel.currentPanel = new MapPanel(panel, extensionUri, store, configLoader, gitDiffTracker);
   }
 
   private async handleMessage(message: any) {
+    console.log('[Radium] Received message:', message.type);
     switch (message.type) {
       case 'node:selected':
         await this.handleNodeSelected(message.nodeId);
@@ -69,27 +93,85 @@ export class MapPanel {
         await this.handleOverlayToggle(message.layer, message.enabled);
         break;
       case 'request:recent-changes':
+        console.log('[Radium] Handling request:recent-changes');
         await this.handleShowRecentChanges();
         break;
       case 'ready':
         this.updateGraph();
         break;
+      default:
+        console.log('[Radium] Unknown message type:', message.type);
     }
   }
 
   private async handleShowRecentChanges() {
-    const sessions = this.store.getRecentSessions(1);
-    if (sessions.length > 0) {
-      this.updateOverlay(sessions[0].id!);
-    } else {
-      vscode.window.showInformationMessage('No recent sessions found');
+    MapPanel.outputChannel.appendLine('handleShowRecentChanges called');
+    
+    if (!this.gitDiffTracker) {
+      MapPanel.outputChannel.appendLine('ERROR: Git diff tracker not available');
+      vscode.window.showWarningMessage('Git diff tracker not available');
+      return;
     }
+
+    MapPanel.outputChannel.appendLine('Creating session from git changes (working directory)...');
+    
+    // Create session from uncommitted changes in working directory
+    const sessionId = await this.gitDiffTracker.createSessionFromGitChanges();
+    
+    MapPanel.outputChannel.appendLine(`Session ID: ${sessionId}`);
+    
+    if (!sessionId) {
+      vscode.window.showInformationMessage('No uncommitted changes found');
+      return;
+    }
+
+    const changes = this.store.getChangesBySession(sessionId);
+    MapPanel.outputChannel.appendLine(`Showing ${changes.length} uncommitted changes`);
+    
+    // Log details about the changes
+    const allFiles = this.store.getAllFiles();
+    MapPanel.outputChannel.appendLine(`Total files in index: ${allFiles.length}`);
+    MapPanel.outputChannel.appendLine(`Changed files:`);
+    changes.forEach(c => {
+      const hunks = JSON.parse(c.hunks_json);
+      MapPanel.outputChannel.appendLine(`  - ${hunks.filePath || 'unknown'}`);
+    });
+    
+    // Update overlay to show changes with connected components
+    this.updateOverlay(sessionId, true);
   }
 
   private async handleFileOpen(filePath: string) {
-    // Open file in editor
-    const uri = vscode.Uri.file(filePath);
-    await vscode.window.showTextDocument(uri);
+    console.log(`[Radium] Opening file: ${filePath}`);
+    try {
+      // Resolve relative path to absolute path
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        throw new Error('No workspace folder open');
+      }
+      
+      const workspaceRoot = workspaceFolders[0].uri.fsPath;
+      console.log(`[Radium] Workspace root: ${workspaceRoot}`);
+      
+      // If path is relative (doesn't start with workspace root), join it
+      let absolutePath: string;
+      if (filePath.startsWith(workspaceRoot)) {
+        // Already absolute
+        absolutePath = filePath;
+      } else {
+        // Relative path - join with workspace root
+        // Remove leading slash if present
+        const relativePath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+        absolutePath = `${workspaceRoot}/${relativePath}`;
+      }
+      
+      console.log(`[Radium] Resolved path: ${absolutePath}`);
+      const uri = vscode.Uri.file(absolutePath);
+      await vscode.window.showTextDocument(uri);
+    } catch (error) {
+      console.error(`[Radium] Failed to open file:`, error);
+      vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
+    }
   }
 
   private async handleNodeSelected(nodeId: number) {
@@ -443,9 +525,6 @@ export class MapPanel {
     const allFiles = this.store.getAllFiles();
 
     console.log(`[Radium] updateGraphWithChangesOnly: ${changedFilePaths.length} changed files`);
-    console.log(`[Radium] All files in store: ${allFiles.length}`);
-    console.log(`[Radium] Changed paths:`, changedFilePaths);
-    console.log(`[Radium] Sample store paths:`, allFiles.slice(0, 5).map(f => f.path));
 
     // Filter to only changed files
     const changedFileSet = new Set(changedFilePaths);
@@ -458,27 +537,171 @@ export class MapPanel {
       return;
     }
 
-    // Get ALL nodes from changed files (including functions)
-    const changedFileNodes = allNodes.filter(n => changedFileSet.has(n.path));
-    const changedNodeIds = new Set(changedFileNodes.map(n => n.id));
+    const config = this.configLoader.getConfig();
+    
+    // If radium.yaml exists, show changed files WITH their parent components
+    if (config) {
+      // Build component-based graph showing only changed files and their components
+      const graphData = this.buildComponentBasedGraphForChanges(allNodes, allEdges, filteredFiles, config, changedFileSet);
+      
+      console.log(`[Radium] Graph built: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
 
-    console.log(`[Radium] Filtered nodes: ${changedFileNodes.length}`);
+      this.panel.webview.postMessage({
+        type: 'graph:update',
+        data: graphData,
+        filtered: true
+      });
+    } else {
+      // Without radium.yaml, just show the changed files
+      const graphData = this.buildChangesGraph(allNodes, allEdges, filteredFiles);
 
-    // Filter edges to only those involving changed nodes
-    const filteredEdges = allEdges.filter(e => 
-      changedNodeIds.has(e.src) || changedNodeIds.has(e.dst)
-    );
+      console.log(`[Radium] Graph built: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
 
-    // Build filtered graph with ALL symbols (including functions)
-    const graphData = this.buildChangesGraph(changedFileNodes, filteredEdges, filteredFiles);
+      this.panel.webview.postMessage({
+        type: 'graph:update',
+        data: graphData,
+        filtered: true
+      });
+    }
+  }
 
-    console.log(`[Radium] Graph built: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
+  private buildComponentBasedGraphForChanges(allNodes: any[], allEdges: any[], changedFiles: any[], config: any, changedFileSet: Set<string>) {
+    const nodes: any[] = [];
+    const edges: any[] = [];
+    const nodeMap = new Map<string, number>();
+    let nodeId = 1;
 
-    this.panel.webview.postMessage({
-      type: 'graph:update',
-      data: graphData,
-      filtered: true
-    });
+    // Hash function to generate consistent colors for component names
+    const hashStringToColor = (str: string): string => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      
+      const hue = Math.abs(hash % 360);
+      const saturation = 65 + (Math.abs(hash >> 8) % 20);
+      const lightness = 50 + (Math.abs(hash >> 16) % 15);
+      
+      return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    };
+
+    const componentColors = new Map<string, string>();
+    
+    // Determine which components contain changed files
+    const componentsWithChanges = new Set<string>();
+    for (const file of changedFiles) {
+      const componentInfo = this.configLoader.getComponentForFile(file.path);
+      if (componentInfo) {
+        componentsWithChanges.add(componentInfo.key);
+      }
+    }
+
+    // Create component nodes for components with changes
+    const componentNodes = new Map<string, number>();
+    for (const componentKey of componentsWithChanges) {
+      const component = config.projectSpec.components[componentKey];
+      const componentId = nodeId++;
+      const componentColor = hashStringToColor(component.name);
+      
+      componentNodes.set(componentKey, componentId);
+      nodeMap.set(`component:${componentKey}`, componentId);
+      componentColors.set(componentKey, componentColor);
+
+      nodes.push({
+        id: componentId,
+        name: component.name,
+        kind: 'component',
+        path: componentKey,
+        size: changedFiles.filter(f => {
+          const info = this.configLoader.getComponentForFile(f.path);
+          return info?.key === componentKey;
+        }).length,
+        description: component.description,
+        fullPath: componentKey,
+        color: componentColor,
+        componentKey: componentKey
+      });
+    }
+
+    // Create file nodes for changed files
+    const fileNodes = new Map<string, number>();
+    
+    for (const file of changedFiles) {
+      const fileId = nodeId++;
+      fileNodes.set(file.path, fileId);
+      nodeMap.set(`file:${file.path}`, fileId);
+
+      const componentInfo = this.configLoader.getComponentForFile(file.path);
+      const fileColor = componentInfo ? componentColors.get(componentInfo.key) : undefined;
+
+      const fileName = file.path.split('/').pop() || file.path;
+      const fileNode = {
+        id: fileId,
+        name: fileName,
+        kind: 'file',
+        path: file.path,
+        lang: file.lang,
+        size: file.size,
+        functions: [] as any[],
+        componentColor: fileColor
+      };
+      nodes.push(fileNode);
+
+      // Connect file to its component
+      if (componentInfo) {
+        const componentId = componentNodes.get(componentInfo.key);
+        if (componentId) {
+          edges.push({
+            source: componentId,
+            target: fileId,
+            kind: 'contains',
+            weight: 0.5,
+            color: fileColor
+          });
+        }
+      }
+    }
+
+    // Add file-to-file edges for imports (only between changed files)
+    const fileImports = new Map<string, Set<string>>();
+    for (const edge of allEdges) {
+      if (edge.kind === 'imports') {
+        const srcNode = allNodes.find(n => n.id === edge.src);
+        const dstNode = allNodes.find(n => n.id === edge.dst);
+        if (srcNode && dstNode && srcNode.path !== dstNode.path) {
+          // Only include imports between changed files
+          if (changedFileSet.has(srcNode.path) && changedFileSet.has(dstNode.path)) {
+            if (!fileImports.has(srcNode.path)) {
+              fileImports.set(srcNode.path, new Set());
+            }
+            fileImports.get(srcNode.path)!.add(dstNode.path);
+          }
+        }
+      }
+    }
+
+    for (const [srcPath, dstPaths] of fileImports.entries()) {
+      const srcFileId = fileNodes.get(srcPath);
+      if (!srcFileId) continue;
+
+      const componentInfo = this.configLoader.getComponentForFile(srcPath);
+      const edgeColor = componentInfo ? componentColors.get(componentInfo.key) : undefined;
+
+      for (const dstPath of dstPaths) {
+        const dstFileId = fileNodes.get(dstPath);
+        if (dstFileId) {
+          edges.push({
+            source: srcFileId,
+            target: dstFileId,
+            kind: 'imports',
+            weight: 1.5,
+            color: edgeColor
+          });
+        }
+      }
+    }
+
+    return { nodes, edges };
   }
 
   private buildChangesGraph(allNodes: any[], allEdges: any[], allFiles: any[]) {
@@ -747,11 +970,11 @@ export class MapPanel {
 <body>
   <div id="map"></div>
   <div class="controls">
-    <button class="control-button" onclick="resetView()">Reset View</button>
-    <button class="control-button" id="show-all-btn" onclick="showAllFiles()" style="display: none;">Show All Files</button>
-    <button class="control-button" onclick="toggleLayer('structure')">Structure</button>
-    <button class="control-button" onclick="toggleLayer('relations')">Relations</button>
-    <button class="control-button" onclick="toggleLayer('changes')">Changes</button>
+    <button class="control-button" id="reset-view-btn">Reset View</button>
+    <button class="control-button" id="show-all-btn" style="display: none;">Show All Files</button>
+    <button class="control-button" id="structure-btn">Structure</button>
+    <button class="control-button" id="relations-btn">Relations</button>
+    <button class="control-button" id="changes-btn">Changes</button>
   </div>
   <div class="legend">
     <div class="legend-item">
@@ -979,7 +1202,7 @@ export class MapPanel {
         .join('line')
         .attr('class', 'link')
         .attr('stroke-width', d => {
-          if (d.kind === 'contains') return 9;
+          if (d.kind === 'contains') return 18;
           if (d.kind === 'defines') return 1.5;
           return d.weight * 2;
         })
@@ -987,10 +1210,20 @@ export class MapPanel {
           if (d.kind === 'contains') return 0.5;
           if (d.kind === 'defines') return 0.4;
           return 0.7;
-        });
+        })
+        .style('cursor', 'pointer');
 
       // Only display files and components (no directories)
-      const fileNodes = data.nodes.filter(d => d.kind === 'file');
+      // Filter out files that are not connected to any component
+      const fileIdsConnectedToComponents = new Set(
+        data.edges
+          .filter(e => e.kind === 'contains')
+          .map(e => e.target)
+      );
+      
+      const fileNodes = data.nodes.filter(d => 
+        d.kind === 'file' && fileIdsConnectedToComponents.has(d.id)
+      );
       const componentNodes = data.nodes.filter(d => d.kind === 'component');
       
       console.log('[Radium Map] Node counts - Files:', fileNodes.length, 'Components:', componentNodes.length);
@@ -1021,6 +1254,7 @@ export class MapPanel {
         .attr('stroke', d => d.componentColor || 'var(--vscode-editor-foreground)')
         .attr('stroke-width', d => d.componentColor ? 3 : 2)
         .on('click', (event, d) => {
+          console.log('[Radium Map] File box clicked:', d.path);
           vscode.postMessage({
             type: 'file:open',
             filePath: d.path
@@ -1092,33 +1326,16 @@ export class MapPanel {
         files: data.nodes.filter(n => n.kind === 'file').length
       });
 
-      let tickCount = 0;
       // Update simulation
       simulation.nodes(data.nodes)
         .on('tick', () => {
           try {
-            tickCount++;
-            if (tickCount % 10 === 0) {
-              console.log('[Radium Map] Tick', tickCount, 'Alpha:', simulation.alpha().toFixed(3));
-            }
-
             links
               .attr('x1', d => d.source.x)
               .attr('y1', d => d.source.y)
               .attr('x2', d => d.target.x)
               .attr('y2', d => d.target.y)
               .attr('stroke', d => {
-                // Debug on first tick
-                if (tickCount === 1) {
-                  console.log('[Radium Map] Edge debug:', {
-                    kind: d.kind,
-                    sourceKind: d.source.kind,
-                    sourceColor: d.source.color,
-                    sourceComponentColor: d.source.componentColor,
-                    sourceName: d.source.name
-                  });
-                }
-                
                 // Color lines based on their source node
                 // For 'contains' edges (component → file), use component color
                 if (d.kind === 'contains' && d.source.color) {
@@ -1154,6 +1371,56 @@ export class MapPanel {
 
       // Connect edges to the simulation
       simulation.force('link').links(data.edges);
+      
+      // Add hover events after links are connected to simulation (source/target are now objects)
+      links
+        .on('mouseover', function(event, d) {
+          if (d.kind === 'contains') {
+            // d.source is now the actual node object with properties
+            const componentName = d.source && d.source.name ? d.source.name : 'Component';
+            
+            // Create tooltip
+            d3.select('body').append('div')
+              .attr('class', 'edge-tooltip')
+              .style('position', 'fixed')
+              .style('left', event.clientX + 10 + 'px')
+              .style('top', event.clientY + 10 + 'px')
+              .style('background', 'var(--vscode-editorHoverWidget-background)')
+              .style('color', 'var(--vscode-editorHoverWidget-foreground)')
+              .style('border', '1px solid var(--vscode-editorHoverWidget-border)')
+              .style('padding', '8px 12px')
+              .style('border-radius', '4px')
+              .style('font-size', '12px')
+              .style('pointer-events', 'none')
+              .style('z-index', '1000')
+              .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)')
+              .text(componentName);
+            
+            // Highlight the line
+            d3.select(this)
+              .attr('stroke-opacity', 0.9)
+              .attr('stroke-width', 22);
+          }
+        })
+        .on('mousemove', function(event) {
+          d3.select('.edge-tooltip')
+            .style('left', event.clientX + 10 + 'px')
+            .style('top', event.clientY + 10 + 'px');
+        })
+        .on('mouseout', function(event, d) {
+          // Remove tooltip
+          d3.select('.edge-tooltip').remove();
+          
+          // Reset line appearance
+          d3.select(this)
+            .attr('stroke-opacity', d.kind === 'contains' ? 0.5 : (d.kind === 'defines' ? 0.4 : 0.7))
+            .attr('stroke-width', d => {
+              if (d.kind === 'contains') return 18;
+              if (d.kind === 'defines') return 1.5;
+              return d.weight * 2;
+            });
+        });
+      
       console.log('[Radium Map] Starting simulation with', data.nodes.length, 'nodes and', data.edges.length, 'edges');
       simulation.alpha(1).restart();
       console.log('[Radium Map] updateGraph completed successfully');
@@ -1203,11 +1470,14 @@ export class MapPanel {
     }
 
     function toggleLayer(layer) {
+      console.log('[Radium Map] toggleLayer called with:', layer);
       if (layer === 'changes') {
         // Request to show changes
+        console.log('[Radium Map] Sending request:recent-changes message');
         vscode.postMessage({
           type: 'request:recent-changes'
         });
+        console.log('[Radium Map] Message sent');
       } else {
         vscode.postMessage({
           type: 'overlay:toggle',
@@ -1307,6 +1577,16 @@ export class MapPanel {
       svg.attr('width', width).attr('height', height);
       simulation.force('center', d3.forceCenter(width / 2, height / 2));
       simulation.alpha(0.3).restart();
+    });
+
+    // Add event listeners for control buttons
+    document.getElementById('reset-view-btn')?.addEventListener('click', resetView);
+    document.getElementById('show-all-btn')?.addEventListener('click', showAllFiles);
+    document.getElementById('structure-btn')?.addEventListener('click', () => toggleLayer('structure'));
+    document.getElementById('relations-btn')?.addEventListener('click', () => toggleLayer('relations'));
+    document.getElementById('changes-btn')?.addEventListener('click', () => {
+      console.log('[Radium Map] Changes button clicked');
+      toggleLayer('changes');
     });
   </script>
 </body>

@@ -15,10 +15,81 @@ export interface GitDiff {
 export class GitDiffTracker {
   private store: GraphStore;
   private workspaceRoot: string;
+  private static outputChannel: vscode.OutputChannel;
 
   constructor(store: GraphStore, workspaceRoot: string) {
     this.store = store;
     this.workspaceRoot = workspaceRoot;
+    
+    // Initialize output channel if needed
+    if (!GitDiffTracker.outputChannel) {
+      GitDiffTracker.outputChannel = vscode.window.createOutputChannel('Radium Git');
+    }
+  }
+
+  async getChangesVsRemote(): Promise<GitDiff[]> {
+    try {
+      // Get the remote tracking branch
+      const { stdout: trackingBranch } = await exec('git rev-parse --abbrev-ref --symbolic-full-name @{u}', {
+        cwd: this.workspaceRoot
+      });
+      
+      const remoteBranch = trackingBranch.trim();
+      if (!remoteBranch) {
+        console.warn('[Radium Git] No remote tracking branch found');
+        return this.getCurrentBranchChanges();
+      }
+
+      console.log(`[Radium Git] Comparing against remote: ${remoteBranch}`);
+
+      // Get list of changed files compared to remote
+      const { stdout: diffOutput } = await exec(`git diff --name-status ${remoteBranch}...HEAD`, {
+        cwd: this.workspaceRoot
+      });
+
+      const changes: GitDiff[] = [];
+      const lines = diffOutput.trim().split('\n').filter(l => l);
+      
+      console.log(`[Radium Git] Raw diff output lines: ${lines.length}`);
+
+      for (const line of lines) {
+        if (line.length < 2) continue;
+
+        const parts = line.split('\t');
+        const statusCode = parts[0].trim();
+        const filePath = parts[1]?.trim();
+
+        if (!filePath) continue;
+
+        console.log(`[Radium Git] Processing: ${filePath}, isSource: ${this.isSourceFile(filePath)}`);
+
+        // Skip if not a tracked source file
+        if (!this.isSourceFile(filePath)) {
+          console.log(`[Radium Git] Skipping non-source file: ${filePath}`);
+          continue;
+        }
+
+        let status: GitDiff['status'] = 'modified';
+        if (statusCode === 'A') status = 'added';
+        else if (statusCode === 'D') status = 'deleted';
+        else if (statusCode.startsWith('R')) status = 'renamed';
+
+        // Get detailed diff stats for the file
+        const stats = await this.getRemoteDiffStats(filePath, remoteBranch, status);
+
+        changes.push({
+          filePath,
+          status,
+          additions: stats.additions,
+          deletions: stats.deletions
+        });
+      }
+
+      return changes;
+    } catch (error) {
+      console.warn('[Radium Git] Failed to get changes vs remote, falling back to local changes:', error);
+      return this.getCurrentBranchChanges();
+    }
   }
 
   async getCurrentBranchChanges(): Promise<GitDiff[]> {
@@ -29,7 +100,7 @@ export class GitDiffTracker {
       });
 
       const changes: GitDiff[] = [];
-      const lines = statusOutput.trim().split('\n').filter(l => l);
+      const lines = statusOutput.split('\n').filter(l => l.trim());
 
       for (const line of lines) {
         if (line.length < 4) continue;
@@ -38,7 +109,9 @@ export class GitDiffTracker {
         const filePath = line.substring(3).trim();
 
         // Skip if not a tracked source file
-        if (!this.isSourceFile(filePath)) continue;
+        if (!this.isSourceFile(filePath)) {
+          continue;
+        }
 
         let status: GitDiff['status'] = 'modified';
         if (statusCode === 'A' || statusCode === '??') status = 'added';
@@ -60,6 +133,38 @@ export class GitDiffTracker {
     } catch (error) {
       console.error('Failed to get git changes:', error);
       return [];
+    }
+  }
+
+  private async getRemoteDiffStats(filePath: string, remoteBranch: string, status: string): Promise<{ additions: number; deletions: number }> {
+    try {
+      if (status === 'added') {
+        // For new files, count lines in current version
+        const { stdout } = await exec(`git diff --numstat ${remoteBranch}...HEAD -- "${filePath}"`, {
+          cwd: this.workspaceRoot
+        });
+        
+        if (!stdout) return { additions: 0, deletions: 0 };
+        
+        const [additions, deletions] = stdout.trim().split(/\s+/).map(n => parseInt(n) || 0);
+        return { additions, deletions };
+      }
+
+      if (status === 'deleted') {
+        return { additions: 0, deletions: 0 };
+      }
+
+      // Get diff stats compared to remote
+      const { stdout } = await exec(`git diff --numstat ${remoteBranch}...HEAD -- "${filePath}"`, {
+        cwd: this.workspaceRoot
+      });
+
+      if (!stdout) return { additions: 0, deletions: 0 };
+
+      const [additions, deletions] = stdout.trim().split(/\s+/).map(n => parseInt(n) || 0);
+      return { additions, deletions };
+    } catch {
+      return { additions: 0, deletions: 0 };
     }
   }
 
@@ -100,14 +205,12 @@ export class GitDiffTracker {
   }
 
   private isSourceFile(filePath: string): boolean {
-    const sourceExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.go', '.rs'];
+    const sourceExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp', '.cs', '.swift', '.kt', '.rb', '.php'];
     return sourceExtensions.some(ext => filePath.endsWith(ext));
   }
 
   async createSessionFromGitChanges(): Promise<number | null> {
     const changes = await this.getCurrentBranchChanges();
-    
-    console.log('[Radium Git] Found', changes.length, 'git changes:', changes.map(c => c.filePath));
     
     if (changes.length === 0) {
       return null;
@@ -129,6 +232,73 @@ export class GitDiffTracker {
       actor: 'user',
       actor_version: branchName,
       origin: 'git-diff',
+      started_at: Date.now()
+    });
+
+    // Record changes
+    for (const change of changes) {
+      const file = this.store.getFileByPath(change.filePath);
+      
+      if (!file) {
+        continue;
+      }
+
+      this.store.insertChange({
+        session_id: sessionId,
+        file_id: file.id!,
+        hunks_json: JSON.stringify({
+          filePath: change.filePath,
+          beforeHash: '',
+          afterHash: '',
+          hunks: [{
+            start: 0,
+            end: change.additions + change.deletions,
+            type: 'modify',
+            text: `+${change.additions} -${change.deletions}`
+          }]
+        }),
+        summary: `${change.status}: +${change.additions} -${change.deletions}`,
+        ts: Date.now()
+      });
+    }
+
+    this.store.endSession(sessionId, Date.now());
+    this.store.save();
+
+    return sessionId;
+  }
+
+  async createSessionFromRemoteChanges(): Promise<number | null> {
+    try {
+      const changes = await this.getChangesVsRemote();
+      
+      console.log('[Radium Git] Found', changes.length, 'changes vs remote:', changes.map(c => c.filePath));
+      
+      if (changes.length === 0) {
+        console.log('[Radium Git] No changes found vs remote');
+        return null;
+      }
+    } catch (error) {
+      console.error('[Radium Git] Error getting changes vs remote:', error);
+      return null;
+    }
+
+    // Get current branch name
+    let branchName = 'unknown';
+    try {
+      const { stdout } = await exec('git rev-parse --abbrev-ref HEAD', {
+        cwd: this.workspaceRoot
+      });
+      branchName = stdout.trim();
+    } catch {
+      // Ignore
+    }
+
+    // Create session
+    const sessionId = this.store.createSession({
+      actor: 'user',
+      actor_version: branchName,
+      origin: 'git-remote-diff',
       started_at: Date.now()
     });
 

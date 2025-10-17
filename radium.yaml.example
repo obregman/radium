@@ -4,7 +4,7 @@ project-spec:
         name: Views
         description: UI components and visualization panels
         files:
-          - src/views/**
+          - src/views/view-manager.ts
     
     - store:
         name: Data Store

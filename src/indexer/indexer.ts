@@ -144,12 +144,23 @@ export class Indexer {
     const lang = this.parser.getLanguage(filePath);
     if (!lang) return;
 
-    // Parse the file
-    const result = await this.parser.parseFile(filePath);
-    if (!result) return;
-
     const stats = await fs.promises.stat(filePath);
     const now = Date.now();
+
+    // Try to parse the file
+    let result;
+    try {
+      result = await this.parser.parseFile(filePath);
+    } catch (error) {
+      // If parsing fails, still index the file but with empty symbols
+      console.warn(`Failed to parse ${relativePath}, indexing without symbols:`, error);
+      const code = await fs.promises.readFile(filePath, 'utf-8');
+      const crypto = require('crypto');
+      const hash = crypto.createHash('sha256').update(code).digest('hex');
+      result = { symbols: [], imports: [], calls: [], hash };
+    }
+    
+    if (!result) return;
 
     this.store.beginTransaction();
 

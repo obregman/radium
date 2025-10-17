@@ -81,7 +81,7 @@ export async function activate(context: vscode.ExtensionContext) {
 function registerCommands(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('vibe.openMap', () => {
-      MapPanel.createOrShow(context.extensionUri, store, configLoader);
+      MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
     }),
 
     vscode.commands.registerCommand('vibe.showChanges', async () => {
@@ -134,7 +134,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         const changes = store.getChangesBySession(sessionId);
         
         // Open map
-        MapPanel.createOrShow(context.extensionUri, store, configLoader);
+        MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
         
         // Update overlay after a short delay
         setTimeout(() => {
@@ -151,7 +151,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         const changes = store.getChangesBySession(selected.session.id!);
         
         // Open map
-        MapPanel.createOrShow(context.extensionUri, store, configLoader);
+        MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
         
         // Update overlay after a short delay
         setTimeout(() => {
@@ -295,7 +295,7 @@ function registerCommands(context: vscode.ExtensionContext) {
       );
 
       // Show in map
-      MapPanel.createOrShow(context.extensionUri, store, configLoader);
+      MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
     }),
 
     vscode.commands.registerCommand('vibe.exportSessionPatch', async () => {

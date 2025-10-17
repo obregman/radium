@@ -5,8 +5,16 @@ All notable changes to the Radium extension will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **Extension activation issue**: sql.js WASM file is now properly bundled with the extension, fixing "command not found" errors
-- Command registration now handles initialization gracefully - prevents errors when extension is still loading
+- **CRITICAL: Extension activation failure** - All production dependencies are now properly bundled in the VSIX
+  - Previous builds excluded ALL node_modules, causing extension to fail on require() calls
+  - Removed `node_modules/**` exclusion from .vscodeignore
+  - VSIX now includes all 9 production dependencies: sql.js, chokidar, fast-diff, js-yaml, tree-sitter, and tree-sitter language parsers
+  - VSIX size increased to ~12.5MB (expected - includes all runtime dependencies)
+  - This fixes "command not found" errors and extension not activating
+- WASM binary is loaded directly into memory (more reliable than locateFile)
+- Added detailed logging for troubleshooting initialization issues
+- Command registration now handles initialization gracefully
+- Improved error handling during store initialization
 
 ### Added
 - **radium.yaml Configuration**: Define custom logical components for map visualization

@@ -18,11 +18,21 @@ let issuesTreeProvider: IssuesTreeProvider;
 let configLoader: RadiumConfigLoader;
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('Radium extension is starting activation...');
+  console.log('============================================');
+  console.log('RADIUM: Extension activation starting...');
+  console.log('RADIUM: Extension path:', context.extensionPath);
+  console.log('RADIUM: Storage path:', context.globalStorageUri.fsPath);
+  console.log('============================================');
   
   // ALWAYS register commands first, even if initialization fails
-  registerCommands(context);
-  console.log('Radium commands registered');
+  try {
+    registerCommands(context);
+    console.log('RADIUM: Commands registered successfully');
+  } catch (cmdError) {
+    console.error('RADIUM: FAILED to register commands:', cmdError);
+    vscode.window.showErrorMessage(`Radium command registration failed: ${cmdError}`);
+    throw cmdError;
+  }
 
   try {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -38,9 +48,15 @@ export async function activate(context: vscode.ExtensionContext) {
     await vscode.workspace.fs.createDirectory(context.globalStorageUri);
 
     // Initialize store
-    console.log('Initializing store at:', dbPath);
-    store = new GraphStore(dbPath);
-    await store.init();
+    console.log('Radium: Initializing store at:', dbPath);
+    try {
+      store = new GraphStore(dbPath);
+      await store.init();
+      console.log('Radium: Store initialized successfully');
+    } catch (storeError) {
+      console.error('Radium: Failed to initialize store:', storeError);
+      throw new Error(`Store initialization failed: ${storeError}`);
+    }
 
     // Initialize config loader
     configLoader = new RadiumConfigLoader(workspaceRoot);
@@ -73,8 +89,17 @@ export async function activate(context: vscode.ExtensionContext) {
     
     console.log('Radium activation complete');
   } catch (error) {
-    console.error('Radium activation failed:', error);
-    vscode.window.showErrorMessage(`Radium failed to activate: ${error}`);
+    console.error('============================================');
+    console.error('RADIUM: ACTIVATION FAILED!');
+    console.error('RADIUM: Error:', error);
+    console.error('RADIUM: Stack:', (error as Error).stack);
+    console.error('============================================');
+    vscode.window.showErrorMessage(`Radium failed to activate: ${error}`, 'Show Logs').then(action => {
+      if (action === 'Show Logs') {
+        vscode.commands.executeCommand('workbench.action.toggleDevTools');
+      }
+    });
+    throw error; // Re-throw to ensure VS Code knows activation failed
   }
 }
 

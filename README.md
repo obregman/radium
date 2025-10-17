@@ -117,6 +117,8 @@ Or via command line:
 code --install-extension radium-0.1.0.vsix
 ```
 
+**Having installation issues?** See [TEST-INSTALLATION.md](TEST-INSTALLATION.md) for detailed debugging steps.
+
 ### Building from Source
 
 **Requirements:** Node.js 20 or later
@@ -143,6 +145,7 @@ The release is tagged with the version from `package.json` and the commit SHA.
 - [Architecture](docs/architecture.md)
 - [Usage Guide](docs/usage-guide.md)
 - [radium.yaml Format](docs/radium-yaml.md)
+- [Troubleshooting](docs/troubleshooting.md)
 
 ## License
 

@@ -11,15 +11,22 @@ export class DatabaseAdapter {
   }
 
   async init(): Promise<void> {
-    // Locate the WASM file relative to this module
+    // Load the WASM file as a buffer and pass it directly to sql.js
+    // This is more reliable than using locateFile in a packaged extension
     const wasmPath = path.join(__dirname, '../../node_modules/sql.js/dist/sql-wasm.wasm');
+    
+    console.log('SQL.js: Loading WASM from:', wasmPath);
+    console.log('SQL.js: __dirname is:', __dirname);
+    
+    if (!fs.existsSync(wasmPath)) {
+      throw new Error(`WASM file not found at: ${wasmPath}`);
+    }
+    
+    const wasmBinary = fs.readFileSync(wasmPath);
+    console.log('SQL.js: WASM file loaded, size:', wasmBinary.length, 'bytes');
+    
     const SQL = await initSqlJs({
-      locateFile: (file) => {
-        if (file === 'sql-wasm.wasm') {
-          return wasmPath;
-        }
-        return file;
-      }
+      wasmBinary: wasmBinary.buffer.slice(wasmBinary.byteOffset, wasmBinary.byteOffset + wasmBinary.byteLength)
     });
     
     // Try to load existing database

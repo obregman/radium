@@ -269,8 +269,9 @@ export class GitDiffTracker {
   }
 
   async createSessionFromRemoteChanges(): Promise<number | null> {
+    let changes;
     try {
-      const changes = await this.getChangesVsRemote();
+      changes = await this.getChangesVsRemote();
       
       console.log('[Radium Git] Found', changes.length, 'changes vs remote:', changes.map(c => c.filePath));
       

@@ -20,11 +20,13 @@ export class Indexer {
   }
 
   async start(): Promise<void> {
+    console.log('INDEXER: start() called');
     // Initial index
     await this.indexWorkspace();
 
     // Start watching for changes
     this.startWatching();
+    console.log('INDEXER: start() completed');
   }
 
   private startWatching(): void {
@@ -94,19 +96,24 @@ export class Indexer {
   }
 
   private async indexWorkspace(): Promise<void> {
+    console.log('INDEXER: Finding source files in workspace:', this.workspaceRoot);
     const files = await this.findSourceFiles();
+    console.log(`INDEXER: Found ${files.length} source files to index`);
     
-    console.log(`Indexing ${files.length} files...`);
+    if (files.length === 0) {
+      console.warn('INDEXER: No source files found! Check workspace and file patterns.');
+      return;
+    }
 
     for (const file of files) {
       try {
         await this.indexFile(file);
       } catch (error) {
-        console.error(`Failed to index ${file}:`, error);
+        console.error(`INDEXER: Failed to index ${file}:`, error);
       }
     }
 
-    console.log('Initial indexing complete');
+    console.log(`INDEXER: Indexing complete - processed ${files.length} files`);
   }
 
   private async findSourceFiles(): Promise<string[]> {
@@ -130,12 +137,16 @@ export class Indexer {
     ];
 
     const files: string[] = [];
+    console.log('INDEXER: Searching for files with patterns:', patterns);
+    console.log('INDEXER: Excluding patterns:', excludePatterns);
 
     for (const pattern of patterns) {
       const found = await vscode.workspace.findFiles(pattern, `{${excludePatterns.join(',')}}`);
+      console.log(`INDEXER: Pattern '${pattern}' found ${found.length} files`);
       files.push(...found.map(uri => uri.fsPath));
     }
 
+    console.log(`INDEXER: Total unique files found: ${files.length}`);
     return files;
   }
 

@@ -16,61 +16,58 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:vibe.openMap",
-    "onCommand:vibe.showChanges",
-    "onCommand:vibe.applyLLMPlan",
-    "onStartupFinished"
+    "*"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "vibe.openMap",
+        "command": "radium.openMap",
         "title": "Radium: Open Map",
         "icon": "$(graph)"
       },
       {
-        "command": "vibe.showChanges",
+        "command": "radium.showChanges",
         "title": "Radium: Show Changes",
         "icon": "$(diff)"
       },
       {
-        "command": "vibe.applyLLMPlan",
+        "command": "radium.applyLLMPlan",
         "title": "Radium: Apply LLM Plan",
         "icon": "$(check)"
       },
       {
-        "command": "vibe.undoSession",
+        "command": "radium.undoSession",
         "title": "Radium: Undo Last LLM Session",
         "icon": "$(discard)"
       },
       {
-        "command": "vibe.explainSelection",
+        "command": "radium.explainSelection",
         "title": "Radium: Explain Selection",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "vibe.findImpact",
+        "command": "radium.findImpact",
         "title": "Radium: Find Impact",
         "icon": "$(references)"
       },
       {
-        "command": "vibe.previewLLMPlan",
+        "command": "radium.previewLLMPlan",
         "title": "Radium: Preview LLM Plan from Clipboard",
         "icon": "$(preview)"
       },
       {
-        "command": "vibe.exportSessionPatch",
+        "command": "radium.exportSessionPatch",
         "title": "Radium: Export Session Patch",
         "icon": "$(export)"
       },
       {
-        "command": "vibe.refreshSessions",
+        "command": "radium.refreshSessions",
         "title": "Refresh",
         "icon": "$(refresh)"
       },
       {
-        "command": "vibe.createTestSession",
+        "command": "radium.createTestSession",
         "title": "Radium: Create Test Session (Demo)",
         "icon": "$(beaker)"
       }
@@ -78,24 +75,24 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "vibe-explorer",
+          "id": "radium-explorer",
           "title": "Radium",
           "icon": "resources/icon.svg"
         }
       ]
     },
     "views": {
-      "vibe-explorer": [
+      "radium-explorer": [
         {
-          "id": "vibe.codeSlices",
+          "id": "radium.codeSlices",
           "name": "Code Slices"
         },
         {
-          "id": "vibe.sessions",
+          "id": "radium.sessions",
           "name": "Recent Sessions"
         },
         {
-          "id": "vibe.issues",
+          "id": "radium.issues",
           "name": "Issues"
         }
       ]
@@ -103,33 +100,33 @@
     "menus": {
       "view/title": [
         {
-          "command": "vibe.refreshSessions",
-          "when": "view == vibe.sessions",
+          "command": "radium.refreshSessions",
+          "when": "view == radium.sessions",
           "group": "navigation"
         }
       ],
       "editor/context": [
         {
-          "command": "vibe.explainSelection",
+          "command": "radium.explainSelection",
           "when": "editorHasSelection",
-          "group": "vibe"
+          "group": "radium"
         },
         {
-          "command": "vibe.findImpact",
+          "command": "radium.findImpact",
           "when": "editorHasSelection",
-          "group": "vibe"
+          "group": "radium"
         }
       ]
     },
     "configuration": {
       "title": "Radium",
       "properties": {
-        "vibe.indexer.maxCPU": {
+        "radium.indexer.maxCPU": {
           "type": "number",
           "default": 2,
           "description": "Maximum CPU cores to use for indexing"
         },
-        "vibe.privacy.upload": {
+        "radium.privacy.upload": {
           "type": "string",
           "enum": [
             "none",
@@ -139,7 +136,7 @@
           "default": "none",
           "description": "Privacy level for optional cloud indexing"
         },
-        "vibe.graph.layout": {
+        "radium.graph.layout": {
           "type": "string",
           "enum": [
             "force",
@@ -148,7 +145,7 @@
           "default": "force",
           "description": "Graph layout algorithm"
         },
-        "vibe.layers.default": {
+        "radium.layers.default": {
           "type": "array",
           "items": {
             "type": "string"
@@ -160,7 +157,7 @@
           ],
           "description": "Default visible layers in the map"
         },
-        "vibe.tests.autoRun": {
+        "radium.tests.autoRun": {
           "type": "boolean",
           "default": true,
           "description": "Automatically run impacted tests after LLM changes"

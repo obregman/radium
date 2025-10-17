@@ -95,10 +95,10 @@ Available settings:
 
 ```json
 {
-  "vibe.indexer.maxCPU": 2,
-  "vibe.privacy.upload": "none",
-  "vibe.graph.layout": "force",
-  "vibe.tests.autoRun": true
+  "radium.indexer.maxCPU": 2,
+  "radium.privacy.upload": "none",
+  "radium.graph.layout": "force",
+  "radium.tests.autoRun": true
 }
 ```
 

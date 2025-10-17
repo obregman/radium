@@ -18,14 +18,16 @@ let issuesTreeProvider: IssuesTreeProvider;
 let configLoader: RadiumConfigLoader;
 
 export async function activate(context: vscode.ExtensionContext) {
-  try {
-    console.log('Radium extension is now active');
+  console.log('Radium extension is starting activation...');
+  
+  // ALWAYS register commands first, even if initialization fails
+  registerCommands(context);
+  console.log('Radium commands registered');
 
+  try {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders) {
       vscode.window.showWarningMessage('No workspace folder open. Radium requires a workspace.');
-      // Still register commands so they can be called later
-      registerCommands(context);
       return;
     }
 
@@ -36,6 +38,7 @@ export async function activate(context: vscode.ExtensionContext) {
     await vscode.workspace.fs.createDirectory(context.globalStorageUri);
 
     // Initialize store
+    console.log('Initializing store at:', dbPath);
     store = new GraphStore(dbPath);
     await store.init();
 
@@ -58,33 +61,30 @@ export async function activate(context: vscode.ExtensionContext) {
     issuesTreeProvider = new IssuesTreeProvider(store);
 
     // Register tree views
-    vscode.window.registerTreeDataProvider('vibe.sessions', sessionsTreeProvider);
-    vscode.window.registerTreeDataProvider('vibe.codeSlices', codeSlicesTreeProvider);
-    vscode.window.registerTreeDataProvider('vibe.issues', issuesTreeProvider);
-
-    // Register commands
-    registerCommands(context);
+    vscode.window.registerTreeDataProvider('radium.sessions', sessionsTreeProvider);
+    vscode.window.registerTreeDataProvider('radium.codeSlices', codeSlicesTreeProvider);
+    vscode.window.registerTreeDataProvider('radium.issues', issuesTreeProvider);
 
     // Start indexing in background
     startIndexing();
 
     // Show welcome message
     showWelcome();
+    
+    console.log('Radium activation complete');
   } catch (error) {
     console.error('Radium activation failed:', error);
     vscode.window.showErrorMessage(`Radium failed to activate: ${error}`);
-    // Still register basic commands
-    registerCommands(context);
   }
 }
 
 function registerCommands(context: vscode.ExtensionContext) {
   context.subscriptions.push(
-    vscode.commands.registerCommand('vibe.openMap', () => {
+    vscode.commands.registerCommand('radium.openMap', () => {
       MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
     }),
 
-    vscode.commands.registerCommand('vibe.showChanges', async () => {
+    vscode.commands.registerCommand('radium.showChanges', async () => {
       if (!store || !gitDiffTracker) {
         vscode.window.showWarningMessage('Store not initialized');
         return;
@@ -166,7 +166,7 @@ function registerCommands(context: vscode.ExtensionContext) {
       }
     }),
 
-    vscode.commands.registerCommand('vibe.previewLLMPlan', async () => {
+    vscode.commands.registerCommand('radium.previewLLMPlan', async () => {
       try {
         const clipboardText = await vscode.env.clipboard.readText();
         const plan: LLMPlan = JSON.parse(clipboardText);
@@ -209,12 +209,12 @@ function registerCommands(context: vscode.ExtensionContext) {
       }
     }),
 
-    vscode.commands.registerCommand('vibe.applyLLMPlan', async () => {
+    vscode.commands.registerCommand('radium.applyLLMPlan', async () => {
       // Same as preview but auto-apply
-      await vscode.commands.executeCommand('vibe.previewLLMPlan');
+      await vscode.commands.executeCommand('radium.previewLLMPlan');
     }),
 
-    vscode.commands.registerCommand('vibe.undoSession', async () => {
+    vscode.commands.registerCommand('radium.undoSession', async () => {
       const sessions = store.getRecentSessions(10);
       if (sessions.length === 0) {
         vscode.window.showInformationMessage('No sessions to undo');
@@ -242,7 +242,7 @@ function registerCommands(context: vscode.ExtensionContext) {
       }
     }),
 
-    vscode.commands.registerCommand('vibe.explainSelection', async () => {
+    vscode.commands.registerCommand('radium.explainSelection', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
         vscode.window.showWarningMessage('No active editor');
@@ -258,7 +258,7 @@ function registerCommands(context: vscode.ExtensionContext) {
       );
     }),
 
-    vscode.commands.registerCommand('vibe.findImpact', async () => {
+    vscode.commands.registerCommand('radium.findImpact', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !store) {
         vscode.window.showWarningMessage('No active editor or store not initialized');
@@ -298,7 +298,7 @@ function registerCommands(context: vscode.ExtensionContext) {
       MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
     }),
 
-    vscode.commands.registerCommand('vibe.exportSessionPatch', async () => {
+    vscode.commands.registerCommand('radium.exportSessionPatch', async () => {
       const sessions = store.getRecentSessions(10);
       if (sessions.length === 0) {
         vscode.window.showInformationMessage('No sessions to export');
@@ -330,13 +330,13 @@ function registerCommands(context: vscode.ExtensionContext) {
       }
     }),
 
-    vscode.commands.registerCommand('vibe.refreshSessions', () => {
+    vscode.commands.registerCommand('radium.refreshSessions', () => {
       sessionsTreeProvider.refresh();
       codeSlicesTreeProvider.refresh();
       issuesTreeProvider.refresh();
     }),
 
-    vscode.commands.registerCommand('vibe.createTestSession', async () => {
+    vscode.commands.registerCommand('radium.createTestSession', async () => {
       if (!store) {
         vscode.window.showWarningMessage('Store not initialized');
         return;
@@ -387,14 +387,14 @@ function registerCommands(context: vscode.ExtensionContext) {
         'Show Changes'
       ).then(action => {
         if (action === 'Show Changes') {
-          vscode.commands.executeCommand('vibe.showChanges');
+          vscode.commands.executeCommand('radium.showChanges');
         }
       });
 
       sessionsTreeProvider.refresh();
     }),
 
-    vscode.commands.registerCommand('vibe.showChange', async (change: any) => {
+    vscode.commands.registerCommand('radium.showChange', async (change: any) => {
       // Show change details
       const hunks = JSON.parse(change.hunks_json);
       vscode.window.showInformationMessage(
@@ -428,7 +428,7 @@ function showWelcome() {
     'Open Map'
   ).then(action => {
     if (action === 'Open Map') {
-      vscode.commands.executeCommand('vibe.openMap');
+      vscode.commands.executeCommand('radium.openMap');
     }
   });
 }

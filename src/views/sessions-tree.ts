@@ -70,7 +70,7 @@ class SessionTreeItem extends vscode.TreeItem {
       item.iconPath = new vscode.ThemeIcon('file');
       item.tooltip = change.summary || 'No summary';
       item.command = {
-        command: 'vibe.showChange',
+        command: 'radium.showChange',
         title: 'Show Change',
         arguments: [change]
       };

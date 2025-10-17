@@ -11,7 +11,7 @@
 ### Open the Map
 
 ```
-Cmd/Ctrl + Shift + P → "Vibe: Open Map"
+Cmd/Ctrl + Shift + P → "Radium: Open Map"
 ```
 
 This opens an interactive visualization showing:
@@ -66,7 +66,7 @@ Copy the entire JSON plan.
 ### Step 3: Preview Changes
 
 ```
-Cmd/Ctrl + Shift + P → "Vibe: Preview LLM Plan from Clipboard"
+Cmd/Ctrl + Shift + P → "Radium: Preview LLM Plan from Clipboard"
 ```
 
 Radium will:
@@ -92,7 +92,7 @@ The map updates to show:
 ### Check Before You Change
 
 1. Select a function/class name
-2. Run: `Vibe: Find Impact`
+2. Run: `Radium: Find Impact`
 
 Radium shows:
 - **Fan-in**: What depends on this
@@ -114,7 +114,7 @@ Open the map and look for:
 ### View Recent Sessions
 
 ```
-Vibe: Show Changes
+Radium: Show Changes
 ```
 
 Select a session to see:
@@ -126,7 +126,7 @@ Select a session to see:
 ### Undo a Session
 
 ```
-Vibe: Undo Last LLM Session
+Radium: Undo Last LLM Session
 ```
 
 Pick a session to rollback. Radium will:
@@ -137,7 +137,7 @@ Pick a session to rollback. Radium will:
 ### Export a Session
 
 ```
-Vibe: Export Session Patch
+Radium: Export Session Patch
 ```
 
 Creates a patch file you can:
@@ -181,7 +181,7 @@ In the Code Slices view:
 
 ```json
 {
-  "vibe.indexer.maxCPU": 2
+  "radium.indexer.maxCPU": 2
 }
 ```
 
@@ -194,7 +194,7 @@ Adjust based on your machine:
 
 ```json
 {
-  "vibe.privacy.upload": "none"
+  "radium.privacy.upload": "none"
 }
 ```
 
@@ -207,7 +207,7 @@ Options:
 
 ```json
 {
-  "vibe.graph.layout": "force"
+  "radium.graph.layout": "force"
 }
 ```
 
@@ -219,7 +219,7 @@ Options:
 
 ```json
 {
-  "vibe.tests.autoRun": true
+  "radium.tests.autoRun": true
 }
 ```
 
@@ -240,7 +240,7 @@ Before applying risky LLM changes:
 ```
 git checkout -b llm-experiment
 ```
-Then run `Vibe: Apply LLM Plan`. Easy to rollback if needed.
+Then run `Radium: Apply LLM Plan`. Easy to rollback if needed.
 
 ### 3. Review Before Commit
 
@@ -253,7 +253,7 @@ After applying LLM changes:
 
 Select any code block and run:
 ```
-Vibe: Explain Selection
+Radium: Explain Selection
 ```
 
 Radium shows:
@@ -284,7 +284,7 @@ In the map, look for:
 ### Map Not Updating
 
 1. Check if indexing is complete (status bar)
-2. Manually refresh: `Vibe: Refresh Sessions`
+2. Manually refresh: `Radium: Refresh Sessions`
 3. Restart the extension
 
 ### Large Project Performance

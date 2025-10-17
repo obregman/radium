@@ -111,12 +111,12 @@ VS Code UI components.
 Main activation and command registration.
 
 **Commands:**
-- `vibe.openMap` - Open visualization
-- `vibe.applyLLMPlan` - Apply changes from clipboard
-- `vibe.undoSession` - Rollback session
-- `vibe.findImpact` - Show impact analysis
-- `vibe.explainSelection` - LLM explanation
-- `vibe.exportSessionPatch` - Export as patch
+- `radium.openMap` - Open visualization
+- `radium.applyLLMPlan` - Apply changes from clipboard
+- `radium.undoSession` - Rollback session
+- `radium.findImpact` - Show impact analysis
+- `radium.explainSelection` - LLM explanation
+- `radium.exportSessionPatch` - Export as patch
 
 **Lifecycle:**
 1. Activation on workspace open
@@ -268,11 +268,11 @@ Add analyzers in `src/analysis/`:
 ## Configuration
 
 Settings in `package.json`:
-- `vibe.indexer.maxCPU` - CPU cores
-- `vibe.privacy.upload` - Cloud sync level
-- `vibe.graph.layout` - Layout algorithm
-- `vibe.layers.default` - Visible layers
-- `vibe.tests.autoRun` - Auto-test
+- `radium.indexer.maxCPU` - CPU cores
+- `radium.privacy.upload` - Cloud sync level
+- `radium.graph.layout` - Layout algorithm
+- `radium.layers.default` - Visible layers
+- `radium.tests.autoRun` - Auto-test
 
 ## Testing Strategy
 

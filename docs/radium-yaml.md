@@ -1,16 +1,16 @@
-# radium.yaml Configuration Guide
+# radium-components.yaml Configuration Guide
 
 ## Overview
 
-The `radium.yaml` file allows you to define custom logical components for your codebase visualization. Instead of displaying files grouped by directory structure, you can organize them by functional components that better represent your architecture.
+The `radium-components.yaml` file allows you to define custom logical components for your codebase visualization. Instead of displaying files grouped by directory structure, you can organize them by functional components that better represent your architecture.
 
 ## Location
 
-Place the `radium.yaml` file at the root of your workspace:
+Place the `radium-components.yaml` file at the root of your workspace:
 
 ```
 /your-project/
-  radium.yaml
+  radium-components.yaml
   src/
   package.json
   ...
@@ -19,7 +19,7 @@ Place the `radium.yaml` file at the root of your workspace:
 ## Basic Syntax
 
 ```yaml
-project-spec:
+spec:
   components:
     - componentKey:
         name: Display Name
@@ -31,9 +31,9 @@ project-spec:
 
 ## Structure
 
-### Project Spec
+### Spec
 
-The root element must be `project-spec` with a `components` array.
+The root element must be `spec` with a `components` array.
 
 ### Components
 
@@ -42,6 +42,7 @@ Each component is defined as an object with a single key (the component identifi
 - **name** (required): Display name shown in the visualization
 - **description** (optional): Tooltip text when hovering over the component box
 - **files** (required): Array of file paths or glob patterns
+- **external** (optional): Array of external objects (databases, APIs, services) that the component interacts with
 
 ### File Patterns
 
@@ -52,10 +53,20 @@ File patterns support:
 3. **Recursive wildcards**: `src/views/**` (matches everything under views/)
 4. **Glob patterns**: `src/**/test_*.py` (matches test files anywhere under src/)
 
+### External Objects
+
+External objects represent systems, services, or resources outside your codebase that components interact with. Each external object contains:
+
+- **type** (required): The type of external resource (e.g., PostgreSQL, S3, API, Redis, RabbitMQ)
+- **name** (required): Display name of the external object
+- **description** (optional): Additional details about the external resource
+
+External objects are displayed as white rounded rectangles with black text in the visualization, connected to their parent component.
+
 ## Complete Example
 
 ```yaml
-project-spec:
+spec:
   components:
     - visualization:
         name: Visualization Layer
@@ -63,6 +74,7 @@ project-spec:
         files:
           - src/views/**
           - src/webview/**
+        external:
     
     - data-layer:
         name: Data Layer
@@ -70,6 +82,10 @@ project-spec:
         files:
           - src/store/**
           - src/indexer/**
+        external:
+          - type: SQLite
+            name: GraphDB
+            description: Stores code graph and analysis data
     
     - integrations:
         name: External Integrations
@@ -77,6 +93,10 @@ project-spec:
         files:
           - src/git/**
           - src/orchestrator/**
+        external:
+          - type: API
+            name: OpenAI API
+            description: LLM service for code analysis
     
     - core:
         name: Core Logic
@@ -85,6 +105,7 @@ project-spec:
           - src/analysis/**
           - src/config/**
           - src/extension.ts
+        external:
 ```
 
 ## How It Works
@@ -93,17 +114,17 @@ project-spec:
 
 When Radium loads the map:
 
-1. It reads `radium.yaml` from the workspace root
+1. It reads `radium-components.yaml` from the workspace root
 2. For each indexed file, it checks if the file path matches any component's file patterns
 3. Files are grouped by their first matching component
 4. Files that don't match any component fall back to directory-based grouping
 
 ### Visualization
 
-- **Component boxes**: Larger cyan boxes representing logical components
-- **File boxes**: Standard file boxes nested within component boxes
-- **Edges**: Import relationships and dependencies between files
-- **Classes/Interfaces**: Individual symbols shown as circles within files
+- **Component boxes**: Larger colored boxes representing logical components (color-coded by component)
+- **File boxes**: Standard file boxes nested within component boxes, with colored borders matching their component
+- **External objects**: White rounded rectangles with black text, connected to their parent component
+- **Edges**: Import relationships and dependencies between files and components
 
 ## Benefits
 
@@ -147,6 +168,29 @@ Group related files that span multiple directories:
       - src/models/user.ts
 ```
 
+### Visualize External Dependencies
+
+Show external systems and services your components depend on:
+
+```yaml
+- api-gateway:
+    name: API Gateway
+    files:
+      - src/api/**
+    external:
+      - type: PostgreSQL
+        name: UserDB
+        description: Primary user database
+      - type: Redis
+        name: SessionCache
+        description: Session storage and caching
+      - type: S3
+        name: MediaBucket
+        description: User uploaded media files
+```
+
+This helps visualize the complete architecture including external dependencies.
+
 ## Tips
 
 ### Start Simple
@@ -154,7 +198,7 @@ Group related files that span multiple directories:
 Begin with high-level components and refine:
 
 ```yaml
-project-spec:
+spec:
   components:
     - frontend:
         name: Frontend
@@ -229,10 +273,10 @@ Align components with your architectural patterns:
 
 ### Components Not Showing
 
-1. Check file is named exactly `radium.yaml` at workspace root
+1. Check file is named exactly `radium-components.yaml` at workspace root
 2. Verify YAML syntax is valid
 3. Check VS Code output for parsing errors
-4. Reload window after editing radium.yaml
+4. Reload window after editing radium-components.yaml
 
 ### Files Not Grouping Correctly
 
@@ -257,7 +301,7 @@ files:
 
 ## Reloading Configuration
 
-After editing `radium.yaml`:
+After editing `radium-components.yaml`:
 
 1. Save the file
 2. Reload the VS Code window (Cmd/Ctrl + R)
@@ -276,5 +320,5 @@ configLoader.load();
 
 ## Example Repository
 
-See the Radium project's own `radium.yaml.example` for a working configuration.
+See the Radium project's own `radium-components.yaml.example` for a working configuration.
 

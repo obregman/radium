@@ -23,8 +23,13 @@
     "commands": [
       {
         "command": "radium.openMap",
-        "title": "Radium: Open Map",
+        "title": "Radium: Codebase Map",
         "icon": "$(graph)"
+      },
+      {
+        "command": "radium.openFeaturesMap",
+        "title": "Radium: Features Map",
+        "icon": "$(symbol-namespace)"
       },
       {
         "command": "radium.showChanges",

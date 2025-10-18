@@ -18,13 +18,25 @@ All notable changes to the Radium extension will be documented in this file.
 
 ### Added
 - **Manual re-index command**: `Radium: Re-index Workspace` to manually trigger indexing
-- **radium.yaml Configuration**: Define custom logical components for map visualization
+- **radium-components.yaml Configuration**: Define custom logical components for map visualization
   - Component-based grouping overrides default directory structure
   - Support for glob patterns in file paths (`**`, `*`)
   - Component descriptions shown as tooltips
-  - Components appear as cyan boxes in the visualization
-  - See `radium.yaml.example` and `docs/radium-yaml.md` for details
+  - Components appear as color-coded boxes in the visualization
+  - **External objects support**: Define external dependencies (databases, APIs, services) for each component
+    - External objects displayed as white rounded rectangles with black text
+    - Connected to their parent components with colored edges
+    - Includes type, name, and description fields
+  - See `radium-components.yaml.example` and `docs/radium-yaml.md` for details
+- **radium-features.yaml Configuration**: Visualize product features and their relationships
+  - New `Radium: Features Map` command to open features visualization
+  - Shows features, their status (planned/in-progress/completed/deprecated), and dependencies
+  - Maps features to components from radium-components.yaml
+  - Tracks feature ownership and descriptions
+  - See `radium-features.yaml.example` and `docs/radium-features.md` for details
 - Added `RadiumConfigLoader` class for parsing and managing YAML configuration
+- Added `FeaturesConfigLoader` class for parsing features configuration
+- Added `FeaturesMapPanel` view for interactive features visualization
 - Component nodes in graph with enhanced styling and collision detection
 
 ### Changed

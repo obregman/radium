@@ -2,10 +2,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
+export interface ExternalObject {
+  type: string;
+  name: string;
+  description?: string;
+}
+
 export interface ComponentConfig {
   name: string;
   description?: string;
   files: string[];
+  external?: ExternalObject[];
 }
 
 export interface RadiumConfig {
@@ -23,13 +30,13 @@ export class RadiumConfigLoader {
   }
 
   /**
-   * Load radium.yaml configuration file if it exists
+   * Load radium-components.yaml configuration file if it exists
    */
   load(): RadiumConfig | null {
-    const configPath = path.join(this.workspaceRoot, 'radium.yaml');
+    const configPath = path.join(this.workspaceRoot, 'radium-components.yaml');
     
     if (!fs.existsSync(configPath)) {
-      console.log('[Radium Config] No radium.yaml found at project root');
+      console.log('[Radium Config] No radium-components.yaml found at project root');
       return null;
     }
 
@@ -43,20 +50,20 @@ export class RadiumConfigLoader {
       
       return this.config;
     } catch (error) {
-      console.error('[Radium Config] Failed to load radium.yaml:', error);
+      console.error('[Radium Config] Failed to load radium-components.yaml:', error);
       return null;
     }
   }
 
   private parseConfig(rawConfig: any): RadiumConfig {
-    if (!rawConfig || !rawConfig['project-spec']) {
-      throw new Error('Invalid radium.yaml: missing project-spec');
+    if (!rawConfig || !rawConfig.spec) {
+      throw new Error('Invalid radium-components.yaml: missing spec');
     }
 
-    const projectSpec = rawConfig['project-spec'];
+    const projectSpec = rawConfig.spec;
     
     if (!projectSpec.components || !Array.isArray(projectSpec.components)) {
-      throw new Error('Invalid radium.yaml: components must be an array');
+      throw new Error('Invalid radium-components.yaml: components must be an array');
     }
 
     const components: Record<string, ComponentConfig> = {};
@@ -75,7 +82,8 @@ export class RadiumConfigLoader {
       components[componentName] = {
         name: componentData.name,
         description: componentData.description,
-        files: Array.isArray(componentData.files) ? componentData.files : []
+        files: Array.isArray(componentData.files) ? componentData.files : [],
+        external: Array.isArray(componentData.external) ? componentData.external : []
       };
     }
 

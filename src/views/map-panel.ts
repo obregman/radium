@@ -297,6 +297,8 @@ export class MapPanel {
 
     // Create component nodes with unique colors
     const componentNodes = new Map<string, number>();
+    const externalNodes = new Map<string, number>();
+    
     for (const [componentKey, files] of filesByComponent.entries()) {
       if (files.length === 0) continue;
       
@@ -321,6 +323,38 @@ export class MapPanel {
       });
       
       console.log(`[Radium] Created component node: ${component.name}, ID: ${componentId}, color: ${componentColor}`);
+      
+      // Create external object nodes for this component
+      if (component.external && component.external.length > 0) {
+        for (const external of component.external) {
+          const externalId = nodeId++;
+          const externalKey = `${componentKey}:${external.name}`;
+          externalNodes.set(externalKey, externalId);
+          nodeMap.set(`external:${externalKey}`, externalId);
+          
+          nodes.push({
+            id: externalId,
+            name: external.name,
+            kind: 'external',
+            path: externalKey,
+            externalType: external.type,
+            description: external.description,
+            fullPath: externalKey,
+            componentKey: componentKey
+          });
+          
+          // Create edge from component to external object
+          edges.push({
+            source: componentId,
+            target: externalId,
+            kind: 'uses',
+            weight: 1.0,
+            color: componentColor
+          });
+          
+          console.log(`[Radium] Created external node: ${external.name} (${external.type}), ID: ${externalId}`);
+        }
+      }
     }
 
     // Create file nodes and connect to components
@@ -416,12 +450,12 @@ export class MapPanel {
 
     const config = this.configLoader.getConfig();
     
-    // If radium.yaml exists, use component-based grouping
+    // If radium-components.yaml exists, use component-based grouping
     if (config) {
       return this.buildComponentBasedGraph(allNodes, allEdges, allFiles, config);
     }
 
-    // Without radium.yaml, display files without grouping
+    // Without radium-components.yaml, display files without grouping
     // (directories are not displayed)
 
     // Create file nodes (no directory grouping)
@@ -539,7 +573,7 @@ export class MapPanel {
 
     const config = this.configLoader.getConfig();
     
-    // If radium.yaml exists, show changed files WITH their parent components
+    // If radium-components.yaml exists, show changed files WITH their parent components
     if (config) {
       // Build component-based graph showing only changed files and their components
       const graphData = this.buildComponentBasedGraphForChanges(allNodes, allEdges, filteredFiles, config, changedFileSet);
@@ -552,7 +586,7 @@ export class MapPanel {
         filtered: true
       });
     } else {
-      // Without radium.yaml, just show the changed files
+      // Without radium-components.yaml, just show the changed files
       const graphData = this.buildChangesGraph(allNodes, allEdges, filteredFiles);
 
       console.log(`[Radium] Graph built: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
@@ -598,6 +632,8 @@ export class MapPanel {
 
     // Create component nodes for components with changes
     const componentNodes = new Map<string, number>();
+    const externalNodes = new Map<string, number>();
+    
     for (const componentKey of componentsWithChanges) {
       const component = config.projectSpec.components[componentKey];
       const componentId = nodeId++;
@@ -621,6 +657,36 @@ export class MapPanel {
         color: componentColor,
         componentKey: componentKey
       });
+      
+      // Create external object nodes for this component
+      if (component.external && component.external.length > 0) {
+        for (const external of component.external) {
+          const externalId = nodeId++;
+          const externalKey = `${componentKey}:${external.name}`;
+          externalNodes.set(externalKey, externalId);
+          nodeMap.set(`external:${externalKey}`, externalId);
+          
+          nodes.push({
+            id: externalId,
+            name: external.name,
+            kind: 'external',
+            path: externalKey,
+            externalType: external.type,
+            description: external.description,
+            fullPath: externalKey,
+            componentKey: componentKey
+          });
+          
+          // Create edge from component to external object
+          edges.push({
+            source: componentId,
+            target: externalId,
+            kind: 'uses',
+            weight: 1.0,
+            color: componentColor
+          });
+        }
+      }
     }
 
     // Create file nodes for changed files
@@ -985,6 +1051,10 @@ export class MapPanel {
       <div class="legend-color" style="background: #78909C;"></div>
       <span>File</span>
     </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background: #FFFFFF; border: 1px solid #000000;"></div>
+      <span>External Object</span>
+    </div>
   </div>
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -1012,7 +1082,8 @@ export class MapPanel {
       'type': '#9C27B0',
       'function': '#4CAF50',
       'variable': '#F44336',
-      'constant': '#E91E63'
+      'constant': '#E91E63',
+      'external': '#FFFFFF'
     };
 
     const sizeMap = {
@@ -1022,7 +1093,8 @@ export class MapPanel {
       'class': 10,
       'interface': 10,
       'type': 8,
-      'function': 6
+      'function': 6,
+      'external': 16
     };
 
     function initVisualization() {
@@ -1062,11 +1134,13 @@ export class MapPanel {
         }))
         .force('charge', d3.forceManyBody().strength(d => {
           if (d.kind === 'component') return -4000; // Stronger repulsion for larger components
+          if (d.kind === 'external') return -1500; // Medium repulsion for external objects
           if (d.kind === 'file') return -1200;
           return -800;
         }))
         .force('collision', d3.forceCollide().radius(d => {
           if (d.kind === 'component') return 150; // Larger for bigger component boxes
+          if (d.kind === 'external') return 80; // Medium size for external ellipses
           if (d.kind === 'file') return 60;
           return 30;
         }).strength(1.0).iterations(3))
@@ -1213,7 +1287,7 @@ export class MapPanel {
         })
         .style('cursor', 'pointer');
 
-      // Only display files and components (no directories)
+      // Only display files, components, and external objects (no directories)
       // Filter out files that are not connected to any component
       const fileIdsConnectedToComponents = new Set(
         data.edges
@@ -1225,8 +1299,9 @@ export class MapPanel {
         d.kind === 'file' && fileIdsConnectedToComponents.has(d.id)
       );
       const componentNodes = data.nodes.filter(d => d.kind === 'component');
+      const externalNodes = data.nodes.filter(d => d.kind === 'external');
       
-      console.log('[Radium Map] Node counts - Files:', fileNodes.length, 'Components:', componentNodes.length);
+      console.log('[Radium Map] Node counts - Files:', fileNodes.length, 'Components:', componentNodes.length, 'External:', externalNodes.length);
 
       // Create file boxes
       const fileGroups = g.append('g')
@@ -1317,13 +1392,66 @@ export class MapPanel {
         .attr('text-shadow', '2px 2px 4px rgba(0,0,0,0.5)')
         .text(d => d.name);
 
+      // Create external object rounded rectangles
+      externalNodes.forEach(external => {
+        external._width = Math.max(120, external.name.length * 8 + 40);
+        external._height = 60;
+      });
+
+      const externalGroups = g.append('g')
+        .selectAll('g')
+        .data(externalNodes)
+        .join('g')
+        .attr('class', 'external-group')
+        .call(drag(simulation));
+
+      // Draw white rounded rectangles with black stroke
+      externalGroups.append('rect')
+        .attr('class', 'external-rect')
+        .attr('width', d => d._width)
+        .attr('height', d => d._height)
+        .attr('x', d => -d._width / 2)
+        .attr('y', d => -d._height / 2)
+        .attr('rx', 12)
+        .attr('ry', 12)
+        .attr('fill', '#FFFFFF')
+        .attr('stroke', '#000000')
+        .attr('stroke-width', 2)
+        .style('cursor', 'pointer');
+
+      // Add external object name (black text)
+      externalGroups.append('text')
+        .attr('class', 'external-label')
+        .attr('x', 0)
+        .attr('y', -5)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', '14px')
+        .attr('font-weight', 'bold')
+        .attr('fill', '#000000')
+        .text(d => d.name);
+
+      // Add external object type (smaller, below name)
+      externalGroups.append('text')
+        .attr('class', 'external-type')
+        .attr('x', 0)
+        .attr('y', 12)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', '11px')
+        .attr('fill', '#666666')
+        .text(d => d.externalType);
+
+      // Add description as tooltip for external objects
+      externalGroups.append('title')
+        .text(d => d.description || (d.name + ' (' + d.externalType + ')'));
+
       // Debug logging
       console.log('[Radium Map] Graph data:', {
         nodeCount: data.nodes.length,
         edgeCount: data.edges.length,
         components: data.nodes.filter(n => n.kind === 'component').length,
         directories: data.nodes.filter(n => n.kind === 'directory').length,
-        files: data.nodes.filter(n => n.kind === 'file').length
+        files: data.nodes.filter(n => n.kind === 'file').length,
+        external: data.nodes.filter(n => n.kind === 'external').length
       });
 
       // Update simulation
@@ -1363,6 +1491,10 @@ export class MapPanel {
 
             // Position component boxes
             componentGroups
+              .attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
+
+            // Position external object ellipses
+            externalGroups
               .attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
           } catch (error) {
             console.error('[Radium Map] Error in tick:', error);

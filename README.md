@@ -9,7 +9,7 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 ## Features
 
 - Interactive graph visualization of your codebase
-- Component-based architecture view (defined in `radium.yaml`)
+- Component-based architecture view (defined in `radium-components.yaml`)
 - Track and manage LLM-generated changes
 - Impact analysis for code modifications
 - Support for TypeScript, JavaScript, and Python
@@ -27,10 +27,10 @@ The extension indexes your workspace and displays an interactive graph.
 
 ### Defining Components
 
-Create a `radium.yaml` file in your project root:
+Create a `radium-components.yaml` file in your project root:
 
 ```yaml
-project-spec:
+spec:
   components:
     - frontend:
         name: Frontend
@@ -38,6 +38,7 @@ project-spec:
         files:
           - src/components/**
           - src/views/**
+        external:
     
     - backend:
         name: Backend
@@ -45,9 +46,46 @@ project-spec:
         files:
           - src/api/**
           - src/services/**
+        external:
+          - type: PostgreSQL
+            name: MainDB
+            description: Primary database
+          - type: Redis
+            name: Cache
+            description: Session cache
 ```
 
-Components appear as color-coded boxes in the graph. Files are grouped by their component.
+Components appear as color-coded boxes in the graph. Files are grouped by their component. External objects (databases, APIs, services) are shown as white rounded rectangles connected to their components.
+
+### Visualizing Features
+
+Create a `radium-features.yaml` file to visualize your product features and their relationships:
+
+```yaml
+spec:
+  features:
+  - authentication:
+      name: User Authentication
+      description: Login and registration system
+      status: completed
+      owner: Backend Team
+      components:
+        - backend
+        - frontend
+      dependencies: []
+  
+  - user-profile:
+      name: User Profile
+      description: User profile management
+      status: in-progress
+      owner: Frontend Team
+      components:
+        - frontend
+      dependencies:
+        - authentication
+```
+
+Run `Radium: Features Map` to see an interactive visualization of your features, their status, and dependencies.
 
 ### Working with LLM Changes
 
@@ -82,6 +120,7 @@ Components appear as color-coded boxes in the graph. Files are grouped by their 
 ### Available Commands
 
 - `Radium: Open Map` - Show the codebase graph
+- `Radium: Features Map` - Visualize features and their relationships
 - `Radium: Show Changes` - View recent sessions
 - `Radium: Preview LLM Plan from Clipboard` - Preview changes
 - `Radium: Apply LLM Plan` - Apply previewed changes
@@ -144,7 +183,8 @@ The release is tagged with the version from `package.json` and the commit SHA.
 
 - [Architecture](docs/architecture.md)
 - [Usage Guide](docs/usage-guide.md)
-- [radium.yaml Format](docs/radium-yaml.md)
+- [radium-components.yaml Format](docs/radium-yaml.md)
+- [radium-features.yaml Format](docs/radium-features.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
 ## License

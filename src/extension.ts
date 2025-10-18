@@ -19,8 +19,19 @@ let codeSlicesTreeProvider: CodeSlicesTreeProvider;
 let issuesTreeProvider: IssuesTreeProvider;
 let configLoader: RadiumConfigLoader;
 let featuresLoader: FeaturesConfigLoader;
+let outputChannel: vscode.OutputChannel;
 
 export async function activate(context: vscode.ExtensionContext) {
+  // Create output channel for reliable logging
+  outputChannel = vscode.window.createOutputChannel('Radium');
+  outputChannel.show();
+  
+  outputChannel.appendLine('============================================');
+  outputChannel.appendLine('RADIUM: Extension activation starting...');
+  outputChannel.appendLine(`RADIUM: Extension path: ${context.extensionPath}`);
+  outputChannel.appendLine(`RADIUM: Storage path: ${context.globalStorageUri.fsPath}`);
+  outputChannel.appendLine('============================================');
+  
   console.log('============================================');
   console.log('RADIUM: Extension activation starting...');
   console.log('RADIUM: Extension path:', context.extensionPath);
@@ -449,6 +460,12 @@ function registerCommands(context: vscode.ExtensionContext) {
     }),
 
     vscode.commands.registerCommand('radium.reindex', async () => {
+      outputChannel.appendLine('============================================');
+      outputChannel.appendLine('RADIUM: RE-INDEX COMMAND CALLED');
+      outputChannel.appendLine(`RADIUM: indexer exists: ${!!indexer}`);
+      outputChannel.appendLine(`RADIUM: store exists: ${!!store}`);
+      outputChannel.appendLine('============================================');
+      
       console.log('============================================');
       console.log('RADIUM: RE-INDEX COMMAND CALLED');
       console.log('RADIUM: indexer exists:', !!indexer);
@@ -456,6 +473,7 @@ function registerCommands(context: vscode.ExtensionContext) {
       console.log('============================================');
       
       if (!indexer || !store) {
+        outputChannel.appendLine('RADIUM: Cannot re-index - indexer or store not initialized');
         console.error('RADIUM: Cannot re-index - indexer or store not initialized');
         vscode.window.showWarningMessage('Radium not initialized');
         return;
@@ -467,11 +485,13 @@ function registerCommands(context: vscode.ExtensionContext) {
         cancellable: false
       }, async (progress) => {
         try {
+          outputChannel.appendLine('RADIUM: Starting manual re-index...');
           console.log('RADIUM: Starting manual re-index...');
           await indexer.start();
           progress.report({ increment: 100 });
           
           const fileCount = store.getAllFiles().length;
+          outputChannel.appendLine(`RADIUM: Re-index complete - ${fileCount} files in store`);
           console.log(`RADIUM: Re-index complete - ${fileCount} files in store`);
           
           vscode.window.showInformationMessage(
@@ -483,6 +503,8 @@ function registerCommands(context: vscode.ExtensionContext) {
           if (codeSlicesTreeProvider) codeSlicesTreeProvider.refresh();
           if (MapPanel.currentPanel) MapPanel.currentPanel.updateGraph();
         } catch (error) {
+          outputChannel.appendLine(`RADIUM: Re-indexing failed: ${error}`);
+          outputChannel.appendLine(`RADIUM: Error stack: ${(error as Error).stack}`);
           console.error('RADIUM: Re-indexing failed:', error);
           console.error('RADIUM: Error stack:', (error as Error).stack);
           vscode.window.showErrorMessage(`Radium re-indexing failed: ${error}`);

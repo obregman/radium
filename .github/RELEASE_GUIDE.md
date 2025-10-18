@@ -7,30 +7,49 @@ This guide is for maintainers who want to create a new release.
 Every push to `main` triggers an automatic build and release:
 
 1. The GitHub Actions workflow runs
-2. Extension is built and packaged
-3. A GitHub Release is created automatically
-4. Release is tagged with version from `package.json` and commit SHA (e.g., `v0.1.0-abc1234`)
+2. **Minor version is automatically incremented** (e.g., 0.1.0 → 0.1.1)
+3. Version bump is committed back to the repository with `[skip ci]` to avoid infinite loops
+4. Extension is built and packaged with the new version
+5. A GitHub Release is created automatically
+6. Release is tagged with the new version and commit SHA (e.g., `v0.1.1-abc1234`)
 
 ## Updating the Version
 
-To release a new version:
+### Automatic (Recommended)
 
-### 1. Update package.json
+Just push to `main` - the version will be automatically incremented:
+
+```bash
+git add .
+git commit -m "Add new feature"
+git push origin main
+```
+
+The workflow will:
+- Bump the minor version (0.1.0 → 0.1.1)
+- Commit the version change
+- Build and release
+
+### Manual Version Control
+
+If you need to control the version manually (e.g., for major releases):
+
+#### 1. Update package.json
 
 Edit the version number in `package.json`:
 
 ```json
 {
-  "version": "0.1.1"
+  "version": "1.0.0"
 }
 ```
 
-### 2. Update CHANGELOG.md
+#### 2. Update CHANGELOG.md
 
 Add an entry for the new version:
 
 ```markdown
-## [0.1.1] - 2025-10-17
+## [1.0.0] - 2025-10-17
 
 ### Added
 - New feature X
@@ -43,15 +62,15 @@ Add an entry for the new version:
 - Improved performance of feature W
 ```
 
-### 3. Commit and Push
+#### 3. Commit and Push
 
 ```bash
-git add package.json CHANGELOG.md
-git commit -m "Bump version to 0.1.1"
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "Release v1.0.0"
 git push origin main
 ```
 
-The workflow automatically builds and releases.
+The workflow will skip version bumping if the commit message contains `[skip version]` or if the version was already changed in the commit.
 
 ### 4. Verify Release
 

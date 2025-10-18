@@ -173,11 +173,13 @@ This creates a `.vsix` file you can install.
 ## Automatic Releases
 
 Every push to `main` automatically:
-1. Builds the extension
-2. Creates a `.vsix` package
-3. Publishes a GitHub Release with the build
+1. Increments the minor version (e.g., 0.1.0 → 0.1.1)
+2. Commits the version bump back to the repository
+3. Builds the extension
+4. Creates a `.vsix` package
+5. Publishes a GitHub Release with the build
 
-The release is tagged with the version from `package.json` and the commit SHA.
+The release is tagged with the new version and the commit SHA.
 
 ## Documentation
 

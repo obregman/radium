@@ -25,8 +25,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Compile TypeScript
+        run: npm run compile
+      
       - name: Increment minor version
         run: npm version minor --no-git-tag-version
+      
+      - name: Package extension
+        run: npm run package
       
       - name: Commit version bump
         run: |
@@ -35,12 +41,6 @@ jobs:
           git add package.json package-lock.json
           git commit -m "chore: bump version to $(node -p "require('./package.json').version") [skip ci]"
           git push
-      
-      - name: Compile TypeScript
-        run: npm run compile
-      
-      - name: Package extension
-        run: npm run package
       
       - name: Get version from package.json
         id: get_version

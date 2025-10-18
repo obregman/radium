@@ -151,7 +151,8 @@ export class Indexer {
   }
 
   private async indexFile(filePath: string): Promise<void> {
-    const relativePath = path.relative(this.workspaceRoot, filePath);
+    // Normalize path to use forward slashes (cross-platform)
+    const relativePath = path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
     const lang = this.parser.getLanguage(filePath);
     if (!lang) return;
 
@@ -279,7 +280,7 @@ export class Indexer {
     if (importSource.startsWith('.')) {
       // Relative import
       const dir = path.dirname(fromPath);
-      const resolved = path.normalize(path.join(dir, importSource));
+      const resolved = path.normalize(path.join(dir, importSource)).replace(/\\/g, '/');
 
       // Try with various extensions
       const extensions = lang === 'python' ? ['.py'] : ['.ts', '.tsx', '.js', '.jsx', '.d.ts'];
@@ -293,7 +294,7 @@ export class Indexer {
 
       // Try as directory with index file
       const indexFile = lang === 'python' ? '__init__.py' : 'index.ts';
-      const indexPath = path.join(resolved, indexFile);
+      const indexPath = path.join(resolved, indexFile).replace(/\\/g, '/');
       if (fs.existsSync(path.join(this.workspaceRoot, indexPath))) {
         return indexPath;
       }

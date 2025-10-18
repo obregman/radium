@@ -319,7 +319,7 @@ function registerCommands(context: vscode.ExtensionContext) {
 
       const position = editor.selection.active;
       const offset = editor.document.offsetAt(position);
-      const filePath = path.relative(workspaceFolders[0].uri.fsPath, editor.document.uri.fsPath);
+      const filePath = path.relative(workspaceFolders[0].uri.fsPath, editor.document.uri.fsPath).replace(/\\/g, '/');
 
       // Find node at this position
       const nodes = store.getNodesByPath(filePath);

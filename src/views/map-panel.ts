@@ -1161,11 +1161,22 @@ export class MapPanel {
       // Create clusters for components only (no directories)
       const clusterNodes = data.nodes.filter(n => n.kind === 'component');
       const clusterPositions = new Map();
-      const cols = Math.ceil(Math.sqrt(clusterNodes.length));
-      const rows = Math.ceil(clusterNodes.length / cols);
-      const cellWidth = width / (cols + 1);
-      const cellHeight = height / (rows + 1);
-      
+
+      // Handle case when there are no components
+      let cols, rows, cellWidth, cellHeight;
+      if (clusterNodes.length === 0) {
+        // No components - use simple grid for files
+        cols = 1;
+        rows = 1;
+        cellWidth = width / 2;
+        cellHeight = height / 2;
+      } else {
+        cols = Math.ceil(Math.sqrt(clusterNodes.length));
+        rows = Math.ceil(clusterNodes.length / cols);
+        cellWidth = width / (cols + 1);
+        cellHeight = height / (rows + 1);
+      }
+
       console.log('[Radium Map] Grid layout:', cols, 'cols x', rows, 'rows, cell:', cellWidth, 'x', cellHeight);
       
       clusterNodes.forEach((cluster, i) => {

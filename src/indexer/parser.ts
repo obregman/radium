@@ -73,7 +73,8 @@ export class CodeParser {
       'tsx': 'typescript',
       'js': 'javascript',
       'jsx': 'javascript',
-      'py': 'python'
+      'py': 'python',
+      'cs': 'csharp'
     };
 
     return langMap[ext];
@@ -83,11 +84,16 @@ export class CodeParser {
     const lang = this.getLanguage(filePath);
     if (!lang) return null;
 
-    const parser = this.parsers.get(lang);
-    if (!parser) return null;
-
     const code = content ?? await fs.promises.readFile(filePath, 'utf-8');
     const hash = crypto.createHash('sha256').update(code).digest('hex');
+
+    // For C#, return basic info without parsing (tree-sitter-c-sharp not installed yet)
+    if (lang === 'csharp') {
+      return { symbols: [], imports: [], calls: [], hash };
+    }
+
+    const parser = this.parsers.get(lang);
+    if (!parser) return null;
 
     const tree = parser.parse(code);
 

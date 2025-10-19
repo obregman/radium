@@ -35,7 +35,8 @@ export class Indexer {
       '**/*.tsx',
       '**/*.js',
       '**/*.jsx',
-      '**/*.py'
+      '**/*.py',
+      '**/*.cs'
     ];
 
     const ignored = [
@@ -122,7 +123,8 @@ export class Indexer {
       '**/*.tsx',
       '**/*.js',
       '**/*.jsx',
-      '**/*.py'
+      '**/*.py',
+      '**/*.cs'
     ];
 
     const excludePatterns = [

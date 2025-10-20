@@ -395,7 +395,7 @@ export class FeaturesMapPanel {
     .feature-node-label {
       fill: white;
       font-size: 22px;
-      text-anchor: middle;
+      text-anchor: start;
       pointer-events: none;
       font-weight: 600;
     }
@@ -695,44 +695,68 @@ export class FeaturesMapPanel {
         });
       }
       
-      // Position features vertically with flows to the right
-      const startX = 150;
+      // Position features as container boxes with flows inside
+      const startX = 100;
       let currentY = 100;
-      const FEATURE_VERTICAL_SPACING = 200;
+      const FEATURE_CONTAINER_PADDING = 40; // Padding inside feature container
+      const FEATURE_TITLE_HEIGHT = 60; // Space for feature title at top
+      const FEATURE_VERTICAL_SPACING = 50; // Space between feature containers
       
-      // Position all features vertically (ignore tree structure for now)
+      // Calculate positions for features and their flows
       featureNodes.forEach((feature) => {
-        // Position the feature on the left
-        positionedNodes.set(feature.id, { x: startX, y: currentY });
+        // Get flow items for this feature
+        const featureFlowItems = flowItemNodes.filter(f => f.featureKey === feature.key).sort((a, b) => a.flowIndex - b.flowIndex);
         
-        // Move down for next feature
-        currentY += FEATURE_VERTICAL_SPACING;
-      });
-      
-      // Position flow items for features that have flows
-      // For vertical layout: flow items go to the right of the feature
-      featureNodes.forEach(feature => {
-        if (feature.hasFlow) {
-          const featurePos = positionedNodes.get(feature.id);
-          if (!featurePos) return;
+        if (feature.hasFlow && featureFlowItems.length > 0) {
+          // Calculate container dimensions based on flow items
+          const flowRowWidth = featureFlowItems.length * FLOW_ITEM_WIDTH + (featureFlowItems.length - 1) * FLOW_SPACING;
+          const containerWidth = flowRowWidth + FEATURE_CONTAINER_PADDING * 2;
+          const containerHeight = FLOW_ITEM_HEIGHT + FEATURE_TITLE_HEIGHT + FEATURE_CONTAINER_PADDING * 2;
           
-          // Get flow items for this feature
-          const featureFlowItems = flowItemNodes.filter(f => f.featureKey === feature.key);
-          if (featureFlowItems.length === 0) return;
+          // Store container info on feature node
+          feature.containerWidth = containerWidth;
+          feature.containerHeight = containerHeight;
+          feature.containerX = startX;
+          feature.containerY = currentY;
           
-          // Sort by flow index
-          featureFlowItems.sort((a, b) => a.flowIndex - b.flowIndex);
+          // Position feature title in top-left of container (inside the border)
+          // Store container position on feature for text positioning
+          feature.textOffsetX = 25; // Offset from container left edge
+          positionedNodes.set(feature.id, { 
+            x: startX, // Position at container left
+            y: currentY + 35 // 35px from top edge
+          });
           
-          // Position flow items horizontally to the right of the feature
-          // Calculate feature width to avoid overlap
-          const featureDim = nodeDimensions.get(feature.id) || { width: MIN_WIDTH, height: MIN_HEIGHT };
-          let flowX = featurePos.x + featureDim.width / 2 + 150; // Increased gap between feature and flow
-          const flowY = featurePos.y; // Same vertical position as feature
+          // Position flow items horizontally inside container
+          let flowX = startX + FEATURE_CONTAINER_PADDING + FLOW_ITEM_WIDTH / 2;
+          const flowY = currentY + FEATURE_TITLE_HEIGHT + FEATURE_CONTAINER_PADDING + FLOW_ITEM_HEIGHT / 2;
           
           featureFlowItems.forEach(flowItem => {
             positionedNodes.set(flowItem.id, { x: flowX, y: flowY });
             flowX += FLOW_ITEM_WIDTH + FLOW_SPACING;
           });
+          
+          // Move down for next feature container
+          currentY += containerHeight + FEATURE_VERTICAL_SPACING;
+        } else {
+          // Feature without flows - just show as regular box
+          const containerWidth = 400;
+          const containerHeight = 100;
+          
+          feature.containerWidth = containerWidth;
+          feature.containerHeight = containerHeight;
+          feature.containerX = startX;
+          feature.containerY = currentY;
+          
+          // Position feature title in top-left of container (inside the border)
+          // Store container position on feature for text positioning
+          feature.textOffsetX = 25; // Offset from container left edge
+          positionedNodes.set(feature.id, { 
+            x: startX, // Position at container left
+            y: currentY + 35 // 35px from top edge
+          });
+          
+          currentY += containerHeight + FEATURE_VERTICAL_SPACING;
         }
       });
       
@@ -763,6 +787,23 @@ export class FeaturesMapPanel {
       console.log('[Frontend] Sample node positions:', Array.from(positionedNodes.entries()).slice(0, 3));
       console.log('[Frontend] Nodes with x,y:', data.nodes.filter(n => n.x !== undefined && n.y !== undefined).length);
       
+      // Draw feature container boxes first (behind everything)
+      const featureContainers = g.append('g')
+        .selectAll('rect')
+        .data(data.nodes.filter(n => n.type === 'feature'))
+        .enter()
+        .append('rect')
+        .attr('class', 'feature-container')
+        .attr('x', d => d.containerX)
+        .attr('y', d => d.containerY)
+        .attr('width', d => d.containerWidth)
+        .attr('height', d => d.containerHeight)
+        .attr('rx', 8)
+        .attr('fill', '#2a2a2a')
+        .attr('stroke', '#4a9eff')
+        .attr('stroke-width', 2)
+        .attr('opacity', 0.8);
+      
       // Draw edges
       const edges = g.append('g')
         .selectAll('path')
@@ -784,10 +825,9 @@ export class FeaturesMapPanel {
                     L \${target.x} \${target.y - targetDim.height/2}\`;
           }
           
-          // For feature-to-flow relationships, draw straight dashed lines
+          // For feature-to-flow relationships, don't draw (feature is now container)
           if (d.type === 'feature-to-flow') {
-            return \`M \${source.x} \${source.y + sourceDim.height/2} 
-                    L \${target.x} \${target.y - targetDim.height/2}\`;
+            return '';
           }
           
           // For flow-sequence relationships, draw straight lines with arrows
@@ -831,14 +871,7 @@ export class FeaturesMapPanel {
         const dim = nodeDimensions.get(d.id) || { width: MIN_WIDTH, height: MIN_HEIGHT };
         
         if (d.type === 'feature') {
-          node.append('rect')
-            .attr('class', 'feature-node')
-            .attr('width', dim.width)
-            .attr('height', dim.height)
-            .attr('x', -dim.width / 2)
-            .attr('y', -dim.height / 2)
-            .attr('rx', 6);
-            
+          // Features are now just text labels (container box drawn separately)
           // Add tooltip
           node.append('title')
             .text(\`\${d.label}\${d.description ? '\\n\\n' + d.description : ''}\`);
@@ -914,11 +947,56 @@ export class FeaturesMapPanel {
               .attr('dy', startY + i * lineHeight)
               .text(lineText);
           });
+        } else if (d.type === 'feature') {
+          // Feature title in top-left corner
+          // Use SVG textLength to constrain width
+          const lineHeight = 26;
+          const textStartOffset = d.textOffsetX || 25;
+          // Max width accounts for left offset and right padding
+          const maxWidth = d.containerWidth - textStartOffset - 25;
+          const words = d.label.split(/\\s+/);
+          const charWidth = 13;
+          
+          let line = [];
+          const lines = [];
+          
+          words.forEach(word => {
+            line.push(word);
+            const testLine = line.join(' ');
+            const estimatedWidth = testLine.length * charWidth;
+            if (estimatedWidth > maxWidth && line.length > 1) {
+              line.pop();
+              lines.push(line.join(' '));
+              line = [word];
+            }
+          });
+          if (line.length > 0) {
+            lines.push(line.join(' '));
+          }
+          
+          // Limit to 2 lines
+          const displayLines = lines.slice(0, 2);
+          
+          displayLines.forEach((lineText, i) => {
+            const text = node.append('text')
+              .attr('class', 'feature-node-label')
+              .attr('x', textStartOffset)  // Use stored offset from container left edge
+              .attr('y', 14 + (i * lineHeight))  // Slightly higher placement from node origin
+              .attr('text-anchor', 'start')
+              .text(lineText);
+            
+            // Use textLength to constrain if text is too long
+            // This will compress the text to fit within available space
+            const estimatedWidth = lineText.length * charWidth;
+            if (estimatedWidth > maxWidth) {
+              text.attr('textLength', maxWidth)
+                  .attr('lengthAdjust', 'spacingAndGlyphs');
+            }
+          });
         } else {
-          // For features and components, use appropriate label class
-          const labelClass = d.type === 'feature' ? 'feature-node-label' : 'node-label';
+          // For components, use standard centered label
           node.append('text')
-            .attr('class', labelClass)
+            .attr('class', 'node-label')
             .attr('dy', 5)
             .text(d.label);
         }

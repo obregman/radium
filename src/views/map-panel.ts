@@ -1280,24 +1280,6 @@ export class MapPanel {
         console.log('[Radium Map] Clearing existing graph...');
         g.selectAll('*').remove();
 
-      // Create links - color will be set in tick function after simulation processes nodes
-      const links = g.append('g')
-        .selectAll('line')
-        .data(data.edges)
-        .join('line')
-        .attr('class', 'link')
-        .attr('stroke-width', d => {
-          if (d.kind === 'contains') return 18;
-          if (d.kind === 'defines') return 1.5;
-          return d.weight * 2;
-        })
-        .attr('stroke-opacity', d => {
-          if (d.kind === 'contains') return 0.5;
-          if (d.kind === 'defines') return 0.4;
-          return 0.7;
-        })
-        .style('cursor', 'pointer');
-
       // Only display files, components, and external objects (no directories)
       // Filter out files that are not connected to any component
       const fileIdsConnectedToComponents = new Set(
@@ -1313,6 +1295,34 @@ export class MapPanel {
       const externalNodes = data.nodes.filter(d => d.kind === 'external');
       
       console.log('[Radium Map] Node counts - Files:', fileNodes.length, 'Components:', componentNodes.length, 'External:', externalNodes.length);
+
+      // Build visible node id set and filter edges accordingly to avoid stray lines
+      const visibleIds = new Set([
+        ...fileNodes.map(n => n.id),
+        ...componentNodes.map(n => n.id),
+        ...externalNodes.map(n => n.id)
+      ]);
+
+      const getId = (v) => (typeof v === 'object' && v !== null ? v.id : v);
+      const filteredEdges = data.edges.filter(e => visibleIds.has(getId(e.source)) && visibleIds.has(getId(e.target)));
+
+      // Create links - color will be set in tick function after simulation processes nodes
+      const links = g.append('g')
+        .selectAll('line')
+        .data(filteredEdges)
+        .join('line')
+        .attr('class', 'link')
+        .attr('stroke-width', d => {
+          if (d.kind === 'contains') return 18;
+          if (d.kind === 'defines') return 1.5;
+          return d.weight * 2;
+        })
+        .attr('stroke-opacity', d => {
+          if (d.kind === 'contains') return 0.5;
+          if (d.kind === 'defines') return 0.4;
+          return 0.7;
+        })
+        .style('cursor', 'pointer');
 
       // Create file boxes
       const fileGroups = g.append('g')
@@ -1513,7 +1523,7 @@ export class MapPanel {
         });
 
       // Connect edges to the simulation
-      simulation.force('link').links(data.edges);
+      simulation.force('link').links(filteredEdges);
       
       // Add hover events after links are connected to simulation (source/target are now objects)
       links

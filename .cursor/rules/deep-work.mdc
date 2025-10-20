@@ -9,7 +9,7 @@ globs:
 ---
 
 - Create a new work log file the summarizes the problem or task. The file should include the description of the problem and describe what was already tried and any insights gathered. Also write and maintain a list of action items required to solve the problem or complete the task
-- Place the task file under ai-context directory and name it <task name>_deep_work_log.txt
+- Place the task file under .ai-context directory and name it <task name>_deep_work_log.txt
 - The work log should have the following sections:
 ```
 ## Task description

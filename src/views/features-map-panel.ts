@@ -873,12 +873,12 @@ export class FeaturesMapPanel {
           // Add type label at top with << >>
           node.append('text')
             .attr('class', 'node-label')
-            .attr('dy', -FLOW_ITEM_HEIGHT / 2 + 18)
+            .attr('dy', -FLOW_ITEM_HEIGHT / 2 + 16)
             .style('font-size', '11px')
             .style('font-weight', 'bold')
             .text(\`<<\${d.flowType}>>\`);
           
-          // Add main label text below type
+          // Add main label text below type with extra spacing
           const words = d.label.split(/\\s+/);
           let line = [];
           let lineNumber = 0;
@@ -898,7 +898,8 @@ export class FeaturesMapPanel {
             lines.push(line.join(' '));
           }
           
-          const startY = -(lines.length - 1) * lineHeight / 2 + 10;
+          // Start text lower to create gap after type label
+          const startY = -(lines.length - 1) * lineHeight / 2 + 18;
           lines.forEach((lineText, i) => {
             node.append('text')
               .attr('class', 'node-label')

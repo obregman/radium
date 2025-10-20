@@ -394,7 +394,7 @@ export class FeaturesMapPanel {
     
     .feature-node-label {
       fill: white;
-      font-size: 22px;
+      font-size: 28px;
       text-anchor: start;
       pointer-events: none;
       font-weight: 600;
@@ -598,7 +598,26 @@ export class FeaturesMapPanel {
       // Helper function to calculate box dimensions based on text
       function getBoxDimensions(label, type) {
         if (type === 'flow-item') {
-          return { width: FLOW_ITEM_WIDTH, height: FLOW_ITEM_HEIGHT };
+          // Calculate dynamic width and height based on label length
+          const labelCharWidth = 8; // Character width for flow item text
+          const minFlowWidth = 160;
+          const maxFlowWidth = 280; // Maximum width before wrapping to second line
+          const flowPadding = 30;
+          const lineHeight = 16;
+          const typeHeight = 20; // Height for <<type>> label
+          const baseHeight = 50; // Base height for single line
+          
+          const estimatedWidth = label.length * labelCharWidth + flowPadding;
+          
+          // If text is too long, use max width and calculate height for 2 lines
+          if (estimatedWidth > maxFlowWidth) {
+            const calculatedHeight = typeHeight + (lineHeight * 2) + 20; // 2 lines + padding
+            return { width: maxFlowWidth, height: calculatedHeight };
+          }
+          
+          // Otherwise use calculated width with single line height
+          const calculatedWidth = Math.max(minFlowWidth, estimatedWidth);
+          return { width: calculatedWidth, height: baseHeight + typeHeight };
         }
         const textWidth = label.length * CHAR_WIDTH;
         const width = Math.max(MIN_WIDTH, textWidth + PADDING_X * 2);
@@ -708,10 +727,18 @@ export class FeaturesMapPanel {
         const featureFlowItems = flowItemNodes.filter(f => f.featureKey === feature.key).sort((a, b) => a.flowIndex - b.flowIndex);
         
         if (feature.hasFlow && featureFlowItems.length > 0) {
-          // Calculate container dimensions based on flow items
-          const flowRowWidth = featureFlowItems.length * FLOW_ITEM_WIDTH + (featureFlowItems.length - 1) * FLOW_SPACING;
+          // Calculate container dimensions based on actual flow item widths and heights
+          const flowItemWidths = featureFlowItems.map(item => {
+            const dim = nodeDimensions.get(item.id);
+            return dim ? dim.width : FLOW_ITEM_WIDTH;
+          });
+          const maxFlowItemHeight = Math.max(...featureFlowItems.map(item => {
+            const dim = nodeDimensions.get(item.id);
+            return dim ? dim.height : FLOW_ITEM_HEIGHT;
+          }));
+          const flowRowWidth = flowItemWidths.reduce((sum, w) => sum + w, 0) + (featureFlowItems.length - 1) * FLOW_SPACING;
           const containerWidth = flowRowWidth + FEATURE_CONTAINER_PADDING * 2;
-          const containerHeight = FLOW_ITEM_HEIGHT + FEATURE_TITLE_HEIGHT + FEATURE_CONTAINER_PADDING * 2;
+          const containerHeight = maxFlowItemHeight + FEATURE_TITLE_HEIGHT + FEATURE_CONTAINER_PADDING * 2;
           
           // Store container info on feature node
           feature.containerWidth = containerWidth;
@@ -727,13 +754,14 @@ export class FeaturesMapPanel {
             y: currentY + 35 // 35px from top edge
           });
           
-          // Position flow items horizontally inside container
-          let flowX = startX + FEATURE_CONTAINER_PADDING + FLOW_ITEM_WIDTH / 2;
-          const flowY = currentY + FEATURE_TITLE_HEIGHT + FEATURE_CONTAINER_PADDING + FLOW_ITEM_HEIGHT / 2;
+          // Position flow items horizontally inside container using actual widths
+          let flowX = startX + FEATURE_CONTAINER_PADDING;
+          const flowY = currentY + FEATURE_TITLE_HEIGHT + FEATURE_CONTAINER_PADDING + maxFlowItemHeight / 2;
           
           featureFlowItems.forEach(flowItem => {
-            positionedNodes.set(flowItem.id, { x: flowX, y: flowY });
-            flowX += FLOW_ITEM_WIDTH + FLOW_SPACING;
+            const itemWidth = flowItemWidths[featureFlowItems.indexOf(flowItem)];
+            positionedNodes.set(flowItem.id, { x: flowX + itemWidth / 2, y: flowY });
+            flowX += itemWidth + FLOW_SPACING;
           });
           
           // Move down for next feature container
@@ -909,12 +937,13 @@ export class FeaturesMapPanel {
         if (d.type === 'flow-item') {
           // For flow items, add type label at top and wrap text if needed
           const lineHeight = 16;
-          const maxWidth = FLOW_ITEM_WIDTH - 20;
+          const dim = nodeDimensions.get(d.id) || { width: FLOW_ITEM_WIDTH, height: FLOW_ITEM_HEIGHT };
+          const maxWidth = dim.width - 20;
           
           // Add type label at top with << >>
           node.append('text')
             .attr('class', 'node-label')
-            .attr('dy', -FLOW_ITEM_HEIGHT / 2 + 16)
+            .attr('dy', -dim.height / 2 + 16)
             .style('font-size', '11px')
             .style('font-weight', 'bold')
             .text(\`<<\${d.flowType}>>\`);
@@ -950,12 +979,12 @@ export class FeaturesMapPanel {
         } else if (d.type === 'feature') {
           // Feature title in top-left corner
           // Use SVG textLength to constrain width
-          const lineHeight = 26;
+          const lineHeight = 32;
           const textStartOffset = d.textOffsetX || 25;
           // Max width accounts for left offset and right padding
           const maxWidth = d.containerWidth - textStartOffset - 25;
           const words = d.label.split(/\\s+/);
-          const charWidth = 13;
+          const charWidth = 16;
           
           let line = [];
           const lines = [];

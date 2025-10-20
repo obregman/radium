@@ -23,3 +23,4 @@ globs:
 - The README.md file should explain the project in high level, without "selling" and without exaggeration. Do not add low level or implementation details to the README.md. Also include simple usage explanation and example.
 - UI should not contain implementation or underlying logic text (e.g. what is the interval of an internal check)
 - When writing documentation write it in the ./docs directory
+- Build a package after making a code change

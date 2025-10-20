@@ -2,13 +2,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
+export interface FlowItem {
+  type: 'user' | 'window' | 'system' | 'api' | 'database';
+  name: string;
+  description?: string;
+}
+
 export interface FeatureConfig {
   name: string;
   description?: string;
   status?: 'planned' | 'in-progress' | 'completed' | 'deprecated';
   owner?: string;
-  components: string[];
+  components?: string[];
   dependencies?: string[];
+  flow?: FlowItem[];
 }
 
 export interface FeaturesConfig {
@@ -77,8 +84,8 @@ export class FeaturesConfigLoader {
         const featureKey = Object.keys(featureItem)[0];
         const featureData = featureItem[featureKey];
 
-        if (!featureData.name || !featureData.components) {
-          console.warn(`[Features Config] Skipping invalid feature: ${featureKey}`);
+        if (!featureData.name) {
+          console.warn(`[Features Config] Skipping invalid feature: ${featureKey} - missing name`);
           continue;
         }
 
@@ -88,7 +95,8 @@ export class FeaturesConfigLoader {
           status: featureData.status || 'in-progress',
           owner: featureData.owner,
           components: Array.isArray(featureData.components) ? featureData.components : [],
-          dependencies: Array.isArray(featureData.dependencies) ? featureData.dependencies : []
+          dependencies: Array.isArray(featureData.dependencies) ? featureData.dependencies : [],
+          flow: Array.isArray(featureData.flow) ? featureData.flow : undefined
         };
       }
     }
@@ -186,7 +194,7 @@ export class FeaturesConfigLoader {
     }
 
     return Object.entries(this.config.features)
-      .filter(([_, feature]) => feature.components.includes(componentKey))
+      .filter(([_, feature]) => feature.components?.includes(componentKey))
       .map(([key, feature]) => ({ key, feature }));
   }
 

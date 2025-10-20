@@ -83,9 +83,28 @@ spec:
         - frontend
       dependencies:
         - authentication
+      flow:
+        - type: user
+          name: Click edit profile
+          description: User clicks the edit profile button
+        - type: window
+          name: Show profile form
+          description: Display editable profile form
+        - type: user
+          name: Update details
+          description: User modifies their information
+        - type: api
+          name: Save profile
+          description: Send updated data to backend
+        - type: database
+          name: Update database
+          description: Store changes in database
+        - type: window
+          name: Show success
+          description: Display confirmation message
 ```
 
-Run `Radium: Features Map` to see an interactive visualization of your features, their status, and dependencies.
+Run `Radium: Features Map` to see an interactive visualization of your features, their status, dependencies, and user flows. Flow items are displayed as colored boxes connected by arrows, showing the sequence of steps in each feature.
 
 ### Working with LLM Changes
 

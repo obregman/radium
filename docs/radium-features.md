@@ -48,8 +48,24 @@ Each feature is defined as an object with a single key (the feature identifier).
 - **description** (optional): Detailed description of the feature
 - **status** (optional): One of `planned`, `in-progress`, `completed`, or `deprecated`. Defaults to `in-progress`
 - **owner** (optional): Team or person responsible for the feature
-- **components** (required): Array of component keys from `radium-components.yaml`
+- **components** (optional): Array of component keys from `radium-components.yaml`
 - **dependencies** (optional): Array of other feature keys this feature depends on
+- **flow** (optional): Array of flow items describing the feature's user flow or process steps
+
+## Flow Items
+
+Flow items describe the sequential steps in a feature's user flow or process. Each flow item has:
+
+- **type** (required): One of `user`, `window`, `system`, `api`, or `database`
+- **name** (required): Short name for the step
+- **description** (optional): Detailed description of what happens in this step
+
+Flow types are visualized with different colors:
+- **user**: Purple - User actions (clicks, inputs, etc.)
+- **window**: Orange - UI/screen changes
+- **system**: Green - System processes
+- **api**: Red - API calls
+- **database**: Gray - Database operations
 
 ## Complete Example
 
@@ -75,6 +91,39 @@ spec:
         - frontend
       dependencies:
         - authentication
+
+  - add-customer:
+      name: Add New Customer
+      description: Feature for adding a new customer to the system
+      status: in-progress
+      owner: Sales Team
+      components:
+        - frontend
+        - backend
+      dependencies:
+        - authentication
+      flow:
+        - type: user
+          name: Click add new customer
+          description: The user clicks on add new customer button
+        - type: window
+          name: Display new customer screen
+          description: Shows the "new customer" screen to the user
+        - type: user
+          name: Fill customer details
+          description: The user fills customer name, address, phone number and email
+        - type: user
+          name: Submit form
+          description: User clicks the submit button
+        - type: api
+          name: Validate customer data
+          description: Backend validates the customer information
+        - type: database
+          name: Save customer
+          description: Store customer record in database
+        - type: window
+          name: Show success message
+          description: Display confirmation to the user
 
   - social-login:
       name: Social Media Login
@@ -119,26 +168,82 @@ Run the command: `Radium: Features Map`
 
 ### Visual Elements
 
-- **Feature Nodes**: Rectangular boxes representing features
-  - **Blue**: In-progress features
-  - **Green**: Completed features
-  - **Gray**: Planned features
-  - **Red**: Deprecated features
+The features map displays features in a **hierarchical tree layout**:
+
+- **Root Features**: Parent features appear at the top (larger boxes)
+- **Sub-features**: Child features appear below their parents
+- **Flow Items**: Sequential steps in a feature's flow appear horizontally below the feature
+- **Components**: Technical components appear at the bottom
+
+- **Feature Nodes**: Blue rectangular boxes representing features
+  - Root features are larger and more prominent
+  - Sub-features are smaller and positioned below their parents
+
+- **Flow Item Nodes**: Colored rounded rectangles representing flow steps
+  - **Purple**: User actions
+  - **Orange**: Window/screen changes
+  - **Green**: System processes
+  - **Red**: API calls
+  - **Gray**: Database operations
 
 - **Component Nodes**: Cyan rectangular boxes representing technical components
 
 - **Edges**:
-  - **Solid blue lines**: Feature uses component
-  - **Dashed orange lines**: Feature depends on another feature
+  - **Gray lines**: Parent-child relationships between features
+  - **Blue curved lines**: Feature uses component
+  - **Purple dashed lines**: Connection from feature to its flow
+  - **Gray arrows**: Sequential flow between steps
 
 ### Interactions
 
 - **Click a feature**: View details including status, owner, components, and dependencies
-- **Drag nodes**: Rearrange the layout
 - **Zoom**: Mouse wheel or pinch gesture
 - **Pan**: Click and drag the background
 
 ## Use Cases
+
+### Feature Flows
+
+Document user flows and process steps for features:
+
+```yaml
+spec:
+  features:
+  - checkout:
+      name: Checkout Process
+      components:
+        - frontend
+        - backend
+        - payment-service
+      flow:
+        - type: user
+          name: Review cart
+          description: User reviews items in shopping cart
+        - type: user
+          name: Click checkout
+          description: User initiates checkout process
+        - type: window
+          name: Show shipping form
+          description: Display shipping address form
+        - type: user
+          name: Enter shipping info
+          description: User fills in shipping details
+        - type: window
+          name: Show payment form
+          description: Display payment information form
+        - type: user
+          name: Enter payment details
+          description: User enters credit card information
+        - type: api
+          name: Process payment
+          description: Send payment to payment gateway
+        - type: database
+          name: Create order
+          description: Save order to database
+        - type: window
+          name: Show confirmation
+          description: Display order confirmation page
+```
 
 ### Product Roadmap
 

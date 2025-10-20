@@ -28,6 +28,15 @@ All notable changes to the Radium extension will be documented in this file.
     - Connected to their parent components with colored edges
     - Includes type, name, and description fields
   - See `radium-components.yaml.example` and `docs/radium-yaml.md` for details
+- **Feature Flow Visualization**: Document and visualize user flows within features
+  - Add `flow` property to features in `radium-features.yaml`
+  - Flow items support 5 types: `user`, `window`, `system`, `api`, `database`
+  - Each flow item has a name and optional description
+  - Features displayed vertically on the left with flow items extending horizontally to the right
+  - Sequential flow items connected with arrows showing the flow progression
+  - Color-coded by type: purple (user), orange (window), green (system), red (api), gray (database)
+  - `components` field is now optional - features can be defined with only flows
+  - See updated `docs/radium-features.md` for syntax and examples
 - **radium-features.yaml Configuration**: Visualize product features and their relationships
   - New `Radium: Features Map` command to open features visualization
   - Shows features, their status (planned/in-progress/completed/deprecated), and dependencies
@@ -40,6 +49,12 @@ All notable changes to the Radium extension will be documented in this file.
 - Component nodes in graph with enhanced styling and collision detection
 
 ### Changed
+- **Features Map Tree Layout**: Features map now displays in hierarchical tree structure
+  - Parent features appear at the top with larger boxes
+  - Sub-features appear below their parents
+  - Components appear at the bottom of the tree
+  - Replaced force-directed layout with fixed hierarchical positioning
+  - Parent-child relationships shown with gray connecting lines
 - **Simplified Visualization**: Map now only displays components and files
   - Removed individual class, interface, type, and function nodes from the graph
   - Removed directory nodes - only components and files are shown

@@ -28,19 +28,21 @@ spec:
 - External sources include: Cloud services (RDS, S3, SQS, etc.), Data files, external API or service, etc.
 
 
-Also generate and maintain the radium-features.yaml file in the project root that specifies the different features the software provides and the connection between them.
+Also generate and maintain the radium-features.yaml file in the project root that specifies the different feature flows
 The radium-features.yaml file should have the following syntax:
 
 spec:
   features:
-    - type: screen
-      name: Main screen
-      children:
-        - type: screen
-          name: New customer screen
-          description: Add a new customer to the system
-        - type: action
-          name: Quit button
-          description: Quit the app
-        - type: action
+      - new_customer:
+        name: Add a new customer to the system
+        flow:
+        - type: user
+          name: The user clicks on add new user
+          description: The user clicks on add new customer
+        - type: window
+          name: App displays the "new customer" screen
+          description: Shows the "new customer" screen to the user
+        - type: user
+          name: The user fills the new customer's details
+          description: The user fills customer name, address, phone number and email
           

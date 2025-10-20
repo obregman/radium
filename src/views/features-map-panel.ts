@@ -392,6 +392,14 @@ export class FeaturesMapPanel {
       font-weight: 500;
     }
     
+    .feature-node-label {
+      fill: white;
+      font-size: 22px;
+      text-anchor: middle;
+      pointer-events: none;
+      font-weight: 600;
+    }
+    
     .edge {
       stroke: #666;
       stroke-width: 2px;
@@ -579,13 +587,13 @@ export class FeaturesMapPanel {
       const TREE_SPACING = 120;
       const FLOW_SPACING = 100; // Increased spacing between flow items
       const FLOW_VERTICAL_OFFSET = 120;
-      const PADDING_X = 20;
-      const PADDING_Y = 15;
-      const CHAR_WIDTH = 8; // Approximate character width
-      const MIN_WIDTH = 100;
-      const MIN_HEIGHT = 50;
-      const FLOW_ITEM_WIDTH = 160; // Increased width for flow items
-      const FLOW_ITEM_HEIGHT = 70; // Increased height for type label + text
+      const PADDING_X = 30; // Increased padding for feature boxes
+      const PADDING_Y = 20; // Increased padding for feature boxes
+      const CHAR_WIDTH = 10; // Increased character width for larger text
+      const MIN_WIDTH = 180; // Increased minimum width for features
+      const MIN_HEIGHT = 80; // Increased minimum height for features
+      const FLOW_ITEM_WIDTH = 160; // Width for flow items
+      const FLOW_ITEM_HEIGHT = 70; // Height for type label + text
       
       // Helper function to calculate box dimensions based on text
       function getBoxDimensions(label, type) {
@@ -718,7 +726,7 @@ export class FeaturesMapPanel {
           // Position flow items horizontally to the right of the feature
           // Calculate feature width to avoid overlap
           const featureDim = nodeDimensions.get(feature.id) || { width: MIN_WIDTH, height: MIN_HEIGHT };
-          let flowX = featurePos.x + featureDim.width / 2 + 100; // Start after feature with gap
+          let flowX = featurePos.x + featureDim.width / 2 + 150; // Increased gap between feature and flow
           const flowY = featurePos.y; // Same vertical position as feature
           
           featureFlowItems.forEach(flowItem => {
@@ -907,8 +915,10 @@ export class FeaturesMapPanel {
               .text(lineText);
           });
         } else {
+          // For features and components, use appropriate label class
+          const labelClass = d.type === 'feature' ? 'feature-node-label' : 'node-label';
           node.append('text')
-            .attr('class', 'node-label')
+            .attr('class', labelClass)
             .attr('dy', 5)
             .text(d.label);
         }

@@ -106,6 +106,61 @@ spec:
 
 Run `Radium: Features Map` to see an interactive visualization of your features, their status, dependencies, and user flows. Flow items are displayed as colored boxes connected by arrows, showing the sequence of steps in each feature.
 
+### Dev Mode: Managing Requirements
+
+Radium dev mode allows you to add, track, and validate requirements for each feature.
+
+#### Setting Up Requirements
+
+Create a `radium-req.yaml` file in your project root:
+
+```yaml
+spec:
+  requirements:
+    - authentication:
+        - id: req-auth-1
+          text: "User can log in with email and password"
+          status: implemented
+          implementedStatus: true
+        - id: req-auth-2
+          text: "Password reset via email"
+          status: in-progress
+          implementedStatus: false
+```
+
+#### Using Dev Mode
+
+1. Open Dev Mode: `Radium: Dev Mode` (or `Radium: Features Map`)
+2. Click the three-dot menu (⋮) on any feature box
+3. Select **"+ Add requirement"** to add a new requirement
+4. Click on any requirement to:
+   - **Edit** - Modify the requirement text
+   - **Validate** - Use AI to check if it's implemented
+   - **Delete** - Remove the requirement
+
+#### Requirement Status
+
+Requirements show two indicators:
+- **Left gauge** (colored circle): Status (not-started, in-progress, implemented, verified)
+  - Gray: not-started
+  - Orange: in-progress
+  - Green: implemented
+  - Blue: verified
+- **Right gauge**: Implementation status (gray = not implemented, green = implemented)
+
+#### AI Validation
+
+Click **"Validate requirements"** from the feature menu to automatically check all requirements using AI. The AI analyzes your codebase and updates the implementation status for each requirement.
+
+**Supported AI Providers:**
+- **Cursor AI** - Recommended for Cursor users (set `radium.devMode.aiProvider` to `"cursor"`)
+- **GitHub Copilot** - For VS Code with Copilot subscription
+- **Claude API** - Coming soon
+
+The validator automatically provides code context from relevant component files to improve accuracy.
+
+📖 **See [Cursor Integration Guide](docs/cursor-integration.md) for detailed setup and usage**
+
 ### Working with LLM Changes
 
 1. Get a change plan from your LLM in JSON format:
@@ -140,6 +195,8 @@ Run `Radium: Features Map` to see an interactive visualization of your features,
 
 - `Radium: Open Map` - Show the codebase graph
 - `Radium: Features Map` - Visualize features and their relationships
+- `Radium: Dev Mode` - Open Features Map with requirement management
+- `Radium: Select AI Provider` - Choose AI provider (Cursor, Copilot, Claude)
 - `Radium: Show Changes` - View recent sessions
 - `Radium: Preview LLM Plan from Clipboard` - Preview changes
 - `Radium: Apply LLM Plan` - Apply previewed changes
@@ -156,7 +213,10 @@ Available settings:
   "radium.indexer.maxCPU": 2,
   "radium.privacy.upload": "none",
   "radium.graph.layout": "force",
-  "radium.tests.autoRun": true
+  "radium.tests.autoRun": true,
+  "radium.devMode.enabled": true,
+  "radium.devMode.aiProvider": "copilot",
+  "radium.devMode.showDetailedStatus": false
 }
 ```
 
@@ -204,6 +264,7 @@ The release is tagged with the new version and the commit SHA.
 
 - [Architecture](docs/architecture.md)
 - [Usage Guide](docs/usage-guide.md)
+- [Dev Mode (Requirements Management)](docs/dev-mode.md)
 - [radium-components.yaml Format](docs/radium-yaml.md)
 - [radium-features.yaml Format](docs/radium-features.md)
 - [Troubleshooting](docs/troubleshooting.md)

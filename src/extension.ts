@@ -6,9 +6,12 @@ import { LLMOrchestrator, LLMPlan } from './orchestrator/llm-orchestrator';
 import { SessionsTreeProvider, CodeSlicesTreeProvider, IssuesTreeProvider } from './views/sessions-tree';
 import { MapPanel } from './views/map-panel';
 import { FeaturesMapPanel } from './views/features-map-panel';
+import { DevModePanel } from './views/dev-mode-panel';
 import { GitDiffTracker } from './git/git-diff-tracker';
 import { RadiumConfigLoader } from './config/radium-config';
 import { FeaturesConfigLoader } from './config/features-config';
+import { RequirementsConfigLoader } from './config/requirements-config';
+import { AIValidator } from './validation/ai-validator';
 
 let store: GraphStore;
 let indexer: Indexer;
@@ -19,6 +22,8 @@ let codeSlicesTreeProvider: CodeSlicesTreeProvider;
 let issuesTreeProvider: IssuesTreeProvider;
 let configLoader: RadiumConfigLoader;
 let featuresLoader: FeaturesConfigLoader;
+let requirementsLoader: RequirementsConfigLoader;
+let aiValidator: AIValidator;
 let outputChannel: vscode.OutputChannel;
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -37,6 +42,39 @@ export async function activate(context: vscode.ExtensionContext) {
   console.log('RADIUM: Extension path:', context.extensionPath);
   console.log('RADIUM: Storage path:', context.globalStorageUri.fsPath);
   console.log('============================================');
+  
+  // Register webview serializer FIRST, before any initialization
+  // This needs to be registered synchronously during activation
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer('radiumDevMode', {
+      async deserializeWebviewPanel(oldPanel: vscode.WebviewPanel, state: any) {
+        console.log('[Extension] Deserializing Dev Mode panel');
+        outputChannel.appendLine('[Extension] Deserializing Dev Mode panel');
+        
+        // Close the old panel to avoid stale content and handlers
+        try { oldPanel.dispose(); } catch {}
+        
+        // Wait for initialization if needed
+        let retries = 0;
+        while ((!requirementsLoader || !aiValidator) && retries < 50) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          retries++;
+        }
+        
+        if (!requirementsLoader || !aiValidator) {
+          console.error('[Extension] Cannot deserialize panel: requirementsLoader or aiValidator not initialized after waiting');
+          vscode.window.showErrorMessage('Dev Mode panel could not be restored. Please reopen it.');
+          return;
+        }
+        
+        // Reload requirements config
+        requirementsLoader.load();
+        
+        // Create a new panel fresh to ensure working message plumbing
+        DevModePanel.createOrShow(context.extensionUri, requirementsLoader, aiValidator);
+      }
+    })
+  );
   
   // ALWAYS register commands first, even if initialization fails
   try {
@@ -78,6 +116,12 @@ export async function activate(context: vscode.ExtensionContext) {
     
     featuresLoader = new FeaturesConfigLoader(workspaceRoot);
     featuresLoader.load();
+
+    requirementsLoader = new RequirementsConfigLoader(workspaceRoot);
+    requirementsLoader.load();
+
+    // Initialize AI validator
+    aiValidator = new AIValidator(workspaceRoot);
 
     // Initialize indexer
     indexer = new Indexer(store, workspaceRoot);
@@ -139,6 +183,59 @@ function registerCommands(context: vscode.ExtensionContext) {
       configLoader.load();
       featuresLoader.load();
       FeaturesMapPanel.createOrShow(context.extensionUri, featuresLoader, configLoader);
+    }),
+
+    vscode.commands.registerCommand('radium.openDevMode', async () => {
+      if (!requirementsLoader || !aiValidator) {
+        vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
+        return;
+      }
+      
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders) {
+        vscode.window.showWarningMessage('No workspace folder open');
+        return;
+      }
+      
+      const fs = require('fs');
+      const workspaceRoot = workspaceFolders[0].uri.fsPath;
+      const reqPath = path.join(workspaceRoot, 'radium-req.yaml');
+      const examplePath = path.join(workspaceRoot, 'radium-req.yaml.example');
+      
+      // Check if radium-req.yaml exists
+      if (!fs.existsSync(reqPath) && fs.existsSync(examplePath)) {
+        const action = await vscode.window.showInformationMessage(
+          'No radium-req.yaml found. Would you like to create one from the example?',
+          'Create from Example',
+          'Create Empty',
+          'Cancel'
+        );
+        
+        if (action === 'Create from Example') {
+          fs.copyFileSync(examplePath, reqPath);
+          vscode.window.showInformationMessage('Created radium-req.yaml from example');
+        } else if (action === 'Create Empty') {
+          const emptyContent = `# Radium Requirements Configuration
+spec:
+  requirements: []
+`;
+          fs.writeFileSync(reqPath, emptyContent, 'utf8');
+          vscode.window.showInformationMessage('Created empty radium-req.yaml');
+        } else {
+          return;
+        }
+      }
+      
+      // Reload requirements config in case file was created/modified since activation
+      requirementsLoader.load();
+      
+      // Show info message about dev mode
+      vscode.window.showInformationMessage(
+        'Dev Mode: Manage feature requirements and validate implementation status',
+        'Got it'
+      );
+      
+      DevModePanel.createOrShow(context.extensionUri, requirementsLoader, aiValidator);
     }),
 
     vscode.commands.registerCommand('radium.showChanges', async () => {
@@ -510,6 +607,47 @@ function registerCommands(context: vscode.ExtensionContext) {
           vscode.window.showErrorMessage(`Radium re-indexing failed: ${error}`);
         }
       });
+    }),
+
+    vscode.commands.registerCommand('radium.selectAIProvider', async () => {
+      const config = vscode.workspace.getConfiguration('radium.devMode');
+      const currentProvider = config.get<string>('aiProvider', 'copilot');
+      
+      const providers = [
+        {
+          label: '$(cursor) Cursor AI',
+          description: currentProvider === 'cursor' ? '(Current)' : 'Recommended for Cursor users',
+          value: 'cursor'
+        },
+        {
+          label: '$(github) GitHub Copilot',
+          description: currentProvider === 'copilot' ? '(Current)' : 'Requires Copilot subscription',
+          value: 'copilot'
+        },
+        {
+          label: '$(cloud) Claude API',
+          description: currentProvider === 'claude' ? '(Current)' : 'Coming soon',
+          value: 'claude'
+        }
+      ];
+
+      const selected = await vscode.window.showQuickPick(providers, {
+        placeHolder: 'Select AI provider for requirement validation',
+        title: 'AI Provider Selection'
+      });
+
+      if (selected) {
+        await config.update('aiProvider', selected.value, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`AI provider set to: ${selected.label}`);
+        
+        // Reinitialize AI validator with new provider
+        if (aiValidator) {
+          const workspaceFolders = vscode.workspace.workspaceFolders;
+          if (workspaceFolders) {
+            aiValidator = new AIValidator(workspaceFolders[0].uri.fsPath);
+          }
+        }
+      }
     })
   );
 }

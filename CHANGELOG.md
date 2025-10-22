@@ -4,7 +4,21 @@ All notable changes to the Radium extension will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Cursor AI Integration for Requirement Validation**
+  - Added support for Cursor AI as validation provider
+  - Automatic detection and use of Cursor's language model API
+  - Enhanced validation prompts with component file context (up to 5 files, 5000 chars each)
+  - New command: `Radium: Select AI Provider` to switch between Cursor, Copilot, and Claude
+  - Configurable via `radium.devMode.aiProvider` setting
+  - Fallback chain: selected provider → any available model → manual input
+  - Improved logging for AI provider selection and validation flow
+
 ### Fixed
+- **Requirement delete action** - Fixed delete not working properly
+  - Added proper error handling and return value checking
+  - Added comprehensive logging for debugging
+  - Now shows error message if delete fails with details in Output panel
 - **CRITICAL: Extension activation failure** - All production dependencies are now properly bundled in the VSIX
   - Previous builds excluded ALL node_modules, causing extension to fail on require() calls
   - Removed `node_modules/**` exclusion from .vscodeignore

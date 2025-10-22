@@ -1,0 +1,26 @@
+## Task description
+Delete requirement action in Dev Mode context menu does not delete the requirement.
+
+## Insights
+- Webview sent messages but extension didn't receive them after reloads.
+- Stale webview state due to retainContextWhenHidden caused message plumbing to break.
+- Serializer must restore Dev Mode panel or recreate it on reload.
+
+## Solutions that were tried and did not work
+- Inline onclick handlers for context menu items (event scope issues).
+- Only adding console.log in message handler (not visible in webview console).
+
+## Action items
+[x] Replace inline onclick with addEventListener in webview
+[x] Add debug logs across webview and extension message flow
+[x] Add handleDeleteRequirement logs and reload config after deletion
+[x] Register webview serializer early during activation
+[x] Recreate panel in serializer (dispose old panel first)
+[x] Set retainContextWhenHidden to false to avoid stale state
+[x] Rebuild and verify end-to-end delete works after window reload
+[x] If still failing, capture Output: Radium logs and Extension Host logs
+
+## Resolution (only once the issue was solved) 
+Root cause: webview state and message plumbing became stale across reloads; inline onclick handlers also caused event scoping issues. Fixes: switched to addEventListener for menu actions; registered a webview serializer early; on restore, disposed the old panel and recreated a fresh one; set retainContextWhenHidden=false; moved message handler registration before setting HTML; added modal confirmation and robust logging. Verified: requirement id removed from config and UI updated after deletion.
+
+

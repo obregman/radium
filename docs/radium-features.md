@@ -428,6 +428,73 @@ If dependency edges don't appear:
 1. Verify dependency keys match other feature keys exactly
 2. Check for typos in feature keys
 
+## Dev Mode: Requirements Management
+
+Radium dev mode extends the Features Map with interactive requirement management.
+
+### Requirements File
+
+Create a `radium-req.yaml` file at the workspace root to store requirements for each feature:
+
+```yaml
+spec:
+  requirements:
+    - feature-key:
+        - id: req-1
+          text: "Requirement description"
+          status: not-started | in-progress | implemented | verified
+          implementedStatus: true | false
+```
+
+### Adding Requirements
+
+1. Open Features Map: `Radium: Features Map`
+2. Click the three-dot menu (⋮) on a feature box
+3. Select "Add requirement"
+4. Enter the requirement text
+
+### Managing Requirements
+
+Click on any requirement to access:
+- **Edit** - Modify requirement text
+- **Validate** - Use AI to check implementation status
+- **Delete** - Remove the requirement
+
+### AI Validation
+
+The AI validator analyzes your codebase to determine if requirements are implemented:
+
+1. Click "Validate requirements" from the feature menu
+2. AI examines code in the feature's components
+3. Updates status and implementation indicators
+4. Provides confidence score and reasoning
+
+### Requirement Indicators
+
+Each requirement shows two gauges:
+
+**Status Gauge (left):**
+- Gray circle: not-started
+- Orange circle: in-progress
+- Green circle: implemented
+- Blue circle: verified
+
+**Implementation Gauge (right):**
+- Gray circle: Not implemented
+- Green circle: Implemented
+
+### Configuration
+
+Control dev mode behavior with these settings:
+
+```json
+{
+  "radium.devMode.enabled": true,
+  "radium.devMode.aiProvider": "copilot",
+  "radium.devMode.showDetailedStatus": false
+}
+```
+
 ## Related
 
 - [radium-components.yaml Format](./radium-yaml.md)
@@ -437,5 +504,5 @@ If dependency edges don't appear:
 
 ## Example Repository
 
-See the Radium project's own `radium-features.yaml.example` for a working configuration.
+See the Radium project's own `radium-features.yaml.example` and `radium-req.yaml.example` for working configurations.
 

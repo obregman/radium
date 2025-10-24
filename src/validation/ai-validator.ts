@@ -44,10 +44,10 @@ export class AIValidator {
     } catch (error) {
       console.error('[AI Validator] Validation failed:', error);
       
-      // Fallback: return uncertain result
+      // Fallback: preserve current status and indicate failure
       return {
         requirementId: requirement.id,
-        status: 'not-started',
+        status: requirement.status || 'not-started',
         confidence: 0,
         reasoning: `Validation failed: ${error}`
       };

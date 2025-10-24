@@ -101,9 +101,10 @@ export class DevModePanel {
 
   private async handleMessage(message: any) {
     console.log('[Dev Mode] Received message:', message.type, message);
+    console.log('[Dev Mode] Full message object:', JSON.stringify(message));
     
     try {
-      vscode.window.showInformationMessage(`DevMode msg: ${message.type}`);
+      console.log('[Dev Mode] About to enter switch statement');
       switch (message.type) {
         case 'ready':
           this.updateView();
@@ -127,6 +128,14 @@ export class DevModePanel {
           console.log('[Dev Mode] Handling requirement:delete');
           vscode.window.showInformationMessage(`DEBUG: Delete request received for ${message.requirementId}`);
           await this.handleDeleteRequirement(message.featureKey, message.requirementId);
+          break;
+        case 'requirement:build':
+          console.log('[Dev Mode] Handling requirement:build, featureKey:', message.featureKey, 'requirementId:', message.requirementId);
+          await this.handleBuildRequirement(message.featureKey, message.requirementId);
+          console.log('[Dev Mode] handleBuildRequirement completed');
+          break;
+        case 'requirement:remove':
+          await this.handleRemoveRequirement(message.featureKey, message.requirementId);
           break;
         case 'requirement:validate':
           await this.handleValidateRequirement(message.featureKey, message.requirementId);
@@ -269,6 +278,29 @@ export class DevModePanel {
     console.log(`[Dev Mode] Delete requirement requested: feature='${featureKey}', requirement='${requirementId}'`);
     DevModePanel.logChannel?.appendLine(`[Dev Mode] Delete request received for feature='${featureKey}', req='${requirementId}'`);
     
+    // Check if requirement is implemented
+    const requirements = this.requirementsLoader.getRequirements(featureKey);
+    const requirement = requirements.find(r => r.id === requirementId);
+    
+    if (!requirement) {
+      vscode.window.showErrorMessage('Requirement not found');
+      return;
+    }
+    
+    // Prevent deletion if requirement is not "not-started"
+    if (requirement.status !== 'not-started') {
+      vscode.window.showWarningMessage(
+        'This requirement appears to be implemented in code. Please use "Remove from code" first to have AI remove the implementation before deleting the requirement.',
+        'OK'
+      );
+      return;
+    }
+    
+    // Copy delete prompt to clipboard and show a brief status message
+    const deletePrompt = `Delete the following requirement from the radium-req.yaml specification only (no code changes).\n\nFeature: ${featureKey}\nRequirement: ${requirement.text}`;
+    await vscode.env.clipboard.writeText(deletePrompt);
+    vscode.window.setStatusBarMessage('Delete prompt copied to clipboard', 4000);
+    
     // Log current requirements before deletion
     const beforeReqs = this.requirementsLoader.getRequirements(featureKey);
     console.log(`[Dev Mode] Requirements before deletion:`, beforeReqs.map(r => r.id));
@@ -312,7 +344,31 @@ export class DevModePanel {
     }
   }
 
-  private async handleValidateRequirement(featureKey: string, requirementId: string) {
+  private async handleBuildRequirement(featureKey: string, requirementId: string) {
+    console.log('[Dev Mode] handleBuildRequirement called:', featureKey, requirementId);
+    
+    let requirements;
+    let requirement;
+    try {
+      requirements = this.requirementsLoader.getRequirements(featureKey);
+      requirement = requirements.find(r => r.id === requirementId);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to load requirements: ${error}`);
+      return;
+    }
+
+    if (!requirement) {
+      vscode.window.showErrorMessage('Requirement not found');
+      return;
+    }
+
+    const prompt = `Build the following requirement and provide implementation steps and code edits as needed.\n\nFeature: ${featureKey}\nRequirement: ${requirement.text}`;
+
+    await vscode.env.clipboard.writeText(prompt);
+    vscode.window.setStatusBarMessage('Build prompt copied to clipboard', 4000);
+  }
+
+  private async handleRemoveRequirement(featureKey: string, requirementId: string) {
     const requirements = this.requirementsLoader.getRequirements(featureKey);
     const requirement = requirements.find(r => r.id === requirementId);
 
@@ -321,29 +377,37 @@ export class DevModePanel {
       return;
     }
 
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: 'Validating requirement...',
-      cancellable: false
-    }, async () => {
-      // Create a minimal feature config for validation
-      const featureConfig = {
-        name: featureKey.replace(/-/g, ' '),
-        components: []
-      };
+    const prompt = `Remove the following requirement from the code. Identify and revert all related changes (code, tests, docs) and ensure build/tests pass.\n\nFeature: ${featureKey}\nRequirement: ${requirement.text}`;
 
-      const result = await this.aiValidator.validateRequirement(requirement, featureConfig as any, featureKey);
-      
-      this.requirementsLoader.updateRequirement(featureKey, requirementId, {
-        status: result.status
-      });
+    await vscode.env.clipboard.writeText(prompt);
+    vscode.window.setStatusBarMessage('Removal prompt copied to clipboard', 4000);
 
-      vscode.window.showInformationMessage(
-        `Validation complete: ${result.status} (${result.confidence}% confidence)\n${result.reasoning}`
-      );
+    const action = await vscode.window.showInformationMessage(
+      'After removing the implementation, set status to not-started to allow deletion.',
+      'Set to Not-Started Now',
+      'OK'
+    );
 
+    if (action === 'Set to Not-Started Now') {
+      this.requirementsLoader.updateRequirement(featureKey, requirementId, { status: 'not-started' });
+      vscode.window.showInformationMessage('Requirement status set to "not-started". You can now delete it.');
       this.updateView();
-    });
+    }
+  }
+
+  private async handleValidateRequirement(featureKey: string, requirementId: string) {
+    const requirements = this.requirementsLoader.getRequirements(featureKey);
+    const requirement = requirements.find(r => r.id === requirementId);
+
+    if (!requirement) {
+      vscode.window.showErrorMessage('Requirement not found');
+      return;
+    }
+    
+    // Copy validation prompt to clipboard and show a brief status message
+    const validationPrompt = `Validate the implementation status of the following requirement in the current codebase. Respond ONLY with JSON: {\\n  \"status\": \"implemented\" | \"in-progress\" | \"not-started\",\\n  \"confidence\": <0-100>,\\n  \"reasoning\": \"<one sentence>\"\\n}\\n\\nFeature: ${featureKey}\\nRequirement: ${requirement.text}`;
+    await vscode.env.clipboard.writeText(validationPrompt);
+    vscode.window.setStatusBarMessage('Validation prompt copied to clipboard', 4000);
   }
 
   private async handleValidateAllRequirements(featureKey: string) {
@@ -366,16 +430,32 @@ export class DevModePanel {
 
       const results = await this.aiValidator.validateFeatureRequirements(requirements, featureConfig as any, featureKey);
       
+      let successCount = 0;
+      let failedCount = 0;
+      
       for (const result of results) {
-        this.requirementsLoader.updateRequirement(featureKey, result.requirementId, {
-          status: result.status
-        });
+        // Only update status if validation was successful (confidence > 0)
+        if (result.confidence > 0) {
+          this.requirementsLoader.updateRequirement(featureKey, result.requirementId, {
+            status: result.status
+          });
+          successCount++;
+        } else {
+          failedCount++;
+        }
       }
 
       const implementedCount = results.filter(r => r.status === 'implemented' || r.status === 'verified').length;
-      vscode.window.showInformationMessage(
-        `Validation complete: ${implementedCount}/${requirements.length} requirements implemented`
-      );
+      
+      if (failedCount > 0) {
+        vscode.window.showWarningMessage(
+          `Validation complete: ${implementedCount}/${requirements.length} requirements implemented\n${failedCount} validation(s) failed and status unchanged.`
+        );
+      } else {
+        vscode.window.showInformationMessage(
+          `Validation complete: ${implementedCount}/${requirements.length} requirements implemented`
+        );
+      }
 
       this.updateView();
     });
@@ -916,6 +996,13 @@ export class DevModePanel {
       event.stopPropagation();
       closeMenus();
       
+      // Find the requirement to get its status
+      const feature = currentData.features.find(f => f.key === featureKey);
+      const requirement = feature?.requirements.find(r => r.id === requirementId);
+      const status = requirement?.status || 'not-started';
+      
+      console.log('[Webview] showRequirementMenu - status:', status, 'requirement:', requirement);
+      
       // Create temporary menu
       const menu = document.createElement('div');
       menu.className = 'context-menu show';
@@ -923,12 +1010,31 @@ export class DevModePanel {
       menu.style.left = event.clientX + 'px';
       menu.style.top = event.clientY + 'px';
       
-      menu.innerHTML = \`
+      // Show "Build" for not-started, "Validate" for others
+      const actionLabel = status === 'not-started' ? 'Build' : 'Validate';
+      const actionType = status === 'not-started' ? 'build' : 'validate';
+      
+      console.log('[Webview] Menu action - status:', status, 'actionLabel:', actionLabel, 'actionType:', actionType);
+      
+      // For non-not-started requirements, show "Remove from code" instead of direct delete
+      let menuItems = \`
         <div class="context-menu-item" data-action="edit">Edit</div>
-        <div class="context-menu-item" data-action="validate">Validate</div>
+        <div class="context-menu-item" data-action="\${actionType}">\${actionLabel}</div>
+      \`;
+      
+      if (status !== 'not-started') {
+        menuItems += \`
+          <div class="context-menu-separator"></div>
+          <div class="context-menu-item" data-action="remove">Remove from code</div>
+        \`;
+      }
+      
+      menuItems += \`
         <div class="context-menu-separator"></div>
         <div class="context-menu-item" data-action="delete">Delete</div>
       \`;
+      
+      menu.innerHTML = menuItems;
       
       // Add event listeners to menu items
       menu.querySelectorAll('.context-menu-item').forEach(item => {
@@ -944,8 +1050,12 @@ export class DevModePanel {
           // Then perform action
           if (action === 'edit') {
             editRequirement(featureKey, requirementId);
+          } else if (action === 'build') {
+            buildRequirement(featureKey, requirementId);
           } else if (action === 'validate') {
             validateRequirement(featureKey, requirementId);
+          } else if (action === 'remove') {
+            removeRequirementFromCode(featureKey, requirementId);
           } else if (action === 'delete') {
             deleteRequirement(featureKey, requirementId);
           }
@@ -981,9 +1091,21 @@ export class DevModePanel {
       vscode.postMessage({ type: 'requirement:edit', featureKey, requirementId });
     }
     
+    function buildRequirement(featureKey, requirementId) {
+      console.log('[Webview] buildRequirement called:', featureKey, requirementId);
+      console.log('[Webview] About to send requirement:build message');
+      vscode.postMessage({ type: 'requirement:build', featureKey, requirementId });
+      console.log('[Webview] requirement:build message sent');
+    }
+    
     function validateRequirement(featureKey, requirementId) {
       console.log('[Webview] validateRequirement called:', featureKey, requirementId);
       vscode.postMessage({ type: 'requirement:validate', featureKey, requirementId });
+    }
+    
+    function removeRequirementFromCode(featureKey, requirementId) {
+      console.log('[Webview] removeRequirementFromCode called:', featureKey, requirementId);
+      vscode.postMessage({ type: 'requirement:remove', featureKey, requirementId });
     }
     
     function deleteRequirement(featureKey, requirementId) {

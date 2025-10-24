@@ -1,0 +1,3 @@
+-- not started        >> in progress         $$ completed
+
+-- In component view - show the connection between external sources and files

@@ -29,10 +29,14 @@ spec:
           - type: PostgreSQL
             name: MainDB
             description: Stores the user data
+            usedBy:
+              - src/store/db-schema.ts
 
 Guidelines:
 - Keep the description detailed but under 200 words
 - External sources include: Cloud services (RDS, S3, SQS, etc.), Data files, external API or service, etc.
+- For each external source, specify which files use it directly (actually integrate with it) in the 'usedBy' array (file paths relative to project root)
+- The usedBy field is optional - if not specified, the external source will only be connected to the component
 
 2. radium-features.yaml syntax
 

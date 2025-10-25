@@ -60,8 +60,9 @@ External objects represent systems, services, or resources outside your codebase
 - **type** (required): The type of external resource (e.g., PostgreSQL, S3, API, Redis, RabbitMQ)
 - **name** (required): Display name of the external object
 - **description** (optional): Additional details about the external resource
+- **usedBy** (optional): Array of file paths (relative to project root) that directly use this external resource
 
-External objects are displayed as white rounded rectangles with black text in the visualization, connected to their parent component.
+External objects are displayed as white rounded rectangles with black text in the visualization. They are connected to their parent component with solid lines, and to specific files (if specified in `usedBy`) with dashed lines.
 
 ## Complete Example
 
@@ -86,6 +87,9 @@ spec:
           - type: SQLite
             name: GraphDB
             description: Stores code graph and analysis data
+            usedBy:
+              - src/store/sql-adapter.ts
+              - src/store/schema.ts
     
     - integrations:
         name: External Integrations
@@ -97,6 +101,8 @@ spec:
           - type: API
             name: OpenAI API
             description: LLM service for code analysis
+            usedBy:
+              - src/orchestrator/llm-orchestrator.ts
     
     - core:
         name: Core Logic
@@ -181,12 +187,19 @@ Show external systems and services your components depend on:
       - type: PostgreSQL
         name: UserDB
         description: Primary user database
+        usedBy:
+          - src/api/user-repository.ts
+          - src/api/auth-service.ts
       - type: Redis
         name: SessionCache
         description: Session storage and caching
+        usedBy:
+          - src/api/session-manager.ts
       - type: S3
         name: MediaBucket
         description: User uploaded media files
+        usedBy:
+          - src/api/media-upload.ts
 ```
 
 This helps visualize the complete architecture including external dependencies.

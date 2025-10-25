@@ -399,6 +399,34 @@ export class MapPanel {
       }
     }
 
+    // Create edges from external objects to files based on explicit configuration
+    for (const [componentKey, files] of filesByComponent.entries()) {
+      const component = config.projectSpec.components[componentKey];
+      if (component && component.external && component.external.length > 0) {
+        for (const external of component.external) {
+          const externalKey = `${componentKey}:${external.name}`;
+          const externalId = externalNodes.get(externalKey);
+          
+          if (externalId && external.usedBy && external.usedBy.length > 0) {
+            // Connect to specific files listed in usedBy
+            for (const filePath of external.usedBy) {
+              const fileId = fileNodes.get(filePath);
+              if (fileId) {
+                const fileColor = componentColors.get(componentKey);
+                edges.push({
+                  source: externalId,
+                  target: fileId,
+                  kind: 'external-uses',
+                  weight: 0.3,
+                  color: fileColor
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Note: Classes, interfaces, types, and functions are not displayed as separate nodes
     // Only files, components, and their relationships are shown
 
@@ -1072,6 +1100,8 @@ export class MapPanel {
     let changedFilePaths = new Set();
     let isFilteredView = false;
     let fullGraphData = null;
+    let currentZoomLevel = 1;
+    const ZOOM_THRESHOLD = 0.3; // Below this zoom level, show only components
 
     const colorMap = {
       'component': '#00BCD4',
@@ -1097,6 +1127,55 @@ export class MapPanel {
       'external': 16
     };
 
+    function getExternalIcon(type) {
+      if (!type) return '📦';
+      
+      const typeLower = type.toLowerCase();
+      
+      // Database types
+      if (typeLower.includes('sql') || typeLower.includes('database') || typeLower.includes('db')) {
+        return '🗄️';
+      }
+      
+      // API types
+      if (typeLower.includes('api') || typeLower.includes('rest') || typeLower.includes('graphql')) {
+        return '🌐';
+      }
+      
+      // File types
+      if (typeLower.includes('file') || typeLower.includes('storage') || typeLower.includes('filesystem')) {
+        return '📁';
+      }
+      
+      // Cache types
+      if (typeLower.includes('cache') || typeLower.includes('redis') || typeLower.includes('memcache')) {
+        return '⚡';
+      }
+      
+      // Queue/Message types
+      if (typeLower.includes('queue') || typeLower.includes('message') || typeLower.includes('kafka') || typeLower.includes('rabbitmq')) {
+        return '📬';
+      }
+      
+      // Service types
+      if (typeLower.includes('service') || typeLower.includes('microservice')) {
+        return '⚙️';
+      }
+      
+      // Cloud/External service
+      if (typeLower.includes('cloud') || typeLower.includes('aws') || typeLower.includes('azure') || typeLower.includes('gcp')) {
+        return '☁️';
+      }
+      
+      // Authentication
+      if (typeLower.includes('auth') || typeLower.includes('oauth') || typeLower.includes('identity')) {
+        return '🔐';
+      }
+      
+      // Default
+      return '📦';
+    }
+
     function initVisualization() {
       const container = d3.select('#map');
       width = window.innerWidth;
@@ -1114,6 +1193,8 @@ export class MapPanel {
         .scaleExtent([0.1, 10])
         .on('zoom', (event) => {
           g.attr('transform', event.transform);
+          currentZoomLevel = event.transform.k;
+          updateVisibilityByZoom();
         });
 
       svg.call(zoom);
@@ -1124,12 +1205,14 @@ export class MapPanel {
           // Distances based on relationship type
           if (d.kind === 'contains') return 100;
           if (d.kind === 'defines') return 70;
+          if (d.kind === 'external-uses') return 80;
           if (d.kind === 'imports') return 250;
           return 120;
         }).strength(d => {
           // Weak links so clustering dominates
           if (d.kind === 'contains') return 0.2;
           if (d.kind === 'defines') return 0.3;
+          if (d.kind === 'external-uses') return 0.15;
           return 0.05;
         }))
         .force('charge', d3.forceManyBody().strength(d => {
@@ -1315,12 +1398,19 @@ export class MapPanel {
         .attr('stroke-width', d => {
           if (d.kind === 'contains') return 18;
           if (d.kind === 'defines') return 1.5;
+          if (d.kind === 'external-uses') return 2;
           return d.weight * 2;
         })
         .attr('stroke-opacity', d => {
           if (d.kind === 'contains') return 0.5;
           if (d.kind === 'defines') return 0.4;
+          if (d.kind === 'external-uses') return 0.7;
           return 0.7;
+        })
+        .attr('stroke-dasharray', d => {
+          // Dashed lines for external-uses edges
+          if (d.kind === 'external-uses') return '5,5';
+          return null;
         })
         .style('cursor', 'pointer');
 
@@ -1440,7 +1530,15 @@ export class MapPanel {
         .attr('stroke-width', 2)
         .style('cursor', 'pointer');
 
-      // Add external object name (black text)
+      // Add icon outside the box on the left
+      externalGroups.append('text')
+        .attr('class', 'external-icon')
+        .attr('x', d => -d._width / 2 - 35)
+        .attr('y', 5)
+        .attr('font-size', '28px')
+        .text(d => getExternalIcon(d.externalType));
+
+      // Add external object name (black text, centered)
       externalGroups.append('text')
         .attr('class', 'external-label')
         .attr('x', 0)
@@ -1489,6 +1587,10 @@ export class MapPanel {
                 // For 'contains' edges (component → file), use component color
                 if (d.kind === 'contains' && d.source.color) {
                   return d.source.color;
+                }
+                // For 'external-uses' edges (external → file), use target file's component color
+                if (d.kind === 'external-uses' && d.target.componentColor) {
+                  return d.target.componentColor;
                 }
                 // For 'imports' edges (file → file), use file's component color
                 if (d.kind === 'imports' && d.source.componentColor) {
@@ -1605,6 +1707,60 @@ export class MapPanel {
         .on('start', dragstarted)
         .on('drag', dragged)
         .on('end', dragended);
+    }
+
+    function updateVisibilityByZoom() {
+      const isZoomedOut = currentZoomLevel < ZOOM_THRESHOLD;
+      
+      // Hide/show file nodes and external nodes based on zoom level
+      g.selectAll('.file-group')
+        .style('display', isZoomedOut ? 'none' : 'block');
+      
+      g.selectAll('.external-group')
+        .style('display', isZoomedOut ? 'none' : 'block');
+      
+      // Hide/show edges connected to files and external objects
+      g.selectAll('.link')
+        .style('display', function(d) {
+          // Hide edges that connect to files or external objects when zoomed out
+          if (isZoomedOut) {
+            const sourceNode = d.source;
+            const targetNode = d.target;
+            if (sourceNode.kind === 'file' || targetNode.kind === 'file' ||
+                sourceNode.kind === 'external' || targetNode.kind === 'external') {
+              return 'none';
+            }
+          }
+          return 'block';
+        });
+      
+      // Adjust component box size and text size based on zoom
+      if (isZoomedOut) {
+        // Make components larger when zoomed out, sized to fit text
+        const fontSize = 80;
+        const padding = 40;
+        
+        g.selectAll('.component-box')
+          .attr('width', d => Math.max(300, d.name.length * fontSize * 0.6 + padding * 2))
+          .attr('height', fontSize + padding * 2)
+          .attr('x', d => -Math.max(300, d.name.length * fontSize * 0.6 + padding * 2) / 2)
+          .attr('y', d => -(fontSize + padding * 2) / 2);
+        
+        g.selectAll('.component-label')
+          .attr('font-size', fontSize + 'px')
+          .attr('y', fontSize / 3);
+      } else {
+        // Restore normal size
+        g.selectAll('.component-box')
+          .attr('width', d => d._width)
+          .attr('height', d => d._height)
+          .attr('x', d => -d._width / 2)
+          .attr('y', d => -d._height / 2);
+        
+        g.selectAll('.component-label')
+          .attr('font-size', '28px')
+          .attr('y', 10);
+      }
     }
 
     function resetView() {

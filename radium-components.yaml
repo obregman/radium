@@ -16,6 +16,9 @@ spec:
           - type: SQLite
             name: GraphDB
             description: Stores code graph and analysis data
+            usedBy:
+              - src/store/sql-adapter.ts
+              - src/store/schema.ts
     
     - indexer:
         name: Code Indexer
@@ -47,6 +50,8 @@ spec:
           - type: API
             name: OpenAI API
             description: LLM service for code analysis
+            usedBy:
+              - src/orchestrator/llm-orchestrator.ts
     
     - config:
         name: Configuration

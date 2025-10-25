@@ -25,171 +25,6 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 
 The extension indexes your workspace and displays an interactive graph.
 
-### Defining Components
-
-Create a `radium-components.yaml` file in your project root:
-
-```yaml
-spec:
-  components:
-    - frontend:
-        name: Frontend
-        description: UI components
-        files:
-          - src/components/**
-          - src/views/**
-        external:
-    
-    - backend:
-        name: Backend
-        description: API and business logic
-        files:
-          - src/api/**
-          - src/services/**
-        external:
-          - type: PostgreSQL
-            name: MainDB
-            description: Primary database
-          - type: Redis
-            name: Cache
-            description: Session cache
-```
-
-Components appear as color-coded boxes in the graph. Files are grouped by their component. External objects (databases, APIs, services) are shown as white rounded rectangles connected to their components.
-
-### Visualizing Features
-
-Create a `radium-features.yaml` file to visualize your product features and their relationships:
-
-```yaml
-spec:
-  features:
-  - authentication:
-      name: User Authentication
-      description: Login and registration system
-      status: completed
-      owner: Backend Team
-      components:
-        - backend
-        - frontend
-      dependencies: []
-  
-  - user-profile:
-      name: User Profile
-      description: User profile management
-      status: in-progress
-      owner: Frontend Team
-      components:
-        - frontend
-      dependencies:
-        - authentication
-      flow:
-        - type: user
-          name: Click edit profile
-          description: User clicks the edit profile button
-        - type: window
-          name: Show profile form
-          description: Display editable profile form
-        - type: user
-          name: Update details
-          description: User modifies their information
-        - type: api
-          name: Save profile
-          description: Send updated data to backend
-        - type: database
-          name: Update database
-          description: Store changes in database
-        - type: window
-          name: Show success
-          description: Display confirmation message
-```
-
-Run `Radium: Features Map` to see an interactive visualization of your features, their status, dependencies, and user flows. Flow items are displayed as colored boxes connected by arrows, showing the sequence of steps in each feature.
-
-### Dev Mode: Managing Requirements
-
-Radium dev mode allows you to add, track, and validate requirements for each feature.
-
-#### Setting Up Requirements
-
-Create a `radium-req.yaml` file in your project root:
-
-```yaml
-spec:
-  requirements:
-    - authentication:
-        - id: req-auth-1
-          text: "User can log in with email and password"
-          status: implemented
-          implementedStatus: true
-        - id: req-auth-2
-          text: "Password reset via email"
-          status: in-progress
-          implementedStatus: false
-```
-
-#### Using Dev Mode
-
-1. Open Dev Mode: `Radium: Dev Mode` (or `Radium: Features Map`)
-2. Click the three-dot menu (⋮) on any feature box
-3. Select **"+ Add requirement"** to add a new requirement
-4. Click on any requirement to:
-   - **Edit** - Modify the requirement text
-   - **Validate** - Use AI to check if it's implemented
-   - **Delete** - Remove the requirement
-
-#### Requirement Status
-
-Requirements show two indicators:
-- **Left gauge** (colored circle): Status (not-started, in-progress, implemented, verified)
-  - Gray: not-started
-  - Orange: in-progress
-  - Green: implemented
-  - Blue: verified
-- **Right gauge**: Implementation status (gray = not implemented, green = implemented)
-
-#### AI Validation
-
-Click **"Validate requirements"** from the feature menu to automatically check all requirements using AI. The AI analyzes your codebase and updates the implementation status for each requirement.
-
-**Supported AI Providers:**
-- **Cursor AI** - Recommended for Cursor users (set `radium.devMode.aiProvider` to `"cursor"`)
-- **GitHub Copilot** - For VS Code with Copilot subscription
-- **Claude API** - Coming soon
-
-The validator automatically provides code context from relevant component files to improve accuracy.
-
-📖 **See [Cursor Integration Guide](docs/cursor-integration.md) for detailed setup and usage**
-
-### Working with LLM Changes
-
-1. Get a change plan from your LLM in JSON format:
-
-```json
-{
-  "intent": "add authentication",
-  "rationale": "Adding user login flow",
-  "edits": [
-    {
-      "path": "src/auth.ts",
-      "operations": [
-        {
-          "type": "replace",
-          "range": { "start": [10, 0], "end": [20, 0] },
-          "text": "export function authenticate(token: string) {\n  return verifyToken(token);\n}"
-        }
-      ]
-    }
-  ],
-  "tests": ["tests/auth.spec.ts"],
-  "risk": "medium"
-}
-```
-
-2. Copy the JSON to clipboard
-3. Run: `Radium: Preview LLM Plan from Clipboard`
-4. Review the changes in the graph
-5. Run: `Radium: Apply LLM Plan` to apply, or reject them
 
 ### Available Commands
 
@@ -302,10 +137,14 @@ spec:
           - type: PostgreSQL
             name: MainDB
             description: Stores the user data
+            usedBy:
+              - src/store/db-schema.ts
 
 Guidelines:
 - Keep the description detailed but under 200 words
 - External sources include: Cloud services (RDS, S3, SQS, etc.), Data files, external API or service, etc.
+- For each external source, specify which files use it directly (actually integrate with it) in the 'usedBy' array (file paths relative to project root)
+- The usedBy field is optional - if not specified, the external source will only be connected to the component
 
 2. radium-features.yaml syntax
 

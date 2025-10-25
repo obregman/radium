@@ -1,14 +1,9 @@
 -- not started        >> in progress         $$ completed
 
-$$ In component view - display the connection between external sources and files with dashed lines
-
-$$ When zooming out, the view should change to only display the component boxes, they should become large with large text
-
-$$ External source box should have an icon according to type: database, file, api, etc..
-
 -- In the component view - remove the legend, remove the structure and relation buttonss, reset view should switch to a zoomed out mode where all components are visible
 
 -- Do not use the weighted layout for the component view. Layout the components, files and external sources in a static view
 
 -- In the components view, when the user is viewing changed files. hovering on a file should display the diff
+
 

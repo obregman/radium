@@ -137,8 +137,8 @@ export class MapPanel {
       MapPanel.outputChannel.appendLine(`  - ${hunks.filePath || 'unknown'}`);
     });
     
-    // Update overlay to show changes with connected components
-    this.updateOverlay(sessionId, true);
+    // Update overlay to show changes (don't filter, show all files)
+    this.updateOverlay(sessionId, false);
   }
 
   private async handleFileOpen(filePath: string) {
@@ -1215,7 +1215,7 @@ export class MapPanel {
         .alphaDecay(0.02);
     }
 
-    function applyClusterLayout(data) {
+    function applyStaticLayout(data) {
       // Ensure width/height are set
       if (width === 0 || height === 0) {
         width = window.innerWidth || 1200;
@@ -1223,105 +1223,228 @@ export class MapPanel {
         console.warn('[Radium Map] Width/height were 0, using:', width, 'x', height);
       }
 
-      console.log('[Radium Map] Applying cluster layout with dimensions:', width, 'x', height);
+      console.log('[Radium Map] Applying static layout with dimensions:', width, 'x', height);
 
-      // Create clusters for components only (no directories)
-      const clusterNodes = data.nodes.filter(n => n.kind === 'component');
-      const clusterPositions = new Map();
-
-      // Handle case when there are no components
-      let cols, rows, cellWidth, cellHeight;
-      if (clusterNodes.length === 0) {
-        // No components - use simple grid for files
-        cols = 1;
-        rows = 1;
-        cellWidth = width / 2;
-        cellHeight = height / 2;
-      } else {
-        cols = Math.ceil(Math.sqrt(clusterNodes.length));
-        rows = Math.ceil(clusterNodes.length / cols);
-        cellWidth = width / (cols + 1);
-        cellHeight = height / (rows + 1);
+      // Get all components
+      const componentNodes = data.nodes.filter(n => n.kind === 'component');
+      
+      if (componentNodes.length === 0) {
+        console.log('[Radium Map] No components found');
+        return;
       }
 
-      console.log('[Radium Map] Grid layout:', cols, 'cols x', rows, 'rows, cell:', cellWidth, 'x', cellHeight);
+      // Define spacing based on design
+      const headerHeight = 50;
+      const contentPadding = 15;
+      const fileBoxHeight = 30;
+      const externalBoxWidth = 140;
+      const externalBoxHeight = 50;
+      const fileSpacingX = 10;
+      const fileSpacingY = 10;
+      const externalSpacingY = 65;
+      const filesStartX = contentPadding;
+      const filesStartY = headerHeight + contentPadding;
+      const minComponentWidth = 300;
+      const minComponentHeight = 200;
       
-      clusterNodes.forEach((cluster, i) => {
+      // First pass: Calculate size for each component based on its children
+      componentNodes.forEach((component) => {
+        // Get all files and external objects for this component
+        const children = data.edges
+          .filter(e => e.source === component.id && (e.kind === 'contains' || e.kind === 'uses'))
+          .map(e => ({
+            node: data.nodes.find(n => n.id === e.target),
+            kind: e.kind
+          }))
+          .filter(c => c.node);
+        
+        const files = children.filter(c => c.node.kind === 'file').map(c => c.node);
+        const externals = children.filter(c => c.node.kind === 'external').map(c => c.node);
+        
+        console.log('[Radium Map] Component ' + component.name + ': ' + files.length + ' files, ' + externals.length + ' externals');
+        
+        // Calculate file box widths based on filename length
+        files.forEach(file => {
+          const charWidth = 7; // Approximate character width
+          const padding = 20;
+          file._width = Math.max(80, file.name.length * charWidth + padding);
+          file._height = fileBoxHeight;
+        });
+        
+        // Calculate how many columns of files we need (max 4 columns)
+        const maxFileCols = 4;
+        const fileCols = Math.min(maxFileCols, Math.max(2, Math.ceil(Math.sqrt(files.length))));
+        const fileRows = Math.ceil(files.length / fileCols);
+        
+        // Calculate max file width in each column
+        const fileColWidths = [];
+        for (let col = 0; col < fileCols; col++) {
+          let maxWidth = 80;
+          for (let row = 0; row < fileRows; row++) {
+            const idx = row * fileCols + col;
+            if (idx < files.length) {
+              maxWidth = Math.max(maxWidth, files[idx]._width);
+            }
+          }
+          fileColWidths.push(maxWidth);
+        }
+        
+        // Calculate files area width and height
+        const filesAreaWidth = fileColWidths.reduce((sum, w) => sum + w, 0) + (fileCols - 1) * fileSpacingX;
+        const filesAreaHeight = fileRows * (fileBoxHeight + fileSpacingY);
+        
+        // Store file column widths for positioning later
+        component._fileColWidths = fileColWidths;
+        
+        // Calculate externals area height
+        const externalsAreaHeight = externals.length * externalBoxHeight + (externals.length - 1) * (externalSpacingY - externalBoxHeight);
+        
+        // Component width: files area + spacing + externals area + padding
+        const componentBoxWidth = Math.max(
+          minComponentWidth,
+          filesAreaWidth + 20 + externalBoxWidth + contentPadding * 2
+        );
+        
+        // Component height: max of files height and externals height + header + padding
+        const componentBoxHeight = Math.max(
+          minComponentHeight,
+          headerHeight + Math.max(filesAreaHeight, externalsAreaHeight) + contentPadding * 2
+        );
+        
+        // Store calculated dimensions
+        component._boxWidth = componentBoxWidth;
+        component._boxHeight = componentBoxHeight;
+        component._fileCols = fileCols;
+        component._files = files;
+        component._externals = externals;
+      });
+      
+      // Calculate grid layout for components (3 per row)
+      const cols = 3;
+      const rows = Math.ceil(componentNodes.length / cols);
+      const componentGap = 50; // Uniform gap between components
+      const startX = 50;
+      const startY = 50;
+
+      console.log('[Radium Map] Grid layout:', cols, 'cols x', rows, 'rows');
+      
+      // Calculate positions for each row (Y positions)
+      const rowYPositions = [];
+      let currentY = startY;
+      for (let row = 0; row < rows; row++) {
+        rowYPositions.push(currentY);
+        
+        // Find max height in this row
+        let maxHeight = 0;
+        for (let col = 0; col < cols; col++) {
+          const idx = row * cols + col;
+          if (idx < componentNodes.length) {
+            maxHeight = Math.max(maxHeight, componentNodes[idx]._boxHeight);
+          }
+        }
+        currentY += maxHeight + componentGap;
+      }
+      
+      // Calculate positions for each column (X positions)
+      const colXPositions = [];
+      let currentX = startX;
+      for (let col = 0; col < cols; col++) {
+        colXPositions.push(currentX);
+        
+        // Find max width in this column
+        let maxWidth = 0;
+        for (let row = 0; row < rows; row++) {
+          const idx = row * cols + col;
+          if (idx < componentNodes.length) {
+            maxWidth = Math.max(maxWidth, componentNodes[idx]._boxWidth);
+          }
+        }
+        currentX += maxWidth + componentGap;
+      }
+      
+      // Calculate max width for each column for centering
+      const colMaxWidths = [];
+      for (let col = 0; col < cols; col++) {
+        let maxWidth = 0;
+        for (let row = 0; row < rows; row++) {
+          const idx = row * cols + col;
+          if (idx < componentNodes.length) {
+            maxWidth = Math.max(maxWidth, componentNodes[idx]._boxWidth);
+          }
+        }
+        colMaxWidths.push(maxWidth);
+      }
+      
+      // Second pass: Position each component and its children
+      componentNodes.forEach((component, i) => {
         const col = i % cols;
         const row = Math.floor(i / cols);
-        clusterPositions.set(cluster.id, {
-          x: cellWidth * (col + 1),
-          y: cellHeight * (row + 1)
+        
+        // Center component within its column space
+        const colMaxWidth = colMaxWidths[col];
+        const centerOffset = (colMaxWidth - component._boxWidth) / 2;
+        const boxX = colXPositions[col] + centerOffset;
+        const boxY = rowYPositions[row];
+        
+        // Store box position
+        component._boxX = boxX;
+        component._boxY = boxY;
+        
+        // Position component header at the top of the box
+        component.x = boxX + component._boxWidth / 2;
+        component.y = boxY + headerHeight / 2;
+        component.fx = component.x;
+        component.fy = component.y;
+        
+        const files = component._files;
+        const externals = component._externals;
+        const fileCols = component._fileCols;
+        const fileColWidths = component._fileColWidths;
+        
+        // Calculate externals start position (right side)
+        const externalsStartX = component._boxWidth - externalBoxWidth - contentPadding;
+        
+        // Position files in grid on the left side inside the box
+        files.forEach((file, idx) => {
+          const fileCol = idx % fileCols;
+          const fileRow = Math.floor(idx / fileCols);
+          
+          // Calculate X position based on column widths
+          let fileX = boxX + filesStartX;
+          for (let c = 0; c < fileCol; c++) {
+            fileX += fileColWidths[c] + fileSpacingX;
+          }
+          
+          // Position at center of file box
+          file.x = fileX + file._width / 2;
+          file.y = boxY + filesStartY + fileRow * (fileBoxHeight + fileSpacingY) + fileBoxHeight / 2;
+          file.fx = file.x;
+          file.fy = file.y;
+        });
+        
+        // Position external objects on the right side inside the box
+        externals.forEach((external, idx) => {
+          // Position at center of external box
+          external.x = boxX + externalsStartX + externalBoxWidth / 2;
+          external.y = boxY + filesStartY + idx * externalSpacingY + externalBoxHeight / 2;
+          external.fx = external.x;
+          external.fy = external.y;
+          external._width = externalBoxWidth;
+          external._height = externalBoxHeight;
         });
       });
 
-      // Assign each file to its parent component position
-      // AND initialize random positions near component center
+      // Ensure all nodes have positions
       data.nodes.forEach(node => {
-        if (node.kind === 'component') {
-          // Initialize component at its position
-          if (clusterPositions.has(node.id)) {
-            const pos = clusterPositions.get(node.id);
-            node.x = pos.x + (Math.random() - 0.5) * 50;
-            node.y = pos.y + (Math.random() - 0.5) * 50;
-          }
-        } else if (node.kind === 'file') {
-          // Find parent component
-          const parentEdge = data.edges.find(e => e.target === node.id && e.kind === 'contains');
-          if (parentEdge) {
-            const parentComponent = data.nodes.find(n => n.id === parentEdge.source);
-            if (parentComponent && clusterPositions.has(parentComponent.id)) {
-              node._clusterPos = clusterPositions.get(parentComponent.id);
-              // Initialize near component center with more spread
-              node.x = node._clusterPos.x + (Math.random() - 0.5) * 150;
-              node.y = node._clusterPos.y + (Math.random() - 0.5) * 150;
-            }
-          } else {
-            // Files without components get random positions
-            node.x = Math.random() * width;
-            node.y = Math.random() * height;
-          }
-        }
-        
-        // Fallback: random position if no cluster assigned
-        if (node.x === undefined) {
-          node.x = Math.random() * width;
-          node.y = Math.random() * height;
+        if (node.x === undefined || node.y === undefined) {
+          node.x = width / 2;
+          node.y = height / 2;
+          node.fx = node.x;
+          node.fy = node.y;
         }
       });
 
-      // Debug: Log some initial positions
-      const sampleNodes = data.nodes.slice(0, 5);
-      console.log('[Radium Map] Sample initial positions:', sampleNodes.map(n => ({
-        id: n.id,
-        name: n.name,
-        kind: n.kind,
-        x: n.x,
-        y: n.y
-      })));
-
-      // Update simulation forces to use component positions
-      simulation
-        .force('x', d3.forceX(d => {
-          if (d.kind === 'component' && clusterPositions.has(d.id)) {
-            return clusterPositions.get(d.id).x;
-          }
-          if (d._clusterPos) {
-            return d._clusterPos.x;
-          }
-          return width / 2;
-        }).strength(0.2))
-        .force('y', d3.forceY(d => {
-          if (d.kind === 'component' && clusterPositions.has(d.id)) {
-            return clusterPositions.get(d.id).y;
-          }
-          if (d._clusterPos) {
-            return d._clusterPos.y;
-          }
-          return height / 2;
-        }).strength(0.2));
-
-      return clusterPositions;
+      console.log('[Radium Map] Static layout applied');
     }
 
     function updateGraph(data, filtered = false) {
@@ -1339,9 +1462,9 @@ export class MapPanel {
           document.getElementById('show-all-btn').style.display = 'block';
         }
 
-        // Apply clustering and position initialization
-        console.log('[Radium Map] Applying cluster layout...');
-        applyClusterLayout(data);
+        // Apply static layout
+        console.log('[Radium Map] Applying static layout...');
+        applyStaticLayout(data);
 
         // Clear existing
         console.log('[Radium Map] Clearing existing graph...');
@@ -1373,96 +1496,36 @@ export class MapPanel {
       const getId = (v) => (typeof v === 'object' && v !== null ? v.id : v);
       const filteredEdges = data.edges.filter(e => visibleIds.has(getId(e.source)) && visibleIds.has(getId(e.target)));
 
-      // Create links - color will be set in tick function after simulation processes nodes
-      const links = g.append('g')
-        .selectAll('line')
-        .data(filteredEdges)
-        .join('line')
-        .attr('class', 'link')
-        .attr('stroke-width', d => {
-          if (d.kind === 'contains') return 18;
-          if (d.kind === 'defines') return 1.5;
-          if (d.kind === 'external-uses') return 2;
-          return d.weight * 2;
-        })
-        .attr('stroke-opacity', d => {
-          if (d.kind === 'contains') return 0.5;
-          if (d.kind === 'defines') return 0.4;
-          if (d.kind === 'external-uses') return 0.7;
-          return 0.7;
-        })
-        .attr('stroke-dasharray', d => {
-          // Dashed lines for external-uses edges
-          if (d.kind === 'external-uses') return '5,5';
-          return null;
-        })
-        .style('cursor', 'pointer');
+      // DO NOT draw connection lines in component view
+      // const links = ... (removed)
 
-      // Create file boxes
-      const fileGroups = g.append('g')
-        .selectAll('g')
-        .data(fileNodes)
-        .join('g')
-        .attr('class', 'file-group')
-        .call(drag(simulation));
-
-      // Calculate box dimensions based on content
-      fileNodes.forEach(file => {
-        const functions = file.functions || [];
-        file._functions = functions;
-        file._width = Math.max(100, file.name.length * 7 + 20);
-        file._height = 30; // Fixed height, no function list
-      });
-
-      // Draw file boxes with component-colored borders
-      fileGroups.append('rect')
-        .attr('class', 'file-box')
-        .attr('width', d => d._width)
-        .attr('height', d => d._height)
-        .attr('x', d => -d._width / 2)
-        .attr('y', d => -d._height / 2)
-        .attr('stroke', d => d.componentColor || 'var(--vscode-editor-foreground)')
-        .attr('stroke-width', d => d.componentColor ? 3 : 2)
-        .on('click', (event, d) => {
-          console.log('[Radium Map] File box clicked:', d.path);
-          vscode.postMessage({
-            type: 'file:open',
-            filePath: d.path
-          });
-        });
-
-      // Add file name (centered in box)
-      fileGroups.append('text')
-        .attr('class', 'file-title')
-        .attr('x', 0)
-        .attr('y', 4)
-        .attr('text-anchor', 'middle')
-        .attr('font-size', '11px')
-        .text(d => d.name);
-
-      // Create component boxes (twice as large as before)
-      componentNodes.forEach(component => {
-        component._width = Math.max(300, component.name.length * 20 + 80);
-        component._height = 90;
-      });
-
-      const componentGroups = g.append('g')
-        .selectAll('g')
+      // FIRST: Draw all component container boxes (background layer)
+      // Draw directly to main g element, not in groups
+      g.selectAll('.component-container')
         .data(componentNodes)
-        .join('g')
-        .attr('class', 'component-group')
-        .call(drag(simulation));
-
-      componentGroups.append('rect')
-        .attr('class', 'component-box')
-        .attr('width', d => d._width)
-        .attr('height', d => d._height)
-        .attr('x', d => -d._width / 2)
-        .attr('y', d => -d._height / 2)
-        .attr('stroke-width', 3)
+        .join('rect')
+        .attr('class', 'component-container')
+        .attr('x', d => d._boxX)
+        .attr('y', d => d._boxY)
+        .attr('width', d => d._boxWidth)
+        .attr('height', d => d._boxHeight)
+        .attr('fill', 'var(--vscode-editor-background)')
         .attr('stroke', d => d.color)
+        .attr('stroke-width', 3)
+        .attr('rx', 8)
+        .attr('ry', 8);
+
+      // Draw the header bars for each component
+      g.selectAll('.component-header')
+        .data(componentNodes)
+        .join('rect')
+        .attr('class', 'component-header')
+        .attr('x', d => d._boxX)
+        .attr('y', d => d._boxY)
+        .attr('width', d => d._boxWidth)
+        .attr('height', 50)
         .attr('fill', d => d.color)
-        .attr('fill-opacity', 0.85)
+        .attr('fill-opacity', 0.9)
         .attr('rx', 8)
         .attr('ry', 8)
         .on('click', (event, d) => {
@@ -1470,76 +1533,163 @@ export class MapPanel {
             type: 'node:selected',
             nodeId: d.originalId || d.id
           });
-        });
+        })
+        .style('cursor', 'pointer');
 
-      // Add description as tooltip for component boxes
-      componentGroups.append('title')
-        .text(d => d.description || d.name);
-
-      componentGroups.append('text')
+      // Add component name text in headers
+      g.selectAll('.component-label')
+        .data(componentNodes)
+        .join('text')
         .attr('class', 'component-label')
-        .attr('x', 0)
-        .attr('y', 10)
+        .attr('x', d => d._boxX + d._boxWidth / 2)
+        .attr('y', d => d._boxY + 33)
         .attr('text-anchor', 'middle')
-        .attr('font-size', '28px')
+        .attr('font-size', '18px')
         .attr('font-weight', 'bold')
         .attr('fill', '#FFFFFF')
-        .attr('text-shadow', '2px 2px 4px rgba(0,0,0,0.5)')
+        .text(d => d.name)
+        .append('title')
+        .text(d => d.description || d.name);
+
+      // SECOND: Create file boxes (inside component containers)
+      const fileGroups = g.append('g')
+        .selectAll('g')
+        .data(fileNodes)
+        .join('g')
+        .attr('class', 'file-group');
+      // No dragging for files
+
+      // Draw file boxes with fixed size and component-colored borders
+      fileGroups.append('rect')
+        .attr('class', 'file-box')
+        .attr('width', d => d._width || 100)
+        .attr('height', d => d._height || 30)
+        .attr('x', d => -(d._width || 100) / 2)
+        .attr('y', d => -(d._height || 30) / 2)
+        .attr('fill', 'var(--vscode-editor-background)')
+        .attr('stroke', d => d.componentColor || 'var(--vscode-editor-foreground)')
+        .attr('stroke-width', 2)
+        .attr('rx', 3)
+        .attr('ry', 3)
+        .on('click', (event, d) => {
+          console.log('[Radium Map] File box clicked:', d.path);
+          vscode.postMessage({
+            type: 'file:open',
+            filePath: d.path
+          });
+        })
+        .on('mouseover', function(event, d) {
+          // Show diff tooltip if file has changes
+          if (d._changeInfo && d._changeInfo.hunks) {
+            const tooltip = d3.select('body').append('div')
+              .attr('class', 'file-diff-tooltip')
+              .style('position', 'fixed')
+              .style('left', event.clientX + 10 + 'px')
+              .style('top', event.clientY + 10 + 'px')
+              .style('background', 'var(--vscode-editorHoverWidget-background)')
+              .style('color', 'var(--vscode-editorHoverWidget-foreground)')
+              .style('border', '1px solid var(--vscode-editorHoverWidget-border)')
+              .style('padding', '10px')
+              .style('border-radius', '4px')
+              .style('font-family', 'monospace')
+              .style('font-size', '11px')
+              .style('max-width', '600px')
+              .style('max-height', '400px')
+              .style('overflow', 'auto')
+              .style('white-space', 'pre')
+              .style('pointer-events', 'none')
+              .style('z-index', '10000')
+              .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)');
+            
+            // Format diff
+            let diffText = 'File: ' + d.path + '\\n\\n';
+            const hunks = d._changeInfo.hunks;
+            if (hunks.hunks && hunks.hunks.length > 0) {
+              hunks.hunks.forEach(hunk => {
+                diffText += hunk.header + '\\n';
+                hunk.lines.forEach(line => {
+                  diffText += line + '\\n';
+                });
+                diffText += '\\n';
+              });
+            } else {
+              diffText += 'File modified';
+            }
+            
+            tooltip.text(diffText);
+          }
+        })
+        .on('mousemove', function(event) {
+          d3.select('.file-diff-tooltip')
+            .style('left', event.clientX + 10 + 'px')
+            .style('top', event.clientY + 10 + 'px');
+        })
+        .on('mouseout', function() {
+          d3.select('.file-diff-tooltip').remove();
+        })
+        .style('cursor', 'pointer');
+
+      // Add file name (centered in box, full name)
+      fileGroups.append('text')
+        .attr('class', 'file-title')
+        .attr('x', 0)
+        .attr('y', 4)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', '10px')
+        .attr('fill', 'var(--vscode-editor-foreground)')
         .text(d => d.name);
 
-      // Create external object rounded rectangles
-      externalNodes.forEach(external => {
-        external._width = Math.max(120, external.name.length * 8 + 40);
-        external._height = 60;
-      });
-
+      // THIRD: Create external object rounded rectangles (inside component containers)
       const externalGroups = g.append('g')
         .selectAll('g')
         .data(externalNodes)
         .join('g')
-        .attr('class', 'external-group')
-        .call(drag(simulation));
+        .attr('class', 'external-group');
+      // No dragging for externals
 
-      // Draw white rounded rectangles with black stroke
+      // Draw white rounded rectangles with black stroke (fixed size)
       externalGroups.append('rect')
         .attr('class', 'external-rect')
-        .attr('width', d => d._width)
-        .attr('height', d => d._height)
-        .attr('x', d => -d._width / 2)
-        .attr('y', d => -d._height / 2)
-        .attr('rx', 12)
-        .attr('ry', 12)
+        .attr('width', d => d._width || 140)
+        .attr('height', d => d._height || 50)
+        .attr('x', d => -(d._width || 140) / 2)
+        .attr('y', d => -(d._height || 50) / 2)
+        .attr('rx', 8)
+        .attr('ry', 8)
         .attr('fill', '#FFFFFF')
         .attr('stroke', '#000000')
         .attr('stroke-width', 2)
         .style('cursor', 'pointer');
 
-      // Add icon outside the box on the left
+      // Add icon inside the box on the left
       externalGroups.append('text')
         .attr('class', 'external-icon')
-        .attr('x', d => -d._width / 2 - 35)
+        .attr('x', d => -(d._width || 140) / 2 + 20)
         .attr('y', 5)
-        .attr('font-size', '28px')
+        .attr('font-size', '24px')
         .text(d => getExternalIcon(d.externalType));
 
-      // Add external object name (black text, centered)
+      // Add external object name (black text, to the right of icon)
       externalGroups.append('text')
         .attr('class', 'external-label')
-        .attr('x', 0)
+        .attr('x', d => -(d._width || 140) / 2 + 50)
         .attr('y', -5)
-        .attr('text-anchor', 'middle')
-        .attr('font-size', '14px')
+        .attr('text-anchor', 'start')
+        .attr('font-size', '11px')
         .attr('font-weight', 'bold')
         .attr('fill', '#000000')
-        .text(d => d.name);
+        .text(d => {
+          const name = d.name;
+          return name.length > 12 ? name.substring(0, 10) + '...' : name;
+        });
 
       // Add external object type (smaller, below name)
       externalGroups.append('text')
         .attr('class', 'external-type')
-        .attr('x', 0)
-        .attr('y', 12)
-        .attr('text-anchor', 'middle')
-        .attr('font-size', '11px')
+        .attr('x', d => -(d._width || 140) / 2 + 50)
+        .attr('y', 10)
+        .attr('text-anchor', 'start')
+        .attr('font-size', '9px')
         .attr('fill', '#666666')
         .text(d => d.externalType);
 
@@ -1557,111 +1707,20 @@ export class MapPanel {
         external: data.nodes.filter(n => n.kind === 'external').length
       });
 
-      // Update simulation
-      simulation.nodes(data.nodes)
-        .on('tick', () => {
-          try {
-            links
-              .attr('x1', d => d.source.x)
-              .attr('y1', d => d.source.y)
-              .attr('x2', d => d.target.x)
-              .attr('y2', d => d.target.y)
-              .attr('stroke', d => {
-                // Color lines based on their source node
-                // For 'contains' edges (component → file), use component color
-                if (d.kind === 'contains' && d.source.color) {
-                  return d.source.color;
-                }
-                // For 'external-uses' edges (external → file), use target file's component color
-                if (d.kind === 'external-uses' && d.target.componentColor) {
-                  return d.target.componentColor;
-                }
-                // For 'imports' edges (file → file), use file's component color
-                if (d.kind === 'imports' && d.source.componentColor) {
-                  return d.source.componentColor;
-                }
-                // For other edges from components, use component color
-                if (d.source.color) {
-                  return d.source.color;
-                }
-                // For other edges from files, use component color
-                if (d.source.componentColor) {
-                  return d.source.componentColor;
-                }
-                // Fallback to default colors
-                return '#555';
-              });
-
-            // Position file boxes
-            fileGroups
-              .attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
-
-            // Position component boxes
-            componentGroups
-              .attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
-
-            // Position external object ellipses
-            externalGroups
-              .attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
-          } catch (error) {
-            console.error('[Radium Map] Error in tick:', error);
-          }
-        });
-
-      // Connect edges to the simulation
-      simulation.force('link').links(filteredEdges);
+      // Update simulation with static positions (no movement)
+      simulation.nodes(data.nodes);
+      simulation.force('link').links([]);  // No links to draw
+      simulation.alpha(0).stop();
       
-      // Add hover events after links are connected to simulation (source/target are now objects)
-      links
-        .on('mouseover', function(event, d) {
-          if (d.kind === 'contains') {
-            // d.source is now the actual node object with properties
-            const componentName = d.source && d.source.name ? d.source.name : 'Component';
-            
-            // Create tooltip
-            d3.select('body').append('div')
-              .attr('class', 'edge-tooltip')
-              .style('position', 'fixed')
-              .style('left', event.clientX + 10 + 'px')
-              .style('top', event.clientY + 10 + 'px')
-              .style('background', 'var(--vscode-editorHoverWidget-background)')
-              .style('color', 'var(--vscode-editorHoverWidget-foreground)')
-              .style('border', '1px solid var(--vscode-editorHoverWidget-border)')
-              .style('padding', '8px 12px')
-              .style('border-radius', '4px')
-              .style('font-size', '12px')
-              .style('pointer-events', 'none')
-              .style('z-index', '1000')
-              .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)')
-              .text(componentName);
-            
-            // Highlight the line
-            d3.select(this)
-              .attr('stroke-opacity', 0.9)
-              .attr('stroke-width', 22);
-          }
-        })
-        .on('mousemove', function(event) {
-          d3.select('.edge-tooltip')
-            .style('left', event.clientX + 10 + 'px')
-            .style('top', event.clientY + 10 + 'px');
-        })
-        .on('mouseout', function(event, d) {
-          // Remove tooltip
-          d3.select('.edge-tooltip').remove();
-          
-          // Reset line appearance
-          d3.select(this)
-            .attr('stroke-opacity', d.kind === 'contains' ? 0.5 : (d.kind === 'defines' ? 0.4 : 0.7))
-            .attr('stroke-width', d => {
-              if (d.kind === 'contains') return 18;
-              if (d.kind === 'defines') return 1.5;
-              return d.weight * 2;
-            });
-        });
+      // Position file boxes
+      fileGroups
+        .attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
+
+      // Position external object boxes
+      externalGroups
+        .attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
       
-      console.log('[Radium Map] Starting simulation with', data.nodes.length, 'nodes and', data.edges.length, 'edges');
-      simulation.alpha(1).restart();
+      console.log('[Radium Map] Static layout applied with', data.nodes.length, 'nodes and', data.edges.length, 'edges');
       console.log('[Radium Map] updateGraph completed successfully');
       } catch (error) {
         console.error('[Radium Map] Error in updateGraph:', error);
@@ -1671,20 +1730,34 @@ export class MapPanel {
 
     function drag(simulation) {
       function dragstarted(event) {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
+        // Keep the node fixed at its current position
         event.subject.fx = event.subject.x;
         event.subject.fy = event.subject.y;
       }
 
       function dragged(event) {
+        // Update fixed position while dragging
         event.subject.fx = event.x;
         event.subject.fy = event.y;
+        event.subject.x = event.x;
+        event.subject.y = event.y;
+        
+        // Manually update positions of this node's visual elements
+        d3.select(event.sourceEvent.target.parentNode)
+          .attr('transform', 'translate(' + event.x + ',' + event.y + ')');
+        
+        // Update connected edges
+        g.selectAll('.link')
+          .filter(d => d.source.id === event.subject.id || d.target.id === event.subject.id)
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y);
       }
 
       function dragended(event) {
-        if (!event.active) simulation.alphaTarget(0);
-        event.subject.fx = null;
-        event.subject.fy = null;
+        // Keep the node at its new fixed position
+        // Don't set fx/fy to null - we want it to stay where dragged
       }
 
       return d3.drag()
@@ -1703,47 +1776,49 @@ export class MapPanel {
       g.selectAll('.external-group')
         .style('display', isZoomedOut ? 'none' : 'block');
       
-      // Hide/show edges connected to files and external objects
-      g.selectAll('.link')
-        .style('display', function(d) {
-          // Hide edges that connect to files or external objects when zoomed out
-          if (isZoomedOut) {
-            const sourceNode = d.source;
-            const targetNode = d.target;
-            if (sourceNode.kind === 'file' || targetNode.kind === 'file' ||
-                sourceNode.kind === 'external' || targetNode.kind === 'external') {
-              return 'none';
-            }
-          }
-          return 'block';
-        });
-      
-      // Adjust component box size and text size based on zoom
+      // Adjust component appearance based on zoom
       if (isZoomedOut) {
-        // Make components larger when zoomed out, sized to fit text
-        const fontSize = 80;
-        const padding = 40;
+        // When zoomed out: Fill entire box with component color
+        g.selectAll('.component-container')
+          .attr('fill', d => d.color)
+          .attr('fill-opacity', 0.9);
         
-        g.selectAll('.component-box')
-          .attr('width', d => Math.max(300, d.name.length * fontSize * 0.6 + padding * 2))
-          .attr('height', fontSize + padding * 2)
-          .attr('x', d => -Math.max(300, d.name.length * fontSize * 0.6 + padding * 2) / 2)
-          .attr('y', d => -(fontSize + padding * 2) / 2);
+        // Hide the header bar (it's redundant when box is filled)
+        g.selectAll('.component-header')
+          .style('display', 'none');
         
+        // Enlarge and center the component label
         g.selectAll('.component-label')
-          .attr('font-size', fontSize + 'px')
-          .attr('y', fontSize / 3);
+          .attr('font-size', d => {
+            // Calculate font size that fits both width and height
+            const minDimension = Math.min(d._boxWidth, d._boxHeight);
+            const heightBasedSize = Math.min(72, minDimension / 3.5);
+            
+            // Estimate text width (rough approximation: 0.6 * fontSize per character)
+            const padding = 20; // Horizontal padding
+            const availableWidth = d._boxWidth - padding * 2;
+            const widthBasedSize = availableWidth / (d.name.length * 0.6);
+            
+            // Use the smaller of the two to ensure it fits
+            return Math.min(heightBasedSize, widthBasedSize, 72) + 'px';
+          })
+          .attr('x', d => d._boxX + d._boxWidth / 2)
+          .attr('y', d => d._boxY + d._boxHeight / 2 + 12); // Vertically centered
       } else {
-        // Restore normal size
-        g.selectAll('.component-box')
-          .attr('width', d => d._width)
-          .attr('height', d => d._height)
-          .attr('x', d => -d._width / 2)
-          .attr('y', d => -d._height / 2);
+        // Restore normal appearance
+        g.selectAll('.component-container')
+          .attr('fill', 'var(--vscode-editor-background)')
+          .attr('fill-opacity', 1);
         
+        // Show the header bar
+        g.selectAll('.component-header')
+          .style('display', 'block');
+        
+        // Restore normal label size and position
         g.selectAll('.component-label')
-          .attr('font-size', '28px')
-          .attr('y', 10);
+          .attr('font-size', '18px')
+          .attr('x', d => d._boxX + d._boxWidth / 2)
+          .attr('y', d => d._boxY + 33);
       }
     }
 
@@ -1829,51 +1904,69 @@ export class MapPanel {
     function highlightChangedFiles(changes) {
       changedFilePaths.clear();
       
-      // Extract file paths from changes
+      console.log('[Radium Map] highlightChangedFiles called with', changes.length, 'changes');
+      
+      // Create a map of file paths to change info
+      const changeMap = new Map();
       changes.forEach(change => {
+        console.log('[Radium Map] Adding changed file:', change.filePath);
         changedFilePaths.add(change.filePath);
+        changeMap.set(change.filePath, change);
       });
 
-      // Update node styling to highlight changed files
-      g.selectAll('.node')
-        .attr('stroke', d => {
-          if (d.kind === 'file' && changedFilePaths.has(d.path)) {
-            return '#FF5722'; // Orange/red for changed files
-          }
-          return 'var(--vscode-editor-foreground)';
-        })
-        .attr('stroke-width', d => {
-          if (d.kind === 'file' && changedFilePaths.has(d.path)) {
-            return 4;
-          }
-          if (d.kind === 'directory') return 3;
-          if (d.kind === 'file') return 2;
-          return 1.5;
-        })
-        .attr('fill', d => {
-          if (d.kind === 'file' && changedFilePaths.has(d.path)) {
-            return '#FF5722'; // Highlight changed files
-          }
-          return colorMap[d.kind] || '#999';
-        });
+      console.log('[Radium Map] Changed file paths:', Array.from(changedFilePaths));
 
-      // Add glow effect to changed files
-      g.selectAll('.node')
-        .filter(d => d.kind === 'file' && changedFilePaths.has(d.path))
-        .attr('filter', 'url(#glow)');
+      // Update file box styling to highlight changed files with yellow
+      let highlightCount = 0;
+      g.selectAll('.file-box')
+        .attr('fill', function(d) {
+          console.log('[Radium Map] Checking file:', d.path, 'changed:', changedFilePaths.has(d.path));
+          if (changedFilePaths.has(d.path)) {
+            highlightCount++;
+            return '#FFD700'; // Yellow for changed files
+          }
+          return 'var(--vscode-editor-background)';
+        })
+        .attr('stroke', function(d) {
+          if (changedFilePaths.has(d.path)) {
+            return '#FFA500'; // Orange border for changed files
+          }
+          return d.componentColor || 'var(--vscode-editor-foreground)';
+        })
+        .attr('stroke-width', function(d) {
+          if (changedFilePaths.has(d.path)) {
+            return 3;
+          }
+          return 2;
+        });
+      
+      console.log('[Radium Map] Highlighted', highlightCount, 'files');
+      
+      // Store change info on file nodes for hover tooltip
+      g.selectAll('.file-group')
+        .each(function(d) {
+          if (changedFilePaths.has(d.path)) {
+            d._changeInfo = changeMap.get(d.path);
+          } else {
+            d._changeInfo = null;
+          }
+        });
     }
 
     function clearOverlays() {
       changedFilePaths.clear();
-      g.selectAll('.node')
-        .attr('stroke', 'var(--vscode-editor-foreground)')
-        .attr('stroke-width', d => {
-          if (d.kind === 'directory') return 3;
-          if (d.kind === 'file') return 2;
-          return 1.5;
-        })
-        .attr('fill', d => colorMap[d.kind] || '#999')
-        .attr('filter', null);
+      
+      // Reset file box styling
+      g.selectAll('.file-box')
+        .attr('fill', 'var(--vscode-editor-background)')
+        .attr('stroke', d => d.componentColor || 'var(--vscode-editor-foreground)')
+        .attr('stroke-width', 2);
+      
+      // Clear change info from file nodes
+      g.selectAll('.file-group')
+        .each(function(d) {
+          d._changeInfo = null;
+        });
     }
 
     // Listen for messages from extension
@@ -1885,9 +1978,8 @@ export class MapPanel {
           break;
         case 'overlay:session':
           activeOverlay = message.sessionId;
-          if (!message.filterToChangedOnly) {
-            highlightChangedFiles(message.changes);
-          }
+          // Always highlight changed files (don't filter graph)
+          highlightChangedFiles(message.changes);
           break;
         case 'overlay:clear':
           activeOverlay = null;
@@ -1911,11 +2003,10 @@ export class MapPanel {
 
     // Handle resize
     window.addEventListener('resize', () => {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
+      width = window.innerWidth;
+      height = window.innerHeight;
       svg.attr('width', width).attr('height', height);
-      simulation.force('center', d3.forceCenter(width / 2, height / 2));
-      simulation.alpha(0.3).restart();
+      // Don't restart simulation - we have static layout
     });
 
     // Add event listeners for control buttons

@@ -1,7 +1,9 @@
 -- not started        >> in progress         $$ completed
 
-$$ Do not use the weighted layout for the component view. Layout the components, files and external sources in a static view
+-- Mark the files that uses external sources with dashed lines
 
-$$ In the components view, when the user is viewing changed files. hovering on a file should display the diff
+-- When the component view is open, look for changed files every 1 minute
+
+-- When the user is hovering over a changed file and the diff tooltip is visible, the scrollbar should scroll withing the diff tooltip text
 
 

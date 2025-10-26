@@ -106,10 +106,16 @@ export class GitDiffTracker {
         if (line.length < 4) continue;
 
         const statusCode = line.substring(0, 2).trim();
-        const filePath = line.substring(3).trim();
+        let filePath = line.substring(3).trim();
+        
+        // Normalize path to use forward slashes
+        filePath = filePath.replace(/\\/g, '/');
+        
+        console.log(`[Radium Git] Found changed file: "${filePath}" (status: ${statusCode})`);
 
         // Skip if not a tracked source file
         if (!this.isSourceFile(filePath)) {
+          console.log(`[Radium Git] Skipping non-source file: ${filePath}`);
           continue;
         }
 
@@ -128,6 +134,8 @@ export class GitDiffTracker {
           deletions: stats.deletions
         });
       }
+      
+      console.log(`[Radium Git] Total changes found: ${changes.length}`, changes.map(c => c.filePath));
 
       return changes;
     } catch (error) {
@@ -236,10 +244,13 @@ export class GitDiffTracker {
     });
 
     // Record changes
+    let recordedCount = 0;
     for (const change of changes) {
       const file = this.store.getFileByPath(change.filePath);
+      console.log(`[Radium Git] Looking for "${change.filePath}" - found:`, file ? 'YES' : 'NO');
       
       if (!file) {
+        console.warn(`[Radium Git] File "${change.filePath}" not in index, skipping`);
         continue;
       }
 
@@ -260,7 +271,10 @@ export class GitDiffTracker {
         summary: `${change.status}: +${change.additions} -${change.deletions}`,
         ts: Date.now()
       });
+      recordedCount++;
     }
+
+    console.log(`[Radium Git] Recorded ${recordedCount}/${changes.length} changes`);
 
     this.store.endSession(sessionId, Date.now());
     this.store.save();

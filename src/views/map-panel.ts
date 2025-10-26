@@ -1915,32 +1915,45 @@ export class MapPanel {
       });
 
       console.log('[Radium Map] Changed file paths:', Array.from(changedFilePaths));
+      
+      // Get all file paths in the graph for debugging
+      const allFilePaths = [];
+      g.selectAll('.file-box').each(function(d) {
+        allFilePaths.push(d.path);
+      });
+      console.log('[Radium Map] All file paths in graph:', allFilePaths);
 
       // Update file box styling to highlight changed files with yellow
       let highlightCount = 0;
+      let checkedCount = 0;
       g.selectAll('.file-box')
         .attr('fill', function(d) {
-          console.log('[Radium Map] Checking file:', d.path, 'changed:', changedFilePaths.has(d.path));
-          if (changedFilePaths.has(d.path)) {
-            highlightCount++;
-            return '#FFD700'; // Yellow for changed files
+          checkedCount++;
+          const isChanged = changedFilePaths.has(d.path);
+          if (checkedCount <= 5) {
+            console.log('[Radium Map] Checking file:', d.path, 'changed:', isChanged);
           }
-          return 'var(--vscode-editor-background)';
+          if (isChanged) {
+            highlightCount++;
+            console.log('[Radium Map] ✓ HIGHLIGHTING:', d.path);
+            return '#FFEB3B'; // Bright yellow for changed files
+          }
+          return '#1E1E1E'; // Dark background for unchanged files
         })
         .attr('stroke', function(d) {
           if (changedFilePaths.has(d.path)) {
-            return '#FFA500'; // Orange border for changed files
+            return '#FF6B00'; // Bright orange border for changed files
           }
           return d.componentColor || 'var(--vscode-editor-foreground)';
         })
         .attr('stroke-width', function(d) {
           if (changedFilePaths.has(d.path)) {
-            return 3;
+            return 4; // Thicker border for visibility
           }
           return 2;
         });
       
-      console.log('[Radium Map] Highlighted', highlightCount, 'files');
+      console.log('[Radium Map] Checked', checkedCount, 'files, highlighted', highlightCount, 'files');
       
       // Store change info on file nodes for hover tooltip
       g.selectAll('.file-group')
@@ -1972,11 +1985,13 @@ export class MapPanel {
     // Listen for messages from extension
     window.addEventListener('message', event => {
       const message = event.data;
+      console.log('[Radium Map] Received message:', message.type, message);
       switch (message.type) {
         case 'graph:update':
           updateGraph(message.data, message.filtered || false);
           break;
         case 'overlay:session':
+          console.log('[Radium Map] overlay:session - sessionId:', message.sessionId, 'changes:', message.changes);
           activeOverlay = message.sessionId;
           // Always highlight changed files (don't filter graph)
           highlightChangedFiles(message.changes);

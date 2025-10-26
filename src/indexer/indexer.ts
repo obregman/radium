@@ -106,15 +106,35 @@ export class Indexer {
       return;
     }
 
-    for (const file of files) {
-      try {
-        await this.indexFile(file);
-      } catch (error) {
-        console.error(`INDEXER: Failed to index ${file}:`, error);
+    // Process files in batches to avoid memory issues
+    const batchSize = 50;
+    let processed = 0;
+    
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batch = files.slice(i, Math.min(i + batchSize, files.length));
+      
+      for (const file of batch) {
+        try {
+          await this.indexFile(file);
+          processed++;
+          
+          // Log progress every 10 files
+          if (processed % 10 === 0) {
+            console.log(`INDEXER: Progress: ${processed}/${files.length} files indexed`);
+          }
+        } catch (error) {
+          console.error(`INDEXER: Failed to index ${file}:`, error);
+        }
       }
+      
+      // Save after each batch to avoid data loss
+      this.store.save();
+      
+      // Small delay between batches to prevent overwhelming the system
+      await new Promise(resolve => setTimeout(resolve, 10));
     }
 
-    console.log(`INDEXER: Indexing complete - processed ${files.length} files`);
+    console.log(`INDEXER: Indexing complete - processed ${processed}/${files.length} files`);
   }
 
   private async findSourceFiles(): Promise<string[]> {
@@ -153,28 +173,47 @@ export class Indexer {
   }
 
   private async indexFile(filePath: string): Promise<void> {
-    // Normalize path to use forward slashes (cross-platform)
-    const relativePath = path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
-    const lang = this.parser.getLanguage(filePath);
-    if (!lang) return;
-
-    const stats = await fs.promises.stat(filePath);
-    const now = Date.now();
-
-    // Try to parse the file
-    let result;
     try {
-      result = await this.parser.parseFile(filePath);
-    } catch (error) {
-      // If parsing fails, still index the file but with empty symbols
-      console.warn(`Failed to parse ${relativePath}, indexing without symbols:`, error);
-      const code = await fs.promises.readFile(filePath, 'utf-8');
-      const crypto = require('crypto');
-      const hash = crypto.createHash('sha256').update(code).digest('hex');
-      result = { symbols: [], imports: [], calls: [], hash };
-    }
-    
-    if (!result) return;
+      // Normalize path to use forward slashes (cross-platform)
+      const relativePath = path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
+      const lang = this.parser.getLanguage(filePath);
+      if (!lang) return;
+
+      // Check if file exists and is readable
+      let stats;
+      try {
+        stats = await fs.promises.stat(filePath);
+        // Skip files larger than 1MB to avoid memory issues
+        if (stats.size > 1024 * 1024) {
+          console.warn(`Skipping large file ${relativePath} (${Math.round(stats.size / 1024)}KB)`);
+          return;
+        }
+      } catch (error) {
+        console.warn(`Cannot access file ${relativePath}:`, error);
+        return;
+      }
+
+      const now = Date.now();
+
+      // Try to parse the file
+      let result;
+      try {
+        result = await this.parser.parseFile(filePath);
+      } catch (error) {
+        // If parsing fails, still index the file but with empty symbols
+        console.warn(`Failed to parse ${relativePath}, indexing without symbols`);
+        try {
+          const code = await fs.promises.readFile(filePath, 'utf-8');
+          const crypto = require('crypto');
+          const hash = crypto.createHash('sha256').update(code).digest('hex');
+          result = { symbols: [], imports: [], calls: [], hash };
+        } catch (readError) {
+          console.error(`Cannot read file ${relativePath}:`, readError);
+          return;
+        }
+      }
+      
+      if (!result) return;
 
     this.store.beginTransaction();
 
@@ -274,6 +313,11 @@ export class Indexer {
     } catch (error) {
       this.store.rollback();
       throw error;
+    }
+    } catch (error) {
+      // Catch any errors in the entire indexFile process
+      console.error(`INDEXER: Error indexing file ${filePath}:`, error);
+      // Don't rethrow - continue with other files
     }
   }
 

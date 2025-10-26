@@ -1066,23 +1066,7 @@ export class MapPanel {
   <div class="controls">
     <button class="control-button" id="reset-view-btn">Reset View</button>
     <button class="control-button" id="show-all-btn" style="display: none;">Show All Files</button>
-    <button class="control-button" id="structure-btn">Structure</button>
-    <button class="control-button" id="relations-btn">Relations</button>
     <button class="control-button" id="changes-btn">Changes</button>
-  </div>
-  <div class="legend">
-    <div class="legend-item">
-      <div class="legend-color" style="background: linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1, #96CEB4);"></div>
-      <span>Component (color-coded)</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-color" style="background: #78909C;"></div>
-      <span>File</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-color" style="background: #FFFFFF; border: 1px solid #000000;"></div>
-      <span>External Object</span>
-    </div>
   </div>
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -1764,9 +1748,55 @@ export class MapPanel {
     }
 
     function resetView() {
+      // Calculate bounds of all component nodes
+      const componentNodes = graphData.nodes.filter(n => n.kind === 'component');
+      
+      if (componentNodes.length === 0) {
+        // No components, just reset to identity
+        svg.transition()
+          .duration(750)
+          .call(zoom.transform, d3.zoomIdentity);
+        return;
+      }
+      
+      // Find bounding box of all components
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      
+      componentNodes.forEach(node => {
+        if (node.x !== undefined && node.y !== undefined) {
+          minX = Math.min(minX, node.x);
+          maxX = Math.max(maxX, node.x);
+          minY = Math.min(minY, node.y);
+          maxY = Math.max(maxY, node.y);
+        }
+      });
+      
+      // Add padding
+      const padding = 200;
+      minX -= padding;
+      maxX += padding;
+      minY -= padding;
+      maxY += padding;
+      
+      // Calculate scale to fit all components
+      const dx = maxX - minX;
+      const dy = maxY - minY;
+      const scale = Math.min(width / dx, height / dy, 0.25); // Max zoom out to 0.25
+      
+      // Calculate center point
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      
+      // Create transform to center and scale
+      const transform = d3.zoomIdentity
+        .translate(width / 2, height / 2)
+        .scale(scale)
+        .translate(-centerX, -centerY);
+      
       svg.transition()
         .duration(750)
-        .call(zoom.transform, d3.zoomIdentity);
+        .call(zoom.transform, transform);
     }
 
     function showAllFiles() {
@@ -1891,8 +1921,6 @@ export class MapPanel {
     // Add event listeners for control buttons
     document.getElementById('reset-view-btn')?.addEventListener('click', resetView);
     document.getElementById('show-all-btn')?.addEventListener('click', showAllFiles);
-    document.getElementById('structure-btn')?.addEventListener('click', () => toggleLayer('structure'));
-    document.getElementById('relations-btn')?.addEventListener('click', () => toggleLayer('relations'));
     document.getElementById('changes-btn')?.addEventListener('click', () => {
       console.log('[Radium Map] Changes button clicked');
       toggleLayer('changes');

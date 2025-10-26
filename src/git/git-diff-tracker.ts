@@ -10,6 +10,7 @@ export interface GitDiff {
   status: 'modified' | 'added' | 'deleted' | 'renamed';
   additions: number;
   deletions: number;
+  diff?: string;
 }
 
 export class GitDiffTracker {
@@ -124,14 +125,16 @@ export class GitDiffTracker {
         else if (statusCode === 'D') status = 'deleted';
         else if (statusCode === 'R') status = 'renamed';
 
-        // Get detailed diff stats for the file
+        // Get detailed diff stats and actual diff content
         const stats = await this.getDiffStats(filePath, status);
+        const diffContent = await this.getActualDiff(filePath, status);
 
         changes.push({
           filePath,
           status,
           additions: stats.additions,
-          deletions: stats.deletions
+          deletions: stats.deletions,
+          diff: diffContent
         });
       }
       
@@ -212,6 +215,32 @@ export class GitDiffTracker {
     }
   }
 
+  private async getActualDiff(filePath: string, status: string): Promise<string> {
+    try {
+      if (status === 'deleted') {
+        return 'File deleted';
+      }
+
+      // Get the actual diff with context
+      const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
+        cwd: this.workspaceRoot
+      });
+
+      if (!stdout) {
+        // Try unstaged changes
+        const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
+          cwd: this.workspaceRoot
+        });
+        return unstagedDiff || 'No changes';
+      }
+
+      return stdout;
+    } catch (error) {
+      console.error(`Failed to get diff for ${filePath}:`, error);
+      return 'Error getting diff';
+    }
+  }
+
   private isSourceFile(filePath: string): boolean {
     const sourceExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp', '.cs', '.swift', '.kt', '.rb', '.php'];
     return sourceExtensions.some(ext => filePath.endsWith(ext));
@@ -261,6 +290,7 @@ export class GitDiffTracker {
           filePath: change.filePath,
           beforeHash: '',
           afterHash: '',
+          diff: change.diff || '',
           hunks: [{
             start: 0,
             end: change.additions + change.deletions,
@@ -338,6 +368,7 @@ export class GitDiffTracker {
           filePath: change.filePath,
           beforeHash: '',
           afterHash: '',
+          diff: change.diff || '',
           hunks: [{
             start: 0,
             end: change.additions + change.deletions,

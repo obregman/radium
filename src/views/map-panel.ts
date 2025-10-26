@@ -122,11 +122,24 @@ export class MapPanel {
     
     if (!sessionId) {
       vscode.window.showInformationMessage('No uncommitted changes found');
+      // Clear any existing highlights
+      this.panel.webview.postMessage({
+        type: 'overlay:clear'
+      });
       return;
     }
 
     const changes = this.store.getChangesBySession(sessionId);
     MapPanel.outputChannel.appendLine(`Showing ${changes.length} uncommitted changes`);
+    
+    if (changes.length === 0) {
+      vscode.window.showInformationMessage('No changes found in session');
+      // Clear any existing highlights
+      this.panel.webview.postMessage({
+        type: 'overlay:clear'
+      });
+      return;
+    }
     
     // Log details about the changes
     const allFiles = this.store.getAllFiles();
@@ -970,6 +983,13 @@ export class MapPanel {
       width: 100vw; 
       height: 100vh;
     }
+    #map svg {
+      display: block;
+      cursor: grab;
+    }
+    #map svg:active {
+      cursor: grabbing;
+    }
     .controls {
       position: absolute;
       top: 10px;
@@ -978,6 +998,8 @@ export class MapPanel {
       border: 1px solid var(--vscode-panel-border);
       padding: 10px;
       border-radius: 4px;
+      z-index: 1000;
+      pointer-events: auto;
     }
     .control-button {
       display: block;
@@ -1001,6 +1023,8 @@ export class MapPanel {
       padding: 10px;
       border-radius: 4px;
       font-size: 12px;
+      z-index: 1000;
+      pointer-events: auto;
     }
     .legend-item {
       margin: 5px 0;
@@ -1057,6 +1081,24 @@ export class MapPanel {
       font-size: 14px;
       font-weight: bold;
       fill: var(--vscode-editor-foreground);
+      pointer-events: none;
+    }
+    .component-container {
+      pointer-events: none;
+    }
+    .component-label {
+      pointer-events: none;
+    }
+    .file-title {
+      pointer-events: none;
+    }
+    .function-item {
+      pointer-events: none;
+    }
+    .external-label, .external-type, .external-icon {
+      pointer-events: none;
+    }
+    .external-link {
       pointer-events: none;
     }
   </style>
@@ -1169,19 +1211,100 @@ export class MapPanel {
 
       svg = container.append('svg')
         .attr('width', width)
-        .attr('height', height);
+        .attr('height', height)
+        .style('touch-action', 'none'); // Enable touch/pointer events for panning
 
       g = svg.append('g');
+      
+      // Add a large background rect INSIDE g to capture pan events everywhere
+      g.append('rect')
+        .attr('class', 'zoom-background')
+        .attr('width', 100000)
+        .attr('height', 100000)
+        .attr('x', -50000)
+        .attr('y', -50000)
+        .attr('fill', 'transparent')
+        .lower(); // Ensure it's behind everything
 
-      zoom = d3.zoom()
-        .scaleExtent([0.1, 10])
-        .on('zoom', (event) => {
-          g.attr('transform', event.transform);
-          currentZoomLevel = event.transform.k;
-          updateVisibilityByZoom();
-        });
-
-      svg.call(zoom);
+      // Manual pan/zoom implementation (more reliable in VS Code webviews)
+      let transform = { k: 1, x: 0, y: 0 };
+      let isPanning = false;
+      let startPoint = { x: 0, y: 0 };
+      
+      function updateTransform() {
+        g.attr('transform', \`translate(\${transform.x},\${transform.y}) scale(\${transform.k})\`);
+        currentZoomLevel = transform.k;
+        updateVisibilityByZoom();
+      }
+      
+      // Mouse wheel zoom
+      svg.on('wheel', (event) => {
+        event.preventDefault();
+        console.log('[Radium Map] Wheel event detected');
+        
+        const delta = -event.deltaY;
+        const scaleBy = delta > 0 ? 1.1 : 0.9;
+        const newScale = Math.max(0.1, Math.min(10, transform.k * scaleBy));
+        
+        // Zoom towards mouse position
+        const rect = svg.node().getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        
+        const factor = newScale / transform.k;
+        transform.x = mouseX - (mouseX - transform.x) * factor;
+        transform.y = mouseY - (mouseY - transform.y) * factor;
+        transform.k = newScale;
+        
+        updateTransform();
+      });
+      
+      // Mouse pan
+      svg.on('mousedown', (event) => {
+        if (event.button !== 0) return; // Only left click
+        console.log('[Radium Map] Mouse down - starting pan');
+        isPanning = true;
+        startPoint = { x: event.clientX - transform.x, y: event.clientY - transform.y };
+        svg.style('cursor', 'grabbing');
+      });
+      
+      svg.on('mousemove', (event) => {
+        if (!isPanning) return;
+        transform.x = event.clientX - startPoint.x;
+        transform.y = event.clientY - startPoint.y;
+        updateTransform();
+      });
+      
+      svg.on('mouseup', () => {
+        if (isPanning) {
+          console.log('[Radium Map] Mouse up - ending pan');
+          isPanning = false;
+          svg.style('cursor', 'grab');
+        }
+      });
+      
+      svg.on('mouseleave', () => {
+        if (isPanning) {
+          isPanning = false;
+          svg.style('cursor', 'grab');
+        }
+      });
+      
+      // Store zoom object for reset functionality
+      zoom = {
+        transform: () => ({ k: transform.k, x: transform.x, y: transform.y }),
+        scaleTo: (selection, k) => {
+          transform.k = k;
+          updateTransform();
+        },
+        translateTo: (selection, x, y) => {
+          transform.x = x;
+          transform.y = y;
+          updateTransform();
+        }
+      };
+      
+      console.log('[Radium Map] Manual pan/zoom initialized');
 
       // Initialize the simulation (will be populated with nodes later)
       simulation = d3.forceSimulation()
@@ -1496,8 +1619,34 @@ export class MapPanel {
       const getId = (v) => (typeof v === 'object' && v !== null ? v.id : v);
       const filteredEdges = data.edges.filter(e => visibleIds.has(getId(e.source)) && visibleIds.has(getId(e.target)));
 
-      // DO NOT draw connection lines in component view
-      // const links = ... (removed)
+      // Draw dashed lines for external source connections
+      const externalUsesEdges = filteredEdges.filter(e => e.kind === 'external-uses');
+      
+      g.selectAll('.external-link')
+        .data(externalUsesEdges)
+        .join('line')
+        .attr('class', 'external-link')
+        .attr('x1', d => {
+          const sourceNode = data.nodes.find(n => n.id === getId(d.source));
+          return sourceNode ? sourceNode.x : 0;
+        })
+        .attr('y1', d => {
+          const sourceNode = data.nodes.find(n => n.id === getId(d.source));
+          return sourceNode ? sourceNode.y : 0;
+        })
+        .attr('x2', d => {
+          const targetNode = data.nodes.find(n => n.id === getId(d.target));
+          return targetNode ? targetNode.x : 0;
+        })
+        .attr('y2', d => {
+          const targetNode = data.nodes.find(n => n.id === getId(d.target));
+          return targetNode ? targetNode.y : 0;
+        })
+        .attr('stroke', d => d.color || 'var(--vscode-editor-foreground)')
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '5,5')
+        .attr('opacity', 0.6)
+        .style('pointer-events', 'none');
 
       // FIRST: Draw all component container boxes (background layer)
       // Draw directly to main g element, not in groups
@@ -1529,6 +1678,9 @@ export class MapPanel {
         .attr('rx', 8)
         .attr('ry', 8)
         .on('click', (event, d) => {
+          // Only handle click if it wasn't a drag
+          if (event.defaultPrevented) return;
+          event.stopPropagation();
           vscode.postMessage({
             type: 'node:selected',
             nodeId: d.originalId || d.id
@@ -1572,6 +1724,9 @@ export class MapPanel {
         .attr('rx', 3)
         .attr('ry', 3)
         .on('click', (event, d) => {
+          // Only handle click if it wasn't a drag
+          if (event.defaultPrevented) return;
+          event.stopPropagation();
           console.log('[Radium Map] File box clicked:', d.path);
           vscode.postMessage({
             type: 'file:open',
@@ -1580,7 +1735,7 @@ export class MapPanel {
         })
         .on('mouseover', function(event, d) {
           // Show diff tooltip if file has changes
-          if (d._changeInfo && d._changeInfo.hunks) {
+          if (d._changeInfo) {
             const tooltip = d3.select('body').append('div')
               .attr('class', 'file-diff-tooltip')
               .style('position', 'fixed')
@@ -1592,28 +1747,48 @@ export class MapPanel {
               .style('padding', '10px')
               .style('border-radius', '4px')
               .style('font-family', 'monospace')
-              .style('font-size', '11px')
+              .style('font-size', '12px')
               .style('max-width', '600px')
               .style('max-height', '400px')
               .style('overflow', 'auto')
-              .style('white-space', 'pre')
+              .style('white-space', 'pre-wrap')
               .style('pointer-events', 'none')
               .style('z-index', '10000')
               .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)');
             
             // Format diff
-            let diffText = 'File: ' + d.path + '\\n\\n';
+            let diffText = '📝 ' + d.path + '\\n\\n';
+            
+            // Check if we have actual diff content
             const hunks = d._changeInfo.hunks;
-            if (hunks.hunks && hunks.hunks.length > 0) {
+            if (hunks && hunks.diff) {
+              // We have the actual git diff
+              diffText += hunks.diff;
+            } else if (hunks && hunks.hunks && hunks.hunks.length > 0) {
+              // We have detailed hunks
               hunks.hunks.forEach(hunk => {
-                diffText += hunk.header + '\\n';
-                hunk.lines.forEach(line => {
-                  diffText += line + '\\n';
-                });
+                if (hunk.header) {
+                  diffText += hunk.header + '\\n';
+                }
+                if (hunk.lines) {
+                  hunk.lines.forEach(line => {
+                    diffText += line + '\\n';
+                  });
+                }
                 diffText += '\\n';
               });
+            } else if (d._changeInfo.summary) {
+              // Show summary if available
+              diffText += d._changeInfo.summary;
             } else {
-              diffText += 'File modified';
+              // Show basic stats
+              diffText += '✏️  File has uncommitted changes\\n';
+              if (hunks && hunks.hunks && hunks.hunks[0]) {
+                const stats = hunks.hunks[0];
+                if (stats.end - stats.start > 0) {
+                  diffText += '\\nModified lines: ' + (stats.end - stats.start);
+                }
+              }
             }
             
             tooltip.text(diffText);
@@ -1753,6 +1928,26 @@ export class MapPanel {
           .attr('y1', d => d.source.y)
           .attr('x2', d => d.target.x)
           .attr('y2', d => d.target.y);
+        
+        // Update external link positions
+        g.selectAll('.external-link')
+          .filter(d => getId(d.source) === event.subject.id || getId(d.target) === event.subject.id)
+          .attr('x1', d => {
+            const sourceNode = graphData.nodes.find(n => n.id === getId(d.source));
+            return sourceNode ? sourceNode.x : 0;
+          })
+          .attr('y1', d => {
+            const sourceNode = graphData.nodes.find(n => n.id === getId(d.source));
+            return sourceNode ? sourceNode.y : 0;
+          })
+          .attr('x2', d => {
+            const targetNode = graphData.nodes.find(n => n.id === getId(d.target));
+            return targetNode ? targetNode.x : 0;
+          })
+          .attr('y2', d => {
+            const targetNode = graphData.nodes.find(n => n.id === getId(d.target));
+            return targetNode ? targetNode.y : 0;
+          });
       }
 
       function dragended(event) {
@@ -1774,6 +1969,10 @@ export class MapPanel {
         .style('display', isZoomedOut ? 'none' : 'block');
       
       g.selectAll('.external-group')
+        .style('display', isZoomedOut ? 'none' : 'block');
+      
+      // Hide/show external links based on zoom level
+      g.selectAll('.external-link')
         .style('display', isZoomedOut ? 'none' : 'block');
       
       // Adjust component appearance based on zoom
@@ -1823,55 +2022,36 @@ export class MapPanel {
     }
 
     function resetView() {
-      // Calculate bounds of all component nodes
-      const componentNodes = graphData.nodes.filter(n => n.kind === 'component');
+      console.log('[Radium Map] Reset view called');
+      // Reset to initial view - centered at origin with scale 1
+      const currentTransform = zoom.transform();
       
-      if (componentNodes.length === 0) {
-        // No components, just reset to identity
-        svg.transition()
-          .duration(750)
-          .call(zoom.transform, d3.zoomIdentity);
-        return;
-      }
+      // Animate to identity transform
+      const steps = 30;
+      const duration = 750;
+      const stepDuration = duration / steps;
       
-      // Find bounding box of all components
-      let minX = Infinity, maxX = -Infinity;
-      let minY = Infinity, maxY = -Infinity;
+      const startK = currentTransform.k;
+      const startX = currentTransform.x;
+      const startY = currentTransform.y;
       
-      componentNodes.forEach(node => {
-        if (node.x !== undefined && node.y !== undefined) {
-          minX = Math.min(minX, node.x);
-          maxX = Math.max(maxX, node.x);
-          minY = Math.min(minY, node.y);
-          maxY = Math.max(maxY, node.y);
+      const targetK = 1;
+      const targetX = 0;
+      const targetY = 0;
+      
+      let step = 0;
+      const interval = setInterval(() => {
+        step++;
+        const progress = step / steps;
+        const eased = 1 - Math.pow(1 - progress, 3); // Ease out cubic
+        
+        zoom.scaleTo(null, startK + (targetK - startK) * eased);
+        zoom.translateTo(null, startX + (targetX - startX) * eased, startY + (targetY - startY) * eased);
+        
+        if (step >= steps) {
+          clearInterval(interval);
         }
-      });
-      
-      // Add padding
-      const padding = 200;
-      minX -= padding;
-      maxX += padding;
-      minY -= padding;
-      maxY += padding;
-      
-      // Calculate scale to fit all components
-      const dx = maxX - minX;
-      const dy = maxY - minY;
-      const scale = Math.min(width / dx, height / dy, 0.25); // Max zoom out to 0.25
-      
-      // Calculate center point
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-      
-      // Create transform to center and scale
-      const transform = d3.zoomIdentity
-        .translate(width / 2, height / 2)
-        .scale(scale)
-        .translate(-centerX, -centerY);
-      
-      svg.transition()
-        .duration(750)
-        .call(zoom.transform, transform);
+      }, stepDuration);
     }
 
     function showAllFiles() {
@@ -1927,7 +2107,7 @@ export class MapPanel {
       let highlightCount = 0;
       let checkedCount = 0;
       g.selectAll('.file-box')
-        .attr('fill', function(d) {
+        .style('fill', function(d) {
           checkedCount++;
           const isChanged = changedFilePaths.has(d.path);
           if (checkedCount <= 5) {
@@ -1938,19 +2118,28 @@ export class MapPanel {
             console.log('[Radium Map] ✓ HIGHLIGHTING:', d.path);
             return '#FFEB3B'; // Bright yellow for changed files
           }
-          return '#1E1E1E'; // Dark background for unchanged files
+          return null; // Use CSS default for unchanged files
         })
-        .attr('stroke', function(d) {
+        .style('stroke', function(d) {
           if (changedFilePaths.has(d.path)) {
             return '#FF6B00'; // Bright orange border for changed files
           }
-          return d.componentColor || 'var(--vscode-editor-foreground)';
+          return null; // Use CSS default
         })
-        .attr('stroke-width', function(d) {
+        .style('stroke-width', function(d) {
           if (changedFilePaths.has(d.path)) {
-            return 4; // Thicker border for visibility
+            return '4px'; // Thicker border for visibility
           }
-          return 2;
+          return null; // Use CSS default
+        });
+      
+      // Update file text color to black for highlighted files
+      g.selectAll('.file-group text')
+        .style('fill', function(d) {
+          if (changedFilePaths.has(d.path)) {
+            return '#000000'; // Black text for changed files
+          }
+          return null; // Use CSS default
         });
       
       console.log('[Radium Map] Checked', checkedCount, 'files, highlighted', highlightCount, 'files');
@@ -1969,11 +2158,15 @@ export class MapPanel {
     function clearOverlays() {
       changedFilePaths.clear();
       
-      // Reset file box styling
+      // Reset file box styling - clear inline styles to use CSS defaults
       g.selectAll('.file-box')
-        .attr('fill', 'var(--vscode-editor-background)')
-        .attr('stroke', d => d.componentColor || 'var(--vscode-editor-foreground)')
-        .attr('stroke-width', 2);
+        .style('fill', null)
+        .style('stroke', null)
+        .style('stroke-width', null);
+      
+      // Reset file text color
+      g.selectAll('.file-group text')
+        .style('fill', null);
       
       // Clear change info from file nodes
       g.selectAll('.file-group')

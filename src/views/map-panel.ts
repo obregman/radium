@@ -1343,7 +1343,7 @@ export class MapPanel {
         console.log('[Radium Map] Wheel event detected');
         
         const delta = -event.deltaY;
-        const scaleBy = delta > 0 ? 1.1 : 0.9;
+        const scaleBy = delta > 0 ? 1.03 : 0.97; // Slower zoom: 3% instead of 10%
         const newScale = Math.max(0.1, Math.min(10, transform.k * scaleBy));
         
         // Zoom towards mouse position
@@ -1928,26 +1928,26 @@ export class MapPanel {
               e.preventDefault();
             }, { passive: false });
             
-            // Keep tooltip visible when hovering over it
+            // Make tooltip sticky and dismiss only on explicit mouseout from file and tooltip
+            let overTooltip = false;
             tooltip.on('mouseenter', function() {
-              // Stop any pending removal
+              overTooltip = true;
               d3.select(this).classed('tooltip-hovered', true);
             });
-            
             tooltip.on('mouseleave', function() {
-              d3.select(this).remove();
+              overTooltip = false;
+              d3.select(this).classed('tooltip-hovered', false);
+              // Delay removal slightly to allow pointer to re-enter from minor gaps
+              setTimeout(() => {
+                if (!overTooltip) {
+                  d3.select(this).remove();
+                }
+              }, 150);
             });
           }
         })
-        .on('mousemove', function(event) {
-          const tooltip = d3.select('.file-diff-tooltip');
-          // Only move tooltip if not being hovered
-          if (!tooltip.empty() && !tooltip.classed('tooltip-hovered')) {
-            tooltip
-              .style('left', event.clientX + 10 + 'px')
-              .style('top', event.clientY + 10 + 'px');
-          }
-        })
+        // Do not follow the cursor; keep tooltip fixed so the user can reach it
+        .on('mousemove', function(event) { /* intentionally no-op */ })
         .on('mouseout', function() {
           // Use a small delay to allow moving to the tooltip
           setTimeout(() => {

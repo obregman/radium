@@ -8,6 +8,8 @@ export class MapPanel {
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
   private static outputChannel: vscode.OutputChannel;
+  private changeCheckTimer?: NodeJS.Timeout;
+  private readonly CHANGE_CHECK_INTERVAL = 60000; // 1 minute in milliseconds
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -37,6 +39,9 @@ export class MapPanel {
 
     // Send initial data
     this.updateGraph();
+    
+    // Start automatic change checking
+    this.startChangeChecking();
   }
 
   public static createOrShow(extensionUri: vscode.Uri, store: GraphStore, configLoader: RadiumConfigLoader, gitDiffTracker?: GitDiffTracker) {
@@ -938,8 +943,66 @@ export class MapPanel {
     return { nodes, edges };
   }
 
+  private startChangeChecking() {
+    if (!this.gitDiffTracker) {
+      MapPanel.outputChannel.appendLine('Change checking disabled: no git diff tracker');
+      return;
+    }
+
+    MapPanel.outputChannel.appendLine('Starting automatic change checking (every 1 minute)');
+    
+    // Check immediately on start
+    this.checkForChanges();
+    
+    // Set up periodic checking
+    this.changeCheckTimer = setInterval(() => {
+      this.checkForChanges();
+    }, this.CHANGE_CHECK_INTERVAL);
+  }
+
+  private stopChangeChecking() {
+    if (this.changeCheckTimer) {
+      MapPanel.outputChannel.appendLine('Stopping automatic change checking');
+      clearInterval(this.changeCheckTimer);
+      this.changeCheckTimer = undefined;
+    }
+  }
+
+  private async checkForChanges() {
+    if (!this.gitDiffTracker) {
+      return;
+    }
+
+    try {
+      MapPanel.outputChannel.appendLine('Checking for changed files...');
+      
+      // Create session from git changes
+      const sessionId = await this.gitDiffTracker.createSessionFromGitChanges();
+      
+      if (!sessionId) {
+        MapPanel.outputChannel.appendLine('No changes detected');
+        return;
+      }
+
+      const changes = this.store.getChangesBySession(sessionId);
+      MapPanel.outputChannel.appendLine(`Found ${changes.length} changed files`);
+      
+      if (changes.length === 0) {
+        return;
+      }
+      
+      // Update overlay to show changes
+      this.updateOverlay(sessionId, false);
+    } catch (error) {
+      MapPanel.outputChannel.appendLine(`Error checking for changes: ${error}`);
+    }
+  }
+
   public dispose() {
     MapPanel.currentPanel = undefined;
+
+    // Stop change checking
+    this.stopChangeChecking();
 
     this.panel.dispose();
 
@@ -1100,6 +1163,43 @@ export class MapPanel {
     }
     .external-link {
       pointer-events: none;
+    }
+    .file-diff-tooltip {
+      overflow-y: auto !important; /* allow native scrollbars */
+      overflow-x: auto !important;
+      max-height: 400px; /* ensure we have a fixed viewport height */
+      overscroll-behavior: contain; /* keep wheel inside tooltip */
+      scrollbar-width: auto !important;
+      scrollbar-color: rgba(121, 121, 121, 0.8) rgba(40, 40, 40, 0.5) !important;
+    }
+    .file-diff-tooltip::-webkit-scrollbar {
+      width: 16px !important;
+      height: 16px !important;
+      background: rgba(40, 40, 40, 0.5) !important;
+    }
+    .file-diff-tooltip::-webkit-scrollbar-track {
+      background: rgba(40, 40, 40, 0.5) !important;
+      border-radius: 0 !important;
+    }
+    .file-diff-tooltip::-webkit-scrollbar-thumb {
+      background: rgba(121, 121, 121, 0.8) !important;
+      border-radius: 2px !important;
+      border: 3px solid rgba(40, 40, 40, 0.5) !important;
+      min-height: 50px !important;
+    }
+    .file-diff-tooltip::-webkit-scrollbar-thumb:hover {
+      background: rgba(150, 150, 150, 0.9) !important;
+    }
+    .file-diff-tooltip::-webkit-scrollbar-thumb:active {
+      background: rgba(170, 170, 170, 1) !important;
+    }
+    .file-diff-tooltip::-webkit-scrollbar-corner {
+      background: rgba(40, 40, 40, 0.5) !important;
+    }
+    .file-diff-tooltip::-webkit-scrollbar-button {
+      display: block !important;
+      height: 16px !important;
+      background: rgba(60, 60, 60, 0.7) !important;
     }
   </style>
 </head>
@@ -1748,11 +1848,12 @@ export class MapPanel {
               .style('border-radius', '4px')
               .style('font-family', 'monospace')
               .style('font-size', '12px')
-              .style('max-width', '600px')
+              .style('width', '600px')
               .style('max-height', '400px')
-              .style('overflow', 'auto')
-              .style('white-space', 'pre-wrap')
-              .style('pointer-events', 'none')
+              .style('overflow-y', 'auto')
+              .style('overflow-x', 'auto')
+              .style('white-space', 'pre')
+              .style('pointer-events', 'auto')
               .style('z-index', '10000')
               .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)');
             
@@ -1792,15 +1893,69 @@ export class MapPanel {
             }
             
             tooltip.text(diffText);
+            
+            // Get the actual DOM element for native event handling
+            const tooltipElement = tooltip.node();
+            
+            // Debug: Log content and scrollbar info
+            console.log('[Radium] Tooltip content length:', diffText.length);
+            console.log('[Radium] Tooltip scrollHeight:', tooltipElement.scrollHeight);
+            console.log('[Radium] Tooltip clientHeight:', tooltipElement.clientHeight);
+            console.log('[Radium] Tooltip offsetHeight:', tooltipElement.offsetHeight);
+            console.log('[Radium] Computed overflow-y:', window.getComputedStyle(tooltipElement).overflowY);
+            
+            // Force minimum content height to ensure scrollbar appears
+            if (tooltipElement.scrollHeight <= tooltipElement.clientHeight) {
+              console.log('[Radium] Content too short, padding to force scrollbar');
+              // Add extra newlines to force scrollbar
+              tooltip.text(diffText + '\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n');
+            }
+            
+            // Handle wheel inside tooltip: scroll tooltip, never zoom canvas
+            tooltipElement.addEventListener('wheel', function(e) {
+              // Stop zoom/pan handlers outside the tooltip
+              e.stopImmediatePropagation();
+              // Manually scroll the tooltip to ensure it always scrolls
+              const deltaY = e.deltaY || 0;
+              const deltaX = e.deltaX || 0;
+              if (e.shiftKey) {
+                // Shift-scroll scrolls horizontally
+                tooltipElement.scrollLeft += deltaY !== 0 ? deltaY : deltaX;
+              } else {
+                tooltipElement.scrollTop += deltaY;
+              }
+              // Prevent default to avoid any outer scroll/zoom behavior
+              e.preventDefault();
+            }, { passive: false });
+            
+            // Keep tooltip visible when hovering over it
+            tooltip.on('mouseenter', function() {
+              // Stop any pending removal
+              d3.select(this).classed('tooltip-hovered', true);
+            });
+            
+            tooltip.on('mouseleave', function() {
+              d3.select(this).remove();
+            });
           }
         })
         .on('mousemove', function(event) {
-          d3.select('.file-diff-tooltip')
-            .style('left', event.clientX + 10 + 'px')
-            .style('top', event.clientY + 10 + 'px');
+          const tooltip = d3.select('.file-diff-tooltip');
+          // Only move tooltip if not being hovered
+          if (!tooltip.empty() && !tooltip.classed('tooltip-hovered')) {
+            tooltip
+              .style('left', event.clientX + 10 + 'px')
+              .style('top', event.clientY + 10 + 'px');
+          }
         })
         .on('mouseout', function() {
-          d3.select('.file-diff-tooltip').remove();
+          // Use a small delay to allow moving to the tooltip
+          setTimeout(() => {
+            const tooltip = d3.select('.file-diff-tooltip');
+            if (!tooltip.empty() && !tooltip.classed('tooltip-hovered')) {
+              tooltip.remove();
+            }
+          }, 100);
         })
         .style('cursor', 'pointer');
 
@@ -2209,13 +2364,21 @@ export class MapPanel {
     // Notify extension that webview is ready
     vscode.postMessage({ type: 'ready' });
 
-    // Handle resize
+      // Handle resize
     window.addEventListener('resize', () => {
       width = window.innerWidth;
       height = window.innerHeight;
       svg.attr('width', width).attr('height', height);
       // Don't restart simulation - we have static layout
     });
+
+      // Global wheel guard: if pointer is over tooltip, stop zoom
+      window.addEventListener('wheel', (e) => {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        if (el && (el.classList.contains('file-diff-tooltip') || el.closest('.file-diff-tooltip'))) {
+          e.stopPropagation();
+        }
+      }, { capture: true, passive: true });
 
     // Add event listeners for control buttons
     document.getElementById('reset-view-btn')?.addEventListener('click', resetView);

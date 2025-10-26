@@ -11,6 +11,7 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 - Interactive graph visualization of your codebase
 - Component-based architecture view (defined in `radium-components.yaml`)
 - Track and manage LLM-generated changes
+- Automatic change detection every 1 minute when component view is open
 - Impact analysis for code modifications
 - Support for TypeScript, JavaScript, and Python
 - Session history and rollback capability

@@ -1,7 +1,12 @@
 -- not started        >> in progress         $$ completed
 
+-- When the component view is opened or becomes in focus, it should check for changed files
+
+-- Changed files tooltip dissapears abruptly if moving cursor beyond the file border
+
 -- When hovering over an unchanged file, display the file path and under it the first 20 lines of the file in the tooltip
 
 -- In the external source box, add a gap between the icon and the text
 
 -- When clicking on an external source, if it refers to files from within the repo, focus the folder in the vscode project view
+

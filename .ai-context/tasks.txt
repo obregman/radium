@@ -2,8 +2,4 @@
 
 -- Mark the files that uses external sources with dashed lines
 
--- When the component view is open, look for changed files every 1 minute
-
--- When the user is hovering over a changed file and the diff tooltip is visible, the scrollbar should scroll withing the diff tooltip text
-
 

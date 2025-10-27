@@ -358,7 +358,8 @@ export class MapPanel {
             externalType: external.type,
             description: external.description,
             fullPath: externalKey,
-            componentKey: componentKey
+            componentKey: componentKey,
+            usedBy: external.usedBy || []
           });
           
           // Create edge from component to external object
@@ -397,7 +398,8 @@ export class MapPanel {
         lang: file.lang,
         size: file.size,
         functions: [] as any[],
-        componentColor: fileColor
+        componentColor: fileColor,
+        componentKey: componentInfo ? componentInfo.key : undefined
       };
       fileNodeObjects.push(fileNode);
       nodes.push(fileNode);
@@ -720,7 +722,8 @@ export class MapPanel {
             externalType: external.type,
             description: external.description,
             fullPath: externalKey,
-            componentKey: componentKey
+            componentKey: componentKey,
+            usedBy: external.usedBy || []
           });
           
           // Create edge from component to external object
@@ -755,7 +758,8 @@ export class MapPanel {
         lang: file.lang,
         size: file.size,
         functions: [] as any[],
-        componentColor: fileColor
+        componentColor: fileColor,
+        componentKey: componentInfo ? componentInfo.key : undefined
       };
       nodes.push(fileNode);
 
@@ -1719,34 +1723,87 @@ export class MapPanel {
       const getId = (v) => (typeof v === 'object' && v !== null ? v.id : v);
       const filteredEdges = data.edges.filter(e => visibleIds.has(getId(e.source)) && visibleIds.has(getId(e.target)));
 
-      // Draw dashed lines for external source connections
+      // Function to check if a point is inside a box
+      const isPointInBox = (px, py, box) => {
+        const margin = 5; // Add small margin around boxes
+        return px >= box.x - box.width / 2 - margin &&
+               px <= box.x + box.width / 2 + margin &&
+               py >= box.y - box.height / 2 - margin &&
+               py <= box.y + box.height / 2 + margin;
+      };
+
+      // Function to create elbow connector path that avoids overlapping boxes
+      const createElbowPath = (sourceNode, targetNode, allNodes) => {
+        const x1 = sourceNode.x - (sourceNode._width || 140) / 2; // Left edge of external box
+        const y1 = sourceNode.y;
+        const x2 = targetNode.x + (targetNode._width || 100) / 2; // Right edge of file box
+        const y2 = targetNode.y;
+        
+        // Collect all boxes that could be obstacles (except source and target)
+        const obstacles = allNodes
+          .filter(n => n.id !== sourceNode.id && n.id !== targetNode.id)
+          .filter(n => n.kind === 'file' || n.kind === 'external')
+          .map(n => ({
+            x: n.x,
+            y: n.y,
+            width: n._width || (n.kind === 'external' ? 140 : 100),
+            height: n._height || (n.kind === 'external' ? 50 : 30)
+          }));
+        
+        // Try different routing strategies
+        // Strategy 1: Simple midpoint (original)
+        let midX = (x1 + x2) / 2;
+        let path = 'M ' + x1 + ' ' + y1 + ' L ' + midX + ' ' + y1 + ' L ' + midX + ' ' + y2 + ' L ' + x2 + ' ' + y2;
+        
+        // Check if the vertical segment intersects any obstacles
+        let hasCollision = false;
+        const minY = Math.min(y1, y2);
+        const maxY = Math.max(y1, y2);
+        
+        for (const box of obstacles) {
+          // Check if vertical line at midX intersects this box
+          if (midX >= box.x - box.width / 2 - 5 && 
+              midX <= box.x + box.width / 2 + 5) {
+            // Check if box is in the Y range of our vertical segment
+            if ((box.y - box.height / 2 <= maxY && box.y + box.height / 2 >= minY)) {
+              hasCollision = true;
+              break;
+            }
+          }
+        }
+        
+        // If collision detected, try routing around obstacles
+        if (hasCollision) {
+          // Strategy 2: Route above or below obstacles
+          // Find the topmost and bottommost obstacles in our path
+          let topY = y1;
+          let bottomY = y1;
+          
+          for (const box of obstacles) {
+            if (midX >= box.x - box.width / 2 - 5 && 
+                midX <= box.x + box.width / 2 + 5) {
+              topY = Math.min(topY, box.y - box.height / 2 - 10);
+              bottomY = Math.max(bottomY, box.y + box.height / 2 + 10);
+            }
+          }
+          
+          // Choose to route above or below based on which is closer
+          const routeAbove = Math.abs(topY - y1) < Math.abs(bottomY - y1);
+          const routeY = routeAbove ? topY : bottomY;
+          
+          // Create path that goes horizontal, then vertical to route point, then horizontal to target X, then vertical to target
+          path = 'M ' + x1 + ' ' + y1 + 
+                 ' L ' + midX + ' ' + y1 + 
+                 ' L ' + midX + ' ' + routeY + 
+                 ' L ' + midX + ' ' + y2 + 
+                 ' L ' + x2 + ' ' + y2;
+        }
+        
+        return path;
+      };
+
+      // Store external edges for later rendering (after component boxes but before file/external boxes)
       const externalUsesEdges = filteredEdges.filter(e => e.kind === 'external-uses');
-      
-      g.selectAll('.external-link')
-        .data(externalUsesEdges)
-        .join('line')
-        .attr('class', 'external-link')
-        .attr('x1', d => {
-          const sourceNode = data.nodes.find(n => n.id === getId(d.source));
-          return sourceNode ? sourceNode.x : 0;
-        })
-        .attr('y1', d => {
-          const sourceNode = data.nodes.find(n => n.id === getId(d.source));
-          return sourceNode ? sourceNode.y : 0;
-        })
-        .attr('x2', d => {
-          const targetNode = data.nodes.find(n => n.id === getId(d.target));
-          return targetNode ? targetNode.x : 0;
-        })
-        .attr('y2', d => {
-          const targetNode = data.nodes.find(n => n.id === getId(d.target));
-          return targetNode ? targetNode.y : 0;
-        })
-        .attr('stroke', d => d.color || 'var(--vscode-editor-foreground)')
-        .attr('stroke-width', 1.5)
-        .attr('stroke-dasharray', '5,5')
-        .attr('opacity', 0.6)
-        .style('pointer-events', 'none');
 
       // FIRST: Draw all component container boxes (background layer)
       // Draw directly to main g element, not in groups
@@ -1765,7 +1822,7 @@ export class MapPanel {
         .attr('ry', 8);
 
       // Draw the header bars for each component
-      g.selectAll('.component-header')
+      const componentHeaders = g.selectAll('.component-header')
         .data(componentNodes)
         .join('rect')
         .attr('class', 'component-header')
@@ -1787,6 +1844,10 @@ export class MapPanel {
           });
         })
         .style('cursor', 'pointer');
+      
+      // Add tooltip to component headers
+      componentHeaders.append('title')
+        .text(d => d.description || d.name);
 
       // Add component name text in headers
       g.selectAll('.component-label')
@@ -1802,6 +1863,10 @@ export class MapPanel {
         .text(d => d.name)
         .append('title')
         .text(d => d.description || d.name);
+
+      // Note: External source connections are not visually rendered to avoid clutter
+      // The relationship data is maintained in the graph model but not displayed
+      // This keeps the component boxes clean and focused on the file structure
 
       // SECOND: Create file boxes (inside component containers)
       const fileGroups = g.append('g')
@@ -1989,7 +2054,122 @@ export class MapPanel {
         .attr('fill', '#FFFFFF')
         .attr('stroke', '#000000')
         .attr('stroke-width', 2)
-        .style('cursor', 'pointer');
+        .style('cursor', 'pointer')
+        .on('mouseover', function(event, d) {
+          // Show tooltip with description and usedBy files
+          const tooltip = d3.select('body').append('div')
+            .attr('class', 'external-tooltip')
+            .style('position', 'fixed')
+            .style('left', event.clientX + 10 + 'px')
+            .style('top', event.clientY + 10 + 'px')
+            .style('background', 'var(--vscode-editorHoverWidget-background)')
+            .style('color', 'var(--vscode-editorHoverWidget-foreground)')
+            .style('border', '1px solid var(--vscode-editorHoverWidget-border)')
+            .style('padding', '10px')
+            .style('border-radius', '4px')
+            .style('font-family', 'var(--vscode-font-family)')
+            .style('font-size', '12px')
+            .style('max-width', '400px')
+            .style('z-index', '10000')
+            .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)')
+            .style('pointer-events', 'auto');
+          
+          // Add header with name and type
+          tooltip.append('div')
+            .style('font-weight', 'bold')
+            .style('margin-bottom', '8px')
+            .style('font-size', '13px')
+            .text(d.name + ' (' + d.externalType + ')');
+          
+          // Add description if available
+          if (d.description) {
+            tooltip.append('div')
+              .style('margin-bottom', '10px')
+              .style('padding-bottom', '8px')
+              .style('border-bottom', '1px solid var(--vscode-editorHoverWidget-border)')
+              .style('color', 'var(--vscode-descriptionForeground)')
+              .style('line-height', '1.4')
+              .text(d.description);
+          }
+          
+          // Add "Used By" section if there are files
+          if (d.usedBy && d.usedBy.length > 0) {
+            tooltip.append('div')
+              .style('font-weight', 'bold')
+              .style('margin-top', '8px')
+              .style('margin-bottom', '6px')
+              .style('font-size', '11px')
+              .style('color', 'var(--vscode-descriptionForeground)')
+              .text('Used by:');
+            
+            // Add file boxes
+            const filesContainer = tooltip.append('div')
+              .style('display', 'flex')
+              .style('flex-direction', 'column')
+              .style('gap', '4px');
+            
+            d.usedBy.forEach(filePath => {
+              const fileName = filePath.split('/').pop() || filePath;
+              filesContainer.append('div')
+                .style('background', 'var(--vscode-input-background)')
+                .style('border', '1px solid var(--vscode-input-border)')
+                .style('padding', '4px 8px')
+                .style('border-radius', '3px')
+                .style('font-family', 'monospace')
+                .style('font-size', '11px')
+                .style('cursor', 'pointer')
+                .style('transition', 'background 0.2s')
+                .text(fileName)
+                .attr('title', filePath)
+                .on('mouseover', function() {
+                  d3.select(this)
+                    .style('background', 'var(--vscode-list-hoverBackground)')
+                    .style('border-color', 'var(--vscode-focusBorder)');
+                })
+                .on('mouseout', function() {
+                  d3.select(this)
+                    .style('background', 'var(--vscode-input-background)')
+                    .style('border-color', 'var(--vscode-input-border)');
+                })
+                .on('click', function() {
+                  // Send message to open the file
+                  vscode.postMessage({
+                    type: 'file:open',
+                    filePath: filePath
+                  });
+                  // Remove tooltip after click
+                  d3.selectAll('.external-tooltip').remove();
+                });
+            });
+          }
+          
+          // Make tooltip sticky - only remove when mouse leaves both the external box and tooltip
+          let overTooltip = false;
+          tooltip.on('mouseenter', function() {
+            overTooltip = true;
+          });
+          tooltip.on('mouseleave', function() {
+            overTooltip = false;
+            setTimeout(() => {
+              if (!overTooltip) {
+                d3.select(this).remove();
+              }
+            }, 100);
+          });
+        })
+        .on('mouseout', function() {
+          // Delay removal to allow moving to tooltip
+          setTimeout(() => {
+            const tooltip = d3.select('.external-tooltip');
+            if (!tooltip.empty()) {
+              const tooltipNode = tooltip.node();
+              const isHoveringTooltip = tooltipNode && tooltipNode.matches(':hover');
+              if (!isHoveringTooltip) {
+                tooltip.remove();
+              }
+            }
+          }, 100);
+        });
 
       // Add icon inside the box on the left
       externalGroups.append('text')
@@ -2022,10 +2202,6 @@ export class MapPanel {
         .attr('font-size', '9px')
         .attr('fill', '#666666')
         .text(d => d.externalType);
-
-      // Add description as tooltip for external objects
-      externalGroups.append('title')
-        .text(d => d.description || (d.name + ' (' + d.externalType + ')'));
 
       // Debug logging
       console.log('[Radium Map] Graph data:', {
@@ -2084,24 +2260,24 @@ export class MapPanel {
           .attr('x2', d => d.target.x)
           .attr('y2', d => d.target.y);
         
-        // Update external link positions
+        // Update external link positions (elbow connectors)
+        // Note: createElbowPath is defined in the outer scope of updateGraph
+        // We need to recreate the path calculation logic here for drag updates
         g.selectAll('.external-link')
           .filter(d => getId(d.source) === event.subject.id || getId(d.target) === event.subject.id)
-          .attr('x1', d => {
+          .attr('d', d => {
             const sourceNode = graphData.nodes.find(n => n.id === getId(d.source));
-            return sourceNode ? sourceNode.x : 0;
-          })
-          .attr('y1', d => {
-            const sourceNode = graphData.nodes.find(n => n.id === getId(d.source));
-            return sourceNode ? sourceNode.y : 0;
-          })
-          .attr('x2', d => {
             const targetNode = graphData.nodes.find(n => n.id === getId(d.target));
-            return targetNode ? targetNode.x : 0;
-          })
-          .attr('y2', d => {
-            const targetNode = graphData.nodes.find(n => n.id === getId(d.target));
-            return targetNode ? targetNode.y : 0;
+            if (!sourceNode || !targetNode) return '';
+            
+            // Simplified routing during drag (use basic elbow for performance)
+            const sourceX = sourceNode.x - (sourceNode._width || 140) / 2;
+            const sourceY = sourceNode.y;
+            const targetX = targetNode.x + (targetNode._width || 100) / 2;
+            const targetY = targetNode.y;
+            const midX = (sourceX + targetX) / 2;
+            
+            return 'M ' + sourceX + ' ' + sourceY + ' L ' + midX + ' ' + sourceY + ' L ' + midX + ' ' + targetY + ' L ' + targetX + ' ' + targetY;
           });
       }
 

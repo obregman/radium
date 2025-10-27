@@ -279,19 +279,36 @@ export class MapPanel {
     const nodeMap = new Map<string, number>();
     let nodeId = 1;
 
-    // Hash function to generate consistent colors for component names
+    // Predefined palette of 16 distinct colors for components
+    const componentColorPalette = [
+      '#FF6B6B', // Red
+      '#4ECDC4', // Teal
+      '#45B7D1', // Sky Blue
+      '#FFA07A', // Light Salmon
+      '#98D8C8', // Mint
+      '#F7DC6F', // Yellow
+      '#BB8FCE', // Purple
+      '#85C1E2', // Light Blue
+      '#F8B739', // Orange
+      '#52B788', // Green
+      '#E76F51', // Coral
+      '#2A9D8F', // Dark Teal
+      '#E9C46A', // Gold
+      '#F4A261', // Peach
+      '#A8DADC', // Powder Blue
+      '#FF8FA3'  // Pink
+    ];
+    
+    // Hash function to consistently assign colors from palette
     const hashStringToColor = (str: string): string => {
       let hash = 0;
       for (let i = 0; i < str.length; i++) {
         hash = str.charCodeAt(i) + ((hash << 5) - hash);
       }
       
-      // Generate HSL color with good saturation and lightness for visibility
-      const hue = Math.abs(hash % 360);
-      const saturation = 65 + (Math.abs(hash >> 8) % 20); // 65-85%
-      const lightness = 50 + (Math.abs(hash >> 16) % 15); // 50-65%
-      
-      return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+      // Use hash to select from palette
+      const index = Math.abs(hash) % componentColorPalette.length;
+      return componentColorPalette[index];
     };
 
     // Map to store component colors
@@ -653,18 +670,36 @@ export class MapPanel {
     const nodeMap = new Map<string, number>();
     let nodeId = 1;
 
-    // Hash function to generate consistent colors for component names
+    // Predefined palette of 16 distinct colors for components
+    const componentColorPalette = [
+      '#FF6B6B', // Red
+      '#4ECDC4', // Teal
+      '#45B7D1', // Sky Blue
+      '#FFA07A', // Light Salmon
+      '#98D8C8', // Mint
+      '#F7DC6F', // Yellow
+      '#BB8FCE', // Purple
+      '#85C1E2', // Light Blue
+      '#F8B739', // Orange
+      '#52B788', // Green
+      '#E76F51', // Coral
+      '#2A9D8F', // Dark Teal
+      '#E9C46A', // Gold
+      '#F4A261', // Peach
+      '#A8DADC', // Powder Blue
+      '#FF8FA3'  // Pink
+    ];
+    
+    // Hash function to consistently assign colors from palette
     const hashStringToColor = (str: string): string => {
       let hash = 0;
       for (let i = 0; i < str.length; i++) {
         hash = str.charCodeAt(i) + ((hash << 5) - hash);
       }
       
-      const hue = Math.abs(hash % 360);
-      const saturation = 65 + (Math.abs(hash >> 8) % 20);
-      const lightness = 50 + (Math.abs(hash >> 16) % 15);
-      
-      return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+      // Use hash to select from palette
+      const index = Math.abs(hash) % componentColorPalette.length;
+      return componentColorPalette[index];
     };
 
     const componentColors = new Map<string, string>();
@@ -1546,76 +1581,132 @@ export class MapPanel {
         component._externals = externals;
       });
       
-      // Calculate grid layout for components (3 per row)
-      const cols = 3;
-      const rows = Math.ceil(componentNodes.length / cols);
-      const componentGap = 50; // Uniform gap between components
-      const startX = 50;
-      const startY = 50;
-
-      console.log('[Radium Map] Grid layout:', cols, 'cols x', rows, 'rows');
+      // Brick-packing layout algorithm
+      // Sort components by width first (wider first), then by area for better horizontal packing
+      const sortedComponents = [...componentNodes].sort((a, b) => {
+        // Prioritize width over height
+        const widthDiff = b._boxWidth - a._boxWidth;
+        if (Math.abs(widthDiff) > 50) {
+          return widthDiff;
+        }
+        // If widths are similar, sort by area
+        return (b._boxWidth * b._boxHeight) - (a._boxWidth * a._boxHeight);
+      });
       
-      // Calculate positions for each row (Y positions)
-      const rowYPositions = [];
-      let currentY = startY;
-      for (let row = 0; row < rows; row++) {
-        rowYPositions.push(currentY);
-        
-        // Find max height in this row
-        let maxHeight = 0;
-        for (let col = 0; col < cols; col++) {
-          const idx = row * cols + col;
-          if (idx < componentNodes.length) {
-            maxHeight = Math.max(maxHeight, componentNodes[idx]._boxHeight);
+      const componentGapX = 60; // Horizontal gap
+      const componentGapY = 60; // Vertical gap
+      const startX = 40;
+      const startY = 40;
+      
+      console.log('[Radium Map] Applying brick-packing layout for', sortedComponents.length, 'components');
+      
+      // Track occupied spaces as rectangles
+      const occupiedSpaces = [];
+      
+      // Helper function to check if a position overlaps with any occupied space
+      const isOverlapping = (x, y, width, height) => {
+        for (const space of occupiedSpaces) {
+          if (!(x + width + componentGapX <= space.x || 
+                x >= space.x + space.width + componentGapX ||
+                y + height + componentGapY <= space.y || 
+                y >= space.y + space.height + componentGapY)) {
+            return true;
           }
         }
-        currentY += maxHeight + componentGap;
-      }
+        return false;
+      };
       
-      // Calculate positions for each column (X positions)
-      const colXPositions = [];
-      let currentX = startX;
-      for (let col = 0; col < cols; col++) {
-        colXPositions.push(currentX);
+      // Helper function to calculate layout bounds
+      const getLayoutBounds = () => {
+        if (occupiedSpaces.length === 0) {
+          return { maxX: startX, maxY: startY };
+        }
+        let maxX = startX;
+        let maxY = startY;
+        for (const space of occupiedSpaces) {
+          maxX = Math.max(maxX, space.x + space.width);
+          maxY = Math.max(maxY, space.y + space.height);
+        }
+        return { maxX, maxY };
+      };
+      
+      // Helper function to find the best position for a component
+      const findBestPosition = (width, height) => {
+        let bestX = startX;
+        let bestY = startY;
+        let bestScore = Infinity;
         
-        // Find max width in this column
-        let maxWidth = 0;
-        for (let row = 0; row < rows; row++) {
-          const idx = row * cols + col;
-          if (idx < componentNodes.length) {
-            maxWidth = Math.max(maxWidth, componentNodes[idx]._boxWidth);
+        // Try positions in a grid pattern
+        const maxSearchWidth = 2500;
+        const maxSearchHeight = 3000;
+        const searchStep = 20;
+        
+        for (let y = startY; y < maxSearchHeight; y += searchStep) {
+          for (let x = startX; x < maxSearchWidth; x += searchStep) {
+            if (!isOverlapping(x, y, width, height)) {
+              // Calculate what the layout bounds would be with this placement
+              const bounds = getLayoutBounds();
+              const newMaxX = Math.max(bounds.maxX, x + width);
+              const newMaxY = Math.max(bounds.maxY, y + height);
+              
+              // Calculate aspect ratio (prefer wider layouts)
+              const layoutWidth = newMaxX - startX;
+              const layoutHeight = newMaxY - startY;
+              const aspectRatio = layoutHeight / Math.max(layoutWidth, 1);
+              
+              // Score based on:
+              // 1. Prefer positions that keep layout wide (low aspect ratio)
+              // 2. Prefer top-left positions
+              // 3. Heavily penalize tall/narrow layouts
+              const aspectPenalty = aspectRatio > 1 ? aspectRatio * 1000 : aspectRatio * 200;
+              const positionScore = y * 2 + x * 0.5;
+              const score = aspectPenalty + positionScore;
+              
+              if (score < bestScore) {
+                bestScore = score;
+                bestX = x;
+                bestY = y;
+              }
+              
+              // Early exit if we found a good wide position
+              if (aspectRatio < 0.7 && y < startY + 200 && x < startX + 300) {
+                return { x: bestX, y: bestY };
+              }
+            }
           }
         }
-        currentX += maxWidth + componentGap;
-      }
-      
-      // Calculate max width for each column for centering
-      const colMaxWidths = [];
-      for (let col = 0; col < cols; col++) {
-        let maxWidth = 0;
-        for (let row = 0; row < rows; row++) {
-          const idx = row * cols + col;
-          if (idx < componentNodes.length) {
-            maxWidth = Math.max(maxWidth, componentNodes[idx]._boxWidth);
-          }
-        }
-        colMaxWidths.push(maxWidth);
-      }
-      
-      // Second pass: Position each component and its children
-      componentNodes.forEach((component, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
         
-        // Center component within its column space
-        const colMaxWidth = colMaxWidths[col];
-        const centerOffset = (colMaxWidth - component._boxWidth) / 2;
-        const boxX = colXPositions[col] + centerOffset;
-        const boxY = rowYPositions[row];
+        return { x: bestX, y: bestY };
+      };
+      
+      // Place each component using brick-packing
+      sortedComponents.forEach((component, index) => {
+        const width = component._boxWidth;
+        const height = component._boxHeight;
+        
+        let position;
+        if (index === 0) {
+          // First component at start position
+          position = { x: startX, y: startY };
+        } else {
+          // Find best position for this component
+          position = findBestPosition(width, height);
+        }
+        
+        const boxX = position.x;
+        const boxY = position.y;
         
         // Store box position
         component._boxX = boxX;
         component._boxY = boxY;
+        
+        // Mark this space as occupied
+        occupiedSpaces.push({
+          x: boxX,
+          y: boxY,
+          width: width,
+          height: height
+        });
         
         // Position component header at the top of the box
         component.x = boxX + component._boxWidth / 2;

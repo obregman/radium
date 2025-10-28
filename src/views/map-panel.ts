@@ -37,6 +37,18 @@ export class MapPanel {
     // Clean up when panel is closed
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
+    // Check for changes when panel becomes visible
+    this.panel.onDidChangeViewState(
+      e => {
+        if (e.webviewPanel.visible) {
+          MapPanel.outputChannel.appendLine('Panel became visible, checking for changes');
+          this.checkForChanges();
+        }
+      },
+      null,
+      this.disposables
+    );
+
     // Send initial data
     this.updateGraph();
     
@@ -63,6 +75,9 @@ export class MapPanel {
         MapPanel.currentPanel.gitDiffTracker = gitDiffTracker;
       }
       MapPanel.currentPanel.panel.reveal(column);
+      // Check for changes when panel is revealed
+      MapPanel.outputChannel.appendLine('Panel revealed, checking for changes');
+      MapPanel.currentPanel.checkForChanges();
       return;
     }
     
@@ -90,6 +105,12 @@ export class MapPanel {
         break;
       case 'file:open':
         await this.handleFileOpen(message.filePath);
+        break;
+      case 'file:preview':
+        await this.handleFilePreview(message.filePath);
+        break;
+      case 'external:focus':
+        await this.handleExternalFocus(message.filePaths);
         break;
       case 'edge:path':
         await this.handleEdgePath(message.srcId, message.dstId);
@@ -189,6 +210,118 @@ export class MapPanel {
     } catch (error) {
       console.error(`[Radium] Failed to open file:`, error);
       vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
+    }
+  }
+
+  private async handleFilePreview(filePath: string) {
+    console.log(`[Radium] Previewing file: ${filePath}`);
+    try {
+      // Resolve relative path to absolute path
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        throw new Error('No workspace folder open');
+      }
+      
+      const workspaceRoot = workspaceFolders[0].uri.fsPath;
+      
+      // If path is relative (doesn't start with workspace root), join it
+      let absolutePath: string;
+      if (filePath.startsWith(workspaceRoot)) {
+        // Already absolute
+        absolutePath = filePath;
+      } else {
+        // Relative path - join with workspace root
+        // Remove leading slash if present
+        const relativePath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+        absolutePath = `${workspaceRoot}/${relativePath}`;
+      }
+      
+      console.log(`[Radium] Reading file for preview: ${absolutePath}`);
+      const uri = vscode.Uri.file(absolutePath);
+      const document = await vscode.workspace.openTextDocument(uri);
+      
+      // Get first 20 lines
+      const lineCount = Math.min(20, document.lineCount);
+      const lines: string[] = [];
+      for (let i = 0; i < lineCount; i++) {
+        lines.push(document.lineAt(i).text);
+      }
+      
+      // Send preview content back to webview
+      this.panel.webview.postMessage({
+        type: 'file:preview-content',
+        filePath: filePath,
+        content: lines.join('\n'),
+        totalLines: document.lineCount
+      });
+    } catch (error) {
+      console.error(`[Radium] Failed to preview file:`, error);
+      this.panel.webview.postMessage({
+        type: 'file:preview-content',
+        filePath: filePath,
+        content: null,
+        error: 'Failed to read file'
+      });
+    }
+  }
+
+  private async handleExternalFocus(filePaths: string[]) {
+    console.log(`[Radium] Focusing external source with files:`, filePaths);
+    try {
+      if (!filePaths || filePaths.length === 0) {
+        console.log('[Radium] No files to focus');
+        return;
+      }
+
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        throw new Error('No workspace folder open');
+      }
+      
+      const workspaceRoot = workspaceFolders[0].uri.fsPath;
+      
+      // Find the common parent folder of all files
+      const absolutePaths = filePaths.map(filePath => {
+        if (filePath.startsWith(workspaceRoot)) {
+          return filePath;
+        } else {
+          const relativePath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+          return `${workspaceRoot}/${relativePath}`;
+        }
+      });
+
+      // Extract directory paths
+      const dirPaths = absolutePaths.map(path => {
+        const parts = path.split('/');
+        return parts.slice(0, -1).join('/');
+      });
+
+      // Find common parent directory
+      let commonDir = dirPaths[0];
+      if (dirPaths.length > 1) {
+        const parts = commonDir.split('/');
+        for (let i = parts.length; i > 0; i--) {
+          const testDir = parts.slice(0, i).join('/');
+          if (dirPaths.every(dir => dir.startsWith(testDir))) {
+            commonDir = testDir;
+            break;
+          }
+        }
+      }
+
+      console.log(`[Radium] Common directory: ${commonDir}`);
+
+      // Reveal the common directory in the explorer
+      const uri = vscode.Uri.file(commonDir);
+      await vscode.commands.executeCommand('revealInExplorer', uri);
+      
+      // Also reveal in the file explorer view
+      await vscode.commands.executeCommand('workbench.files.action.focusFilesExplorer');
+      
+      MapPanel.outputChannel.appendLine(`Focused folder: ${commonDir}`);
+    } catch (error) {
+      console.error(`[Radium] Failed to focus external source:`, error);
+      MapPanel.outputChannel.appendLine(`Error focusing folder: ${error}`);
     }
   }
 
@@ -1092,6 +1225,53 @@ export class MapPanel {
     #map svg:active {
       cursor: grabbing;
     }
+    .search-bar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: var(--vscode-editor-background);
+      border: 1px solid var(--vscode-panel-border);
+      padding: 8px;
+      border-radius: 4px;
+      z-index: 1000;
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .search-input {
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      padding: 4px 8px;
+      border-radius: 3px;
+      font-size: 13px;
+      width: 250px;
+      outline: none;
+    }
+    .search-input:focus {
+      border-color: var(--vscode-focusBorder);
+    }
+    .search-input::placeholder {
+      color: var(--vscode-input-placeholderForeground);
+    }
+    .clear-search-btn {
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+      border: none;
+      padding: 4px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .clear-search-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground);
+    }
+    .search-results {
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+      white-space: nowrap;
+    }
     .controls {
       position: absolute;
       top: 10px;
@@ -1119,7 +1299,7 @@ export class MapPanel {
     .legend {
       position: absolute;
       bottom: 10px;
-      left: 10px;
+      right: 10px;
       background: var(--vscode-editor-background);
       border: 1px solid var(--vscode-panel-border);
       padding: 10px;
@@ -1244,6 +1424,11 @@ export class MapPanel {
 </head>
 <body>
   <div id="map"></div>
+  <div class="search-bar">
+    <input type="text" class="search-input" id="search-input" placeholder="Search components, files, external sources...">
+    <button class="clear-search-btn" id="clear-search-btn">Clear</button>
+    <span class="search-results" id="search-results"></span>
+  </div>
   <div class="controls">
     <button class="control-button" id="reset-view-btn">Reset View</button>
     <button class="control-button" id="show-all-btn" style="display: none;">Show All Files</button>
@@ -1266,6 +1451,8 @@ export class MapPanel {
     let isFilteredView = false;
     let fullGraphData = null;
     let currentZoomLevel = 1;
+    let searchQuery = '';
+    let filteredNodeIds = new Set();
     const ZOOM_THRESHOLD = 0.3; // Below this zoom level, show only components
 
     const colorMap = {
@@ -1990,7 +2177,7 @@ export class MapPanel {
           });
         })
         .on('mouseover', function(event, d) {
-          // Show diff tooltip if file has changes
+          // Show diff tooltip if file has changes, otherwise show file preview
           if (d._changeInfo) {
             const tooltip = d3.select('body').append('div')
               .attr('class', 'file-diff-tooltip')
@@ -2085,18 +2272,80 @@ export class MapPanel {
             }, { passive: false });
             
             // Make tooltip sticky and dismiss only on explicit mouseout from file and tooltip
-            let overTooltip = false;
             tooltip.on('mouseenter', function() {
-              overTooltip = true;
               d3.select(this).classed('tooltip-hovered', true);
             });
             tooltip.on('mouseleave', function() {
-              overTooltip = false;
               d3.select(this).classed('tooltip-hovered', false);
               // Delay removal slightly to allow pointer to re-enter from minor gaps
               setTimeout(() => {
-                if (!overTooltip) {
-                  d3.select(this).remove();
+                const self = d3.select(this);
+                if (!self.classed('tooltip-hovered')) {
+                  self.remove();
+                }
+              }, 150);
+            });
+          } else {
+            // For unchanged files, show file preview
+            // Create a placeholder tooltip immediately
+            const tooltip = d3.select('body').append('div')
+              .attr('class', 'file-preview-tooltip')
+              .style('position', 'fixed')
+              .style('left', event.clientX + 10 + 'px')
+              .style('top', event.clientY + 10 + 'px')
+              .style('background', 'var(--vscode-editorHoverWidget-background)')
+              .style('color', 'var(--vscode-editorHoverWidget-foreground)')
+              .style('border', '1px solid var(--vscode-editorHoverWidget-border)')
+              .style('padding', '10px')
+              .style('border-radius', '4px')
+              .style('font-family', 'monospace')
+              .style('font-size', '12px')
+              .style('width', '600px')
+              .style('max-height', '400px')
+              .style('overflow-y', 'auto')
+              .style('overflow-x', 'auto')
+              .style('white-space', 'pre')
+              .style('pointer-events', 'auto')
+              .style('z-index', '10000')
+              .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)')
+              .text('Loading preview...');
+            
+            // Store the file path on the tooltip for later reference
+            tooltip.attr('data-filepath', d.path);
+            
+            // Request file preview from extension
+            vscode.postMessage({
+              type: 'file:preview',
+              filePath: d.path
+            });
+            
+            // Get the actual DOM element for native event handling
+            const tooltipElement = tooltip.node();
+            
+            // Handle wheel inside tooltip: scroll tooltip, never zoom canvas
+            tooltipElement.addEventListener('wheel', function(e) {
+              e.stopImmediatePropagation();
+              const deltaY = e.deltaY || 0;
+              const deltaX = e.deltaX || 0;
+              if (e.shiftKey) {
+                tooltipElement.scrollLeft += deltaY !== 0 ? deltaY : deltaX;
+              } else {
+                tooltipElement.scrollTop += deltaY;
+              }
+              e.preventDefault();
+            }, { passive: false });
+            
+            // Make tooltip sticky
+            tooltip.on('mouseenter', function() {
+              d3.select(this).classed('tooltip-hovered', true);
+            });
+            tooltip.on('mouseleave', function() {
+              d3.select(this).classed('tooltip-hovered', false);
+              // Remove tooltip after a delay
+              setTimeout(() => {
+                const self = d3.select(this);
+                if (!self.classed('tooltip-hovered')) {
+                  self.remove();
                 }
               }, 150);
             });
@@ -2104,12 +2353,27 @@ export class MapPanel {
         })
         // Do not follow the cursor; keep tooltip fixed so the user can reach it
         .on('mousemove', function(event) { /* intentionally no-op */ })
-        .on('mouseout', function() {
+        .on('mouseout', function(event) {
           // Use a small delay to allow moving to the tooltip
           setTimeout(() => {
-            const tooltip = d3.select('.file-diff-tooltip');
-            if (!tooltip.empty() && !tooltip.classed('tooltip-hovered')) {
-              tooltip.remove();
+            // Check if mouse is over any tooltip
+            const elementAtPoint = document.elementFromPoint(event.clientX, event.clientY);
+            const isOverTooltip = elementAtPoint && (
+              elementAtPoint.classList.contains('file-diff-tooltip') ||
+              elementAtPoint.classList.contains('file-preview-tooltip') ||
+              elementAtPoint.closest('.file-diff-tooltip') ||
+              elementAtPoint.closest('.file-preview-tooltip')
+            );
+            
+            if (!isOverTooltip) {
+              const diffTooltip = d3.select('.file-diff-tooltip');
+              if (!diffTooltip.empty() && !diffTooltip.classed('tooltip-hovered')) {
+                diffTooltip.remove();
+              }
+              const previewTooltip = d3.select('.file-preview-tooltip');
+              if (!previewTooltip.empty() && !previewTooltip.classed('tooltip-hovered')) {
+                previewTooltip.remove();
+              }
             }
           }, 100);
         })
@@ -2146,6 +2410,17 @@ export class MapPanel {
         .attr('stroke', '#000000')
         .attr('stroke-width', 2)
         .style('cursor', 'pointer')
+        .on('click', function(event, d) {
+          // Focus the folder containing the files used by this external source
+          if (d.usedBy && d.usedBy.length > 0) {
+            event.stopPropagation();
+            console.log('[Radium Map] External box clicked:', d.name, 'files:', d.usedBy);
+            vscode.postMessage({
+              type: 'external:focus',
+              filePaths: d.usedBy
+            });
+          }
+        })
         .on('mouseover', function(event, d) {
           // Show tooltip with description and usedBy files
           const tooltip = d3.select('body').append('div')
@@ -2273,7 +2548,7 @@ export class MapPanel {
       // Add external object name (black text, to the right of icon)
       externalGroups.append('text')
         .attr('class', 'external-label')
-        .attr('x', d => -(d._width || 140) / 2 + 50)
+        .attr('x', d => -(d._width || 140) / 2 + 55)
         .attr('y', -5)
         .attr('text-anchor', 'start')
         .attr('font-size', '11px')
@@ -2287,7 +2562,7 @@ export class MapPanel {
       // Add external object type (smaller, below name)
       externalGroups.append('text')
         .attr('class', 'external-type')
-        .attr('x', d => -(d._width || 140) / 2 + 50)
+        .attr('x', d => -(d._width || 140) / 2 + 55)
         .attr('y', 10)
         .attr('text-anchor', 'start')
         .attr('font-size', '9px')
@@ -2622,6 +2897,22 @@ export class MapPanel {
           // Highlight path
           console.log('Path:', message.path);
           break;
+        case 'file:preview-content':
+          // Update the preview tooltip with the file content
+          const previewTooltip = d3.select('.file-preview-tooltip[data-filepath="' + message.filePath + '"]');
+          if (!previewTooltip.empty()) {
+            if (message.error) {
+              previewTooltip.text('📄 ' + message.filePath + '\\n\\n' + message.error);
+            } else if (message.content) {
+              let previewText = '📄 ' + message.filePath + '\\n';
+              if (message.totalLines > 20) {
+                previewText += '(Showing first 20 of ' + message.totalLines + ' lines)\\n';
+              }
+              previewText += '\\n' + message.content;
+              previewTooltip.text(previewText);
+            }
+          }
+          break;
       }
     });
 
@@ -2642,10 +2933,62 @@ export class MapPanel {
       // Global wheel guard: if pointer is over tooltip, stop zoom
       window.addEventListener('wheel', (e) => {
         const el = document.elementFromPoint(e.clientX, e.clientY);
-        if (el && (el.classList.contains('file-diff-tooltip') || el.closest('.file-diff-tooltip'))) {
+        if (el && (el.classList.contains('file-diff-tooltip') || el.closest('.file-diff-tooltip') ||
+                   el.classList.contains('file-preview-tooltip') || el.closest('.file-preview-tooltip'))) {
           e.stopPropagation();
         }
       }, { capture: true, passive: true });
+
+    // Search functionality
+    function performSearch(query) {
+      searchQuery = query.toLowerCase().trim();
+      filteredNodeIds.clear();
+      
+      if (!searchQuery) {
+        // Clear search - show all nodes
+        g.selectAll('.component-container, .component-header, .component-label').style('opacity', 1);
+        g.selectAll('.file-group').style('opacity', 1);
+        g.selectAll('.external-group').style('opacity', 1);
+        document.getElementById('search-results').textContent = '';
+        return;
+      }
+      
+      // Find matching nodes
+      let matchCount = 0;
+      graphData.nodes.forEach(node => {
+        const matches = 
+          (node.name && node.name.toLowerCase().includes(searchQuery)) ||
+          (node.path && node.path.toLowerCase().includes(searchQuery)) ||
+          (node.description && node.description.toLowerCase().includes(searchQuery)) ||
+          (node.externalType && node.externalType.toLowerCase().includes(searchQuery));
+        
+        if (matches) {
+          filteredNodeIds.add(node.id);
+          matchCount++;
+        }
+      });
+      
+      // Update visibility
+      g.selectAll('.component-container, .component-header, .component-label')
+        .style('opacity', d => filteredNodeIds.has(d.id) ? 1 : 0.15);
+      
+      g.selectAll('.file-group')
+        .style('opacity', d => filteredNodeIds.has(d.id) ? 1 : 0.15);
+      
+      g.selectAll('.external-group')
+        .style('opacity', d => filteredNodeIds.has(d.id) ? 1 : 0.15);
+      
+      // Update results text
+      const resultsText = matchCount === 0 ? 'No matches' : 
+                         matchCount === 1 ? '1 match' : 
+                         \`\${matchCount} matches\`;
+      document.getElementById('search-results').textContent = resultsText;
+    }
+    
+    function clearSearch() {
+      document.getElementById('search-input').value = '';
+      performSearch('');
+    }
 
     // Add event listeners for control buttons
     document.getElementById('reset-view-btn')?.addEventListener('click', resetView);
@@ -2654,6 +2997,18 @@ export class MapPanel {
       console.log('[Radium Map] Changes button clicked');
       toggleLayer('changes');
     });
+    
+    // Add event listeners for search
+    const searchInput = document.getElementById('search-input');
+    searchInput?.addEventListener('input', (e) => {
+      performSearch(e.target.value);
+    });
+    searchInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        clearSearch();
+      }
+    });
+    document.getElementById('clear-search-btn')?.addEventListener('click', clearSearch);
   </script>
 </body>
 </html>`;

@@ -96,6 +96,28 @@ export class Indexer {
     }
   }
 
+  /**
+   * Index specific files immediately (useful for indexing new files before they're needed)
+   */
+  public async indexFiles(filePaths: string[]): Promise<void> {
+    console.log(`[Indexer] indexFiles called with ${filePaths.length} files:`, filePaths);
+    for (const filePath of filePaths) {
+      try {
+        // Convert to absolute path if relative
+        const absolutePath = path.isAbsolute(filePath) 
+          ? filePath 
+          : path.join(this.workspaceRoot, filePath);
+        
+        console.log(`[Indexer] Indexing file: ${filePath} -> ${absolutePath}`);
+        await this.indexFile(absolutePath);
+        console.log(`[Indexer] Successfully indexed: ${filePath}`);
+      } catch (error) {
+        console.error(`[Indexer] Failed to index ${filePath}:`, error);
+      }
+    }
+    console.log(`[Indexer] Finished indexing ${filePaths.length} files`);
+  }
+
   private async indexWorkspace(): Promise<void> {
     console.log('INDEXER: Finding source files in workspace:', this.workspaceRoot);
     const files = await this.findSourceFiles();

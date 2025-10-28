@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { GraphStore } from '../store/schema';
 import * as cp from 'child_process';
 import { promisify } from 'util';
+import { Indexer } from '../indexer/indexer';
 
 const exec = promisify(cp.exec);
 
@@ -16,11 +17,13 @@ export interface GitDiff {
 export class GitDiffTracker {
   private store: GraphStore;
   private workspaceRoot: string;
+  private indexer?: Indexer;
   private static outputChannel: vscode.OutputChannel;
 
-  constructor(store: GraphStore, workspaceRoot: string) {
+  constructor(store: GraphStore, workspaceRoot: string, indexer?: Indexer) {
     this.store = store;
     this.workspaceRoot = workspaceRoot;
+    this.indexer = indexer;
     
     // Initialize output channel if needed
     if (!GitDiffTracker.outputChannel) {
@@ -253,6 +256,24 @@ export class GitDiffTracker {
       return null;
     }
 
+    // Index new files before creating session
+    if (this.indexer) {
+      const newFiles = changes.filter(c => c.status === 'added').map(c => c.filePath);
+      if (newFiles.length > 0) {
+        console.log(`[Radium Git] Found ${newFiles.length} new files to index:`, newFiles);
+        await this.indexer.indexFiles(newFiles);
+        console.log(`[Radium Git] Finished indexing new files`);
+        
+        // Verify files were indexed
+        for (const filePath of newFiles) {
+          const file = this.store.getFileByPath(filePath);
+          console.log(`[Radium Git] After indexing, file "${filePath}" in store:`, file ? 'YES' : 'NO');
+        }
+      }
+    } else {
+      console.warn('[Radium Git] No indexer available - new files will not be indexed');
+    }
+
     // Get current branch name
     let branchName = 'unknown';
     try {
@@ -326,6 +347,15 @@ export class GitDiffTracker {
     } catch (error) {
       console.error('[Radium Git] Error getting changes vs remote:', error);
       return null;
+    }
+
+    // Index new files before creating session
+    if (this.indexer) {
+      const newFiles = changes.filter(c => c.status === 'added').map(c => c.filePath);
+      if (newFiles.length > 0) {
+        console.log(`[Radium Git] Indexing ${newFiles.length} new files:`, newFiles);
+        await this.indexer.indexFiles(newFiles);
+      }
     }
 
     // Get current branch name

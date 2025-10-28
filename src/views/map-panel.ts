@@ -10,6 +10,7 @@ export class MapPanel {
   private static outputChannel: vscode.OutputChannel;
   private changeCheckTimer?: NodeJS.Timeout;
   private readonly CHANGE_CHECK_INTERVAL = 60000; // 1 minute in milliseconds
+  private newFilePaths: Set<string> = new Set(); // Track new files to display in "New Files" component
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -176,7 +177,7 @@ export class MapPanel {
       MapPanel.outputChannel.appendLine(`  - ${hunks.filePath || 'unknown'}`);
     });
     
-    // Update overlay to show changes (don't filter, show all files)
+    // Update overlay to show changes (don't filter, show all files with highlights)
     this.updateOverlay(sessionId, false);
   }
 
@@ -448,11 +449,18 @@ export class MapPanel {
     // Map to store component colors
     const componentColors = new Map<string, string>();
 
-    // Group files by component
+    // Group files by component, separating new files
     const filesByComponent = new Map<string, any[]>();
     const unmatchedFiles: any[] = [];
+    const newFiles: any[] = [];
 
     for (const file of allFiles) {
+      // Check if this is a new file
+      if (this.newFilePaths.has(file.path)) {
+        newFiles.push(file);
+        continue; // Don't add to regular components
+      }
+
       const componentInfo = this.configLoader.getComponentForFile(file.path);
       if (componentInfo) {
         if (!filesByComponent.has(componentInfo.key)) {
@@ -464,6 +472,11 @@ export class MapPanel {
       }
     }
 
+    // Create "New Files" component if there are new files
+    if (newFiles.length > 0) {
+      filesByComponent.set('__new_files__', newFiles);
+    }
+
     // Create component nodes with unique colors
     const componentNodes = new Map<string, number>();
     const externalNodes = new Map<string, number>();
@@ -471,6 +484,31 @@ export class MapPanel {
     for (const [componentKey, files] of filesByComponent.entries()) {
       if (files.length === 0) continue;
       
+      // Handle special "New Files" component
+      if (componentKey === '__new_files__') {
+        const componentId = nodeId++;
+        const componentColor = '#90EE90'; // Light green for new files
+        
+        componentNodes.set(componentKey, componentId);
+        nodeMap.set(`component:${componentKey}`, componentId);
+        componentColors.set(componentKey, componentColor);
+
+        nodes.push({
+          id: componentId,
+          name: 'New Files',
+          kind: 'component',
+          path: componentKey,
+          size: files.length,
+          description: 'Newly added files',
+          fullPath: componentKey,
+          color: componentColor,
+          componentKey: componentKey
+        });
+        
+        console.log(`[Radium] Created "New Files" component node, ID: ${componentId}, ${files.length} files`);
+        continue;
+      }
+
       const component = config.projectSpec.components[componentKey];
       const componentId = nodeId++;
       const componentColor = hashStringToColor(component.name);
@@ -536,9 +574,22 @@ export class MapPanel {
       fileNodes.set(file.path, fileId);
       nodeMap.set(`file:${file.path}`, fileId);
 
+      // Check if this is a new file
+      const isNewFile = this.newFilePaths.has(file.path);
+      
       // Determine component color for this file
-      const componentInfo = this.configLoader.getComponentForFile(file.path);
-      const fileColor = componentInfo ? componentColors.get(componentInfo.key) : undefined;
+      let componentInfo = this.configLoader.getComponentForFile(file.path);
+      let fileColor: string | undefined;
+      let componentKey: string | undefined;
+
+      if (isNewFile) {
+        // New files belong to "New Files" component
+        componentKey = '__new_files__';
+        fileColor = componentColors.get('__new_files__');
+      } else if (componentInfo) {
+        componentKey = componentInfo.key;
+        fileColor = componentColors.get(componentInfo.key);
+      }
 
       const fileName = file.path.split('/').pop() || file.path;
       const fileNode = {
@@ -550,14 +601,14 @@ export class MapPanel {
         size: file.size,
         functions: [] as any[],
         componentColor: fileColor,
-        componentKey: componentInfo ? componentInfo.key : undefined
+        componentKey: componentKey
       };
       fileNodeObjects.push(fileNode);
       nodes.push(fileNode);
 
       // Connect file to component
-      if (componentInfo) {
-        const componentId = componentNodes.get(componentInfo.key);
+      if (componentKey) {
+        const componentId = componentNodes.get(componentKey);
         if (componentId) {
           edges.push({
             source: componentId,
@@ -723,7 +774,7 @@ export class MapPanel {
     
     console.log(`[Radium] updateOverlay: sessionId=${sessionId}, changes count=${changes.length}`);
     
-    // Map file IDs to file paths
+    // Map file IDs to file paths and identify new files
     const changedFiles = changes.map(c => {
       const file = allFiles.find(f => f.id === c.file_id);
       const hunksData = JSON.parse(c.hunks_json);
@@ -733,15 +784,27 @@ export class MapPanel {
         filePath: hunksData.filePath || file?.path || '',
         fileId: c.file_id,
         summary: c.summary,
-        hunks: hunksData
+        hunks: hunksData,
+        isNew: c.summary?.startsWith('added:')
       };
     }).filter(c => c.filePath);
 
     console.log(`[Radium] Changed file paths:`, changedFiles.map(c => c.filePath));
 
+    // Separate new files from modified files
+    const newFilePaths = changedFiles.filter(c => c.isNew).map(c => c.filePath);
+    const allChangedPaths = changedFiles.map(c => c.filePath);
+
+    // Track new files for display in full graph
+    this.newFilePaths = new Set(newFilePaths);
+    console.log(`[Radium] Tracking ${this.newFilePaths.size} new files for display`);
+
     // If filtering, rebuild graph with only changed files
     if (filterToChangedOnly && changedFiles.length > 0) {
-      this.updateGraphWithChangesOnly(changedFiles.map(c => c.filePath));
+      this.updateGraphWithChangesOnly(allChangedPaths, newFilePaths);
+    } else if (this.newFilePaths.size > 0) {
+      // Rebuild full graph to include "New Files" component
+      this.updateGraph();
     }
 
     this.panel.webview.postMessage({
@@ -752,15 +815,16 @@ export class MapPanel {
     });
   }
 
-  private updateGraphWithChangesOnly(changedFilePaths: string[]) {
+  private updateGraphWithChangesOnly(changedFilePaths: string[], newFilePaths: string[] = []) {
     const allNodes = this.store.getAllNodes();
     const allEdges = this.store.getAllEdges();
     const allFiles = this.store.getAllFiles();
 
-    console.log(`[Radium] updateGraphWithChangesOnly: ${changedFilePaths.length} changed files`);
+    console.log(`[Radium] updateGraphWithChangesOnly: ${changedFilePaths.length} changed files, ${newFilePaths.length} new files`);
 
     // Filter to only changed files
     const changedFileSet = new Set(changedFilePaths);
+    const newFileSet = new Set(newFilePaths);
     const filteredFiles = allFiles.filter(f => changedFileSet.has(f.path));
 
     console.log(`[Radium] Filtered files: ${filteredFiles.length}`, filteredFiles.map(f => f.path));
@@ -775,7 +839,7 @@ export class MapPanel {
     // If radium-components.yaml exists, show changed files WITH their parent components
     if (config) {
       // Build component-based graph showing only changed files and their components
-      const graphData = this.buildComponentBasedGraphForChanges(allNodes, allEdges, filteredFiles, config, changedFileSet);
+      const graphData = this.buildComponentBasedGraphForChanges(allNodes, allEdges, filteredFiles, config, changedFileSet, newFileSet);
       
       console.log(`[Radium] Graph built: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
 
@@ -798,7 +862,7 @@ export class MapPanel {
     }
   }
 
-  private buildComponentBasedGraphForChanges(allNodes: any[], allEdges: any[], changedFiles: any[], config: any, changedFileSet: Set<string>) {
+  private buildComponentBasedGraphForChanges(allNodes: any[], allEdges: any[], changedFiles: any[], config: any, changedFileSet: Set<string>, newFileSet: Set<string> = new Set()) {
     const nodes: any[] = [];
     const edges: any[] = [];
     const nodeMap = new Map<string, number>();
@@ -839,9 +903,13 @@ export class MapPanel {
 
     const componentColors = new Map<string, string>();
     
-    // Determine which components contain changed files
+    // Separate new files from modified files
+    const newFiles = changedFiles.filter(f => newFileSet.has(f.path));
+    const modifiedFiles = changedFiles.filter(f => !newFileSet.has(f.path));
+    
+    // Determine which components contain changed files (excluding new files)
     const componentsWithChanges = new Set<string>();
-    for (const file of changedFiles) {
+    for (const file of modifiedFiles) {
       const componentInfo = this.configLoader.getComponentForFile(file.path);
       if (componentInfo) {
         componentsWithChanges.add(componentInfo.key);
@@ -908,10 +976,10 @@ export class MapPanel {
       }
     }
 
-    // Create file nodes for changed files
+    // Create file nodes for modified files (not new files)
     const fileNodes = new Map<string, number>();
     
-    for (const file of changedFiles) {
+    for (const file of modifiedFiles) {
       const fileId = nodeId++;
       fileNodes.set(file.path, fileId);
       nodeMap.set(`file:${file.path}`, fileId);
@@ -945,6 +1013,58 @@ export class MapPanel {
             color: fileColor
           });
         }
+      }
+    }
+
+    // Create "New Files" component if there are new files
+    if (newFiles.length > 0) {
+      const newFilesComponentId = nodeId++;
+      const newFilesColor = '#90EE90'; // Light green for new files
+      
+      componentNodes.set('__new_files__', newFilesComponentId);
+      nodeMap.set('component:__new_files__', newFilesComponentId);
+      componentColors.set('__new_files__', newFilesColor);
+
+      nodes.push({
+        id: newFilesComponentId,
+        name: 'New Files',
+        kind: 'component',
+        path: '__new_files__',
+        size: newFiles.length,
+        description: 'Newly added files',
+        fullPath: '__new_files__',
+        color: newFilesColor,
+        componentKey: '__new_files__'
+      });
+
+      // Create file nodes for new files
+      for (const file of newFiles) {
+        const fileId = nodeId++;
+        fileNodes.set(file.path, fileId);
+        nodeMap.set(`file:${file.path}`, fileId);
+
+        const fileName = file.path.split('/').pop() || file.path;
+        const fileNode = {
+          id: fileId,
+          name: fileName,
+          kind: 'file',
+          path: file.path,
+          lang: file.lang,
+          size: file.size,
+          functions: [] as any[],
+          componentColor: newFilesColor,
+          componentKey: '__new_files__'
+        };
+        nodes.push(fileNode);
+
+        // Connect new file to "New Files" component
+        edges.push({
+          source: newFilesComponentId,
+          target: fileId,
+          kind: 'contains',
+          weight: 0.5,
+          color: newFilesColor
+        });
       }
     }
 

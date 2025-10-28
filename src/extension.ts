@@ -129,8 +129,8 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize orchestrator
     orchestrator = new LLMOrchestrator(store, workspaceRoot);
 
-    // Initialize git diff tracker
-    gitDiffTracker = new GitDiffTracker(store, workspaceRoot);
+    // Initialize git diff tracker with indexer reference
+    gitDiffTracker = new GitDiffTracker(store, workspaceRoot, indexer);
 
     // Initialize tree providers
     sessionsTreeProvider = new SessionsTreeProvider(store);

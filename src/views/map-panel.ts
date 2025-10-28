@@ -413,23 +413,24 @@ export class MapPanel {
     let nodeId = 1;
 
     // Predefined palette of 16 distinct colors for components
+    // Diverse, distinguishable colors with good contrast
     const componentColorPalette = [
-      '#FF6B6B', // Red
-      '#4ECDC4', // Teal
-      '#45B7D1', // Sky Blue
-      '#FFA07A', // Light Salmon
-      '#98D8C8', // Mint
-      '#F7DC6F', // Yellow
-      '#BB8FCE', // Purple
-      '#85C1E2', // Light Blue
-      '#F8B739', // Orange
-      '#52B788', // Green
-      '#E76F51', // Coral
-      '#2A9D8F', // Dark Teal
-      '#E9C46A', // Gold
-      '#F4A261', // Peach
-      '#A8DADC', // Powder Blue
-      '#FF8FA3'  // Pink
+      '#E57373', // Coral Red
+      '#64B5F6', // Sky Blue
+      '#81C784', // Light Green
+      '#FFB74D', // Orange
+      '#BA68C8', // Purple
+      '#4DB6AC', // Teal
+      '#F06292', // Pink
+      '#7986CB', // Indigo
+      '#AED581', // Lime Green
+      '#FFD54F', // Amber
+      '#9575CD', // Deep Purple
+      '#4DD0E1', // Cyan
+      '#FF8A65', // Deep Orange
+      '#A1887F', // Brown
+      '#90A4AE', // Blue Grey
+      '#DCE775'  // Yellow Green
     ];
     
     // Hash function to consistently assign colors from palette
@@ -804,23 +805,24 @@ export class MapPanel {
     let nodeId = 1;
 
     // Predefined palette of 16 distinct colors for components
+    // Diverse, distinguishable colors with good contrast
     const componentColorPalette = [
-      '#FF6B6B', // Red
-      '#4ECDC4', // Teal
-      '#45B7D1', // Sky Blue
-      '#FFA07A', // Light Salmon
-      '#98D8C8', // Mint
-      '#F7DC6F', // Yellow
-      '#BB8FCE', // Purple
-      '#85C1E2', // Light Blue
-      '#F8B739', // Orange
-      '#52B788', // Green
-      '#E76F51', // Coral
-      '#2A9D8F', // Dark Teal
-      '#E9C46A', // Gold
-      '#F4A261', // Peach
-      '#A8DADC', // Powder Blue
-      '#FF8FA3'  // Pink
+      '#E57373', // Coral Red
+      '#64B5F6', // Sky Blue
+      '#81C784', // Light Green
+      '#FFB74D', // Orange
+      '#BA68C8', // Purple
+      '#4DB6AC', // Teal
+      '#F06292', // Pink
+      '#7986CB', // Indigo
+      '#AED581', // Lime Green
+      '#FFD54F', // Amber
+      '#9575CD', // Deep Purple
+      '#4DD0E1', // Cyan
+      '#FF8A65', // Deep Orange
+      '#A1887F', // Brown
+      '#90A4AE', // Blue Grey
+      '#DCE775'  // Yellow Green
     ];
     
     // Hash function to consistently assign colors from palette
@@ -2155,6 +2157,7 @@ export class MapPanel {
       // No dragging for files
 
       // Draw file boxes with fixed size and component-colored borders
+      let tooltipTimeout = null;
       fileGroups.append('rect')
         .attr('class', 'file-box')
         .attr('width', d => d._width || 100)
@@ -2177,6 +2180,13 @@ export class MapPanel {
           });
         })
         .on('mouseover', function(event, d) {
+          // Clear any existing timeout
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+          }
+          
+          // Set a timeout to show tooltip after 0.5 seconds
+          tooltipTimeout = setTimeout(() => {
           // Show diff tooltip if file has changes, otherwise show file preview
           if (d._changeInfo) {
             const tooltip = d3.select('body').append('div')
@@ -2350,10 +2360,17 @@ export class MapPanel {
               }, 150);
             });
           }
+          }, 500); // 0.5 second delay
         })
         // Do not follow the cursor; keep tooltip fixed so the user can reach it
         .on('mousemove', function(event) { /* intentionally no-op */ })
         .on('mouseout', function(event) {
+          // Clear the tooltip timeout if mouse leaves before tooltip appears
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+            tooltipTimeout = null;
+          }
+          
           // Use a small delay to allow moving to the tooltip
           setTimeout(() => {
             // Check if mouse is over any tooltip

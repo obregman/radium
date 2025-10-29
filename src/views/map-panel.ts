@@ -453,8 +453,57 @@ export class MapPanel {
     const filesByComponent = new Map<string, any[]>();
     const unmatchedFiles: any[] = [];
     const newFiles: any[] = [];
+    
+    // Create a set of all indexed file paths for quick lookup
+    const indexedFilePaths = new Set(allFiles.map(f => f.path));
+    
+    // Add files explicitly listed in component definitions that aren't indexed
+    const syntheticFileId = -1000; // Use negative IDs for synthetic files
+    let syntheticId = syntheticFileId;
+    const syntheticFiles: any[] = [];
+    
+    for (const componentKey in config.projectSpec.components) {
+      const component = config.projectSpec.components[componentKey];
+      if (component.files && Array.isArray(component.files)) {
+        for (const filePath of component.files) {
+          // Normalize the path
+          const normalizedPath = filePath.replace(/\\/g, '/');
+          
+          // Filter out glob patterns and unwanted file types
+          if (normalizedPath.endsWith('**') || normalizedPath.endsWith('*')) {
+            continue; // Skip glob patterns
+          }
+          
+          // Filter out markdown and text files
+          if (normalizedPath.endsWith('.md') || normalizedPath.endsWith('.txt')) {
+            continue;
+          }
+          
+          // Filter out image files
+          const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.bmp', '.webp', '.ico'];
+          if (imageExtensions.some(ext => normalizedPath.toLowerCase().endsWith(ext))) {
+            continue;
+          }
+          
+          // If this file isn't already indexed, create a synthetic file record
+          if (!indexedFilePaths.has(normalizedPath)) {
+            syntheticFiles.push({
+              id: syntheticId--,
+              path: normalizedPath,
+              hash: '',
+              indexed_at: Date.now(),
+              isSynthetic: true // Mark as synthetic for identification
+            });
+            indexedFilePaths.add(normalizedPath);
+          }
+        }
+      }
+    }
+    
+    // Merge synthetic files with indexed files
+    const allFilesWithSynthetic = [...allFiles, ...syntheticFiles];
 
-    for (const file of allFiles) {
+    for (const file of allFilesWithSynthetic) {
       // Check if this is a new file
       if (this.newFilePaths.has(file.path)) {
         newFiles.push(file);
@@ -477,12 +526,18 @@ export class MapPanel {
       filesByComponent.set('__new_files__', newFiles);
     }
 
+    // Ensure all components from config are included, even if they have no files
+    for (const componentKey in config.projectSpec.components) {
+      if (!filesByComponent.has(componentKey)) {
+        filesByComponent.set(componentKey, []);
+      }
+    }
+
     // Create component nodes with unique colors
     const componentNodes = new Map<string, number>();
     const externalNodes = new Map<string, number>();
     
     for (const [componentKey, files] of filesByComponent.entries()) {
-      if (files.length === 0) continue;
       
       // Handle special "New Files" component
       if (componentKey === '__new_files__') {
@@ -510,6 +565,16 @@ export class MapPanel {
       }
 
       const component = config.projectSpec.components[componentKey];
+      
+      // Filter out components with no files and no external sources
+      const hasFiles = files.length > 0;
+      const hasExternal = component.external && component.external.length > 0;
+      
+      if (!hasFiles && !hasExternal) {
+        console.log(`[Radium] Skipping component ${component.name} - no files or external sources`);
+        continue;
+      }
+      
       const componentId = nodeId++;
       const componentColor = hashStringToColor(component.name);
       
@@ -569,7 +634,7 @@ export class MapPanel {
     const fileNodes = new Map<string, number>();
     const fileNodeObjects: any[] = [];
     
-    for (const file of allFiles) {
+    for (const file of allFilesWithSynthetic) {
       const fileId = nodeId++;
       fileNodes.set(file.path, fileId);
       nodeMap.set(`file:${file.path}`, fileId);

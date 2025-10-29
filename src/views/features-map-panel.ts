@@ -572,8 +572,8 @@ export class FeaturesMapPanel {
       const zoom = d3.zoom()
         .scaleExtent([0.1, 4])
         .wheelDelta((event) => {
-          // When Shift is held, zoom twice as fast
-          const multiplier = event.shiftKey ? 2 : 1;
+          // When Shift is held, zoom three times as fast
+          const multiplier = event.shiftKey ? 3 : 1;
           return -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002) * (event.ctrlKey ? 10 : 1) * multiplier;
         })
         .on('zoom', (event) => {

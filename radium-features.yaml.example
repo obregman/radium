@@ -62,15 +62,18 @@ spec:
         - type: user
           name: Open Features Map
           description: User runs the "Radium: Features Map" command
+          impl: src/extension.ts
         - type: window
           name: Display features visualization
           description: Show interactive graph with features, flows, and components
+          impl: src/views/features-map-panel.ts
         - type: user
           name: Click on feature
           description: User clicks on a feature node to see details
-        - type: window
+        - type: system
           name: Show feature info
           description: Display feature status, owner, and dependencies
+          impl: src/views/features-map-panel.ts
 
   - impact-analysis:
       name: Impact Analysis

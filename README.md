@@ -149,13 +149,19 @@ spec:
         - type: user
           name: The user clicks on add new user
           description: The user clicks on add new customer
+          impl: src/components/AddUserButton.tsx
         - type: window
           name: App displays the "new customer" screen
           description: Shows the "new customer" screen to the user
+          impl: src/screens/NewCustomerScreen.tsx
         - type: user
           name: The user fills the new customer's details
           description: The user fills customer name, address, phone number and email
-          
+          impl: src/forms/CustomerForm.tsx
+
+Guidelines:
+- Each flow step can optionally include an 'impl' field pointing to the main file that implements this step
+- The impl path should be relative to the project root
 ```
 
 ## License

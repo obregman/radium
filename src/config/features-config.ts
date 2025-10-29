@@ -6,6 +6,7 @@ export interface FlowItem {
   type: 'user' | 'window' | 'system' | 'api' | 'database';
   name: string;
   description?: string;
+  impl?: string;
 }
 
 export interface FeatureConfig {

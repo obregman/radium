@@ -67,6 +67,9 @@ export class FeaturesMapPanel {
       case 'feature:selected':
         await this.handleFeatureSelected(message.featureKey);
         break;
+      case 'flowItem:clicked':
+        await this.handleFlowItemClicked(message.implPath);
+        break;
       case 'ready':
         this.updateGraph();
         break;
@@ -97,6 +100,33 @@ export class FeaturesMapPanel {
     ].filter(line => line !== '').join('\n');
 
     vscode.window.showInformationMessage(info);
+  }
+
+  private async handleFlowItemClicked(implPath: string) {
+    if (!implPath) {
+      return;
+    }
+
+    try {
+      // Resolve the file path relative to workspace root
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        vscode.window.showErrorMessage('No workspace folder open');
+        return;
+      }
+
+      const workspaceRoot = workspaceFolders[0].uri.fsPath;
+      const fullPath = vscode.Uri.file(implPath.startsWith('/') 
+        ? implPath 
+        : `${workspaceRoot}/${implPath}`);
+
+      // Open the file in the editor
+      const document = await vscode.workspace.openTextDocument(fullPath);
+      await vscode.window.showTextDocument(document);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to open file: ${implPath}`);
+      console.error('[Features Map] Error opening file:', error);
+    }
   }
 
   private getStatusIcon(status?: string): string {
@@ -213,6 +243,7 @@ export class FeaturesMapPanel {
             type: 'flow-item',
             flowType: flowItem.type,
             description: flowItem.description,
+            impl: flowItem.impl,
             featureKey: featureKey,
             flowIndex: i
           });
@@ -475,41 +506,6 @@ export class FeaturesMapPanel {
 <body>
   <div id="container">
     <svg id="graph"></svg>
-    <div class="legend">
-      <div style="font-weight: bold; margin-bottom: 10px;">Features Map</div>
-      <div class="legend-item">
-        <div class="legend-color" style="background: #4a9eff;"></div>
-        <span>Feature</span>
-      </div>
-      <div style="font-weight: bold; margin: 10px 0 5px 0; font-size: 11px;">Flow Types:</div>
-      <div class="legend-item">
-        <div class="legend-color" style="background: #9c27b0;"></div>
-        <span>User</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background: #ff9800;"></div>
-        <span>Window</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background: #4caf50;"></div>
-        <span>System</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background: #f44336;"></div>
-        <span>API</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background: #607d8b;"></div>
-        <span>Database</span>
-      </div>
-      <div style="font-weight: bold; margin: 10px 0 5px 0; font-size: 11px;">Connections:</div>
-      <div class="legend-item">
-        <div style="width: 20px; height: 3px; background: #666; margin-right: 10px; position: relative;">
-          <div style="position: absolute; right: -5px; top: -3px; width: 0; height: 0; border-left: 5px solid #666; border-top: 3px solid transparent; border-bottom: 3px solid transparent;"></div>
-        </div>
-        <span>Flow Sequence</span>
-      </div>
-    </div>
   </div>
   
   <script>
@@ -714,12 +710,12 @@ export class FeaturesMapPanel {
         });
       }
       
-      // Position features as container boxes with flows inside
-      const startX = 100;
+      // Position features with name on left and flows on right
+      const FEATURE_NAME_WIDTH = 300; // Width reserved for feature name on left
+      const FEATURE_NAME_X = 100; // X position for feature names
+      const FLOW_START_X = FEATURE_NAME_X + FEATURE_NAME_WIDTH + 80; // Start X for flow items
       let currentY = 100;
-      const FEATURE_CONTAINER_PADDING = 40; // Padding inside feature container
-      const FEATURE_TITLE_HEIGHT = 60; // Space for feature title at top
-      const FEATURE_VERTICAL_SPACING = 50; // Space between feature containers
+      const FEATURE_VERTICAL_SPACING = 250; // Space between feature rows
       
       // Calculate positions for features and their flows
       featureNodes.forEach((feature) => {
@@ -727,7 +723,7 @@ export class FeaturesMapPanel {
         const featureFlowItems = flowItemNodes.filter(f => f.featureKey === feature.key).sort((a, b) => a.flowIndex - b.flowIndex);
         
         if (feature.hasFlow && featureFlowItems.length > 0) {
-          // Calculate container dimensions based on actual flow item widths and heights
+          // Calculate flow row dimensions
           const flowItemWidths = featureFlowItems.map(item => {
             const dim = nodeDimensions.get(item.id);
             return dim ? dim.width : FLOW_ITEM_WIDTH;
@@ -736,27 +732,16 @@ export class FeaturesMapPanel {
             const dim = nodeDimensions.get(item.id);
             return dim ? dim.height : FLOW_ITEM_HEIGHT;
           }));
-          const flowRowWidth = flowItemWidths.reduce((sum, w) => sum + w, 0) + (featureFlowItems.length - 1) * FLOW_SPACING;
-          const containerWidth = flowRowWidth + FEATURE_CONTAINER_PADDING * 2;
-          const containerHeight = maxFlowItemHeight + FEATURE_TITLE_HEIGHT + FEATURE_CONTAINER_PADDING * 2;
           
-          // Store container info on feature node
-          feature.containerWidth = containerWidth;
-          feature.containerHeight = containerHeight;
-          feature.containerX = startX;
-          feature.containerY = currentY;
-          
-          // Position feature title in top-left of container (inside the border)
-          // Store container position on feature for text positioning
-          feature.textOffsetX = 25; // Offset from container left edge
+          // Position feature name on the left, vertically centered with flow
           positionedNodes.set(feature.id, { 
-            x: startX, // Position at container left
-            y: currentY + 35 // 35px from top edge
+            x: FEATURE_NAME_X,
+            y: currentY
           });
           
-          // Position flow items horizontally inside container using actual widths
-          let flowX = startX + FEATURE_CONTAINER_PADDING;
-          const flowY = currentY + FEATURE_TITLE_HEIGHT + FEATURE_CONTAINER_PADDING + maxFlowItemHeight / 2;
+          // Position flow items horizontally starting from FLOW_START_X
+          let flowX = FLOW_START_X;
+          const flowY = currentY;
           
           featureFlowItems.forEach(flowItem => {
             const itemWidth = flowItemWidths[featureFlowItems.indexOf(flowItem)];
@@ -764,27 +749,16 @@ export class FeaturesMapPanel {
             flowX += itemWidth + FLOW_SPACING;
           });
           
-          // Move down for next feature container
-          currentY += containerHeight + FEATURE_VERTICAL_SPACING;
+          // Move down for next feature row
+          currentY += FEATURE_VERTICAL_SPACING;
         } else {
-          // Feature without flows - just show as regular box
-          const containerWidth = 400;
-          const containerHeight = 100;
-          
-          feature.containerWidth = containerWidth;
-          feature.containerHeight = containerHeight;
-          feature.containerX = startX;
-          feature.containerY = currentY;
-          
-          // Position feature title in top-left of container (inside the border)
-          // Store container position on feature for text positioning
-          feature.textOffsetX = 25; // Offset from container left edge
+          // Feature without flows - just show name on left
           positionedNodes.set(feature.id, { 
-            x: startX, // Position at container left
-            y: currentY + 35 // 35px from top edge
+            x: FEATURE_NAME_X,
+            y: currentY
           });
           
-          currentY += containerHeight + FEATURE_VERTICAL_SPACING;
+          currentY += FEATURE_VERTICAL_SPACING;
         }
       });
       
@@ -814,23 +788,6 @@ export class FeaturesMapPanel {
       console.log('[Frontend] Positioned nodes:', positionedNodes.size);
       console.log('[Frontend] Sample node positions:', Array.from(positionedNodes.entries()).slice(0, 3));
       console.log('[Frontend] Nodes with x,y:', data.nodes.filter(n => n.x !== undefined && n.y !== undefined).length);
-      
-      // Draw feature container boxes first (behind everything)
-      const featureContainers = g.append('g')
-        .selectAll('rect')
-        .data(data.nodes.filter(n => n.type === 'feature'))
-        .enter()
-        .append('rect')
-        .attr('class', 'feature-container')
-        .attr('x', d => d.containerX)
-        .attr('y', d => d.containerY)
-        .attr('width', d => d.containerWidth)
-        .attr('height', d => d.containerHeight)
-        .attr('rx', 8)
-        .attr('fill', '#2a2a2a')
-        .attr('stroke', '#4a9eff')
-        .attr('stroke-width', 2)
-        .attr('opacity', 0.8);
       
       // Draw edges
       const edges = g.append('g')
@@ -888,6 +845,11 @@ export class FeaturesMapPanel {
               type: 'feature:selected',
               featureKey: d.key
             });
+          } else if (d.type === 'flow-item' && d.impl) {
+            vscode.postMessage({
+              type: 'flowItem:clicked',
+              implPath: d.impl
+            });
           }
         });
       
@@ -922,11 +884,13 @@ export class FeaturesMapPanel {
             .attr('height', dim.height)
             .attr('x', -dim.width / 2)
             .attr('y', -dim.height / 2)
-            .attr('rx', 8);
+            .attr('rx', 8)
+            .style('cursor', d.impl ? 'pointer' : 'default');
             
           // Add tooltip
+          const tooltipText = \`\${d.flowType.toUpperCase()}: \${d.label}\${d.description ? '\\n\\n' + d.description : ''}\${d.impl ? '\\n\\nClick to open: ' + d.impl : ''}\`;
           node.append('title')
-            .text(\`\${d.flowType.toUpperCase()}: \${d.label}\${d.description ? '\\n\\n' + d.description : ''}\`);
+            .text(tooltipText);
         }
       });
       
@@ -940,7 +904,27 @@ export class FeaturesMapPanel {
           const dim = nodeDimensions.get(d.id) || { width: FLOW_ITEM_WIDTH, height: FLOW_ITEM_HEIGHT };
           const maxWidth = dim.width - 20;
           
-          // Add type label at top with << >>
+          // Get icon for flow type
+          const getFlowIcon = (flowType) => {
+            switch(flowType) {
+              case 'user': return '👤';
+              case 'window': return '🪟';
+              case 'system': return '⚙️';
+              case 'api': return '☁️';
+              case 'database': return '🗄️';
+              default: return '📦';
+            }
+          };
+          
+          // Add icon above the box (larger)
+          node.append('text')
+            .attr('class', 'flow-icon')
+            .attr('dy', -dim.height / 2 - 25)
+            .style('font-size', '40px')
+            .style('text-anchor', 'middle')
+            .text(getFlowIcon(d.flowType));
+          
+          // Add type label at top of box with << >>
           node.append('text')
             .attr('class', 'node-label')
             .attr('dy', -dim.height / 2 + 16)
@@ -948,7 +932,7 @@ export class FeaturesMapPanel {
             .style('font-weight', 'bold')
             .text(\`<<\${d.flowType}>>\`);
           
-          // Add main label text below type with extra spacing
+          // Add main label text below type
           const words = d.label.split(/\\s+/);
           let line = [];
           let lineNumber = 0;
@@ -968,7 +952,7 @@ export class FeaturesMapPanel {
             lines.push(line.join(' '));
           }
           
-          // Start text lower to create gap after type label
+          // Start text below type label
           const startY = -(lines.length - 1) * lineHeight / 2 + 18;
           lines.forEach((lineText, i) => {
             node.append('text')
@@ -977,14 +961,11 @@ export class FeaturesMapPanel {
               .text(lineText);
           });
         } else if (d.type === 'feature') {
-          // Feature title in top-left corner
-          // Use SVG textLength to constrain width
-          const lineHeight = 32;
-          const textStartOffset = d.textOffsetX || 25;
-          // Max width accounts for left offset and right padding
-          const maxWidth = d.containerWidth - textStartOffset - 25;
+          // Feature name on the left side
+          const lineHeight = 28;
+          const maxWidth = 280;
           const words = d.label.split(/\\s+/);
-          const charWidth = 16;
+          const charWidth = 14;
           
           let line = [];
           const lines = [];
@@ -1003,24 +984,20 @@ export class FeaturesMapPanel {
             lines.push(line.join(' '));
           }
           
-          // Limit to 2 lines
-          const displayLines = lines.slice(0, 2);
+          // Calculate vertical offset to center text
+          const totalHeight = lines.length * lineHeight;
+          const startY = -(totalHeight / 2) + lineHeight;
           
-          displayLines.forEach((lineText, i) => {
-            const text = node.append('text')
+          lines.forEach((lineText, i) => {
+            node.append('text')
               .attr('class', 'feature-node-label')
-              .attr('x', textStartOffset)  // Use stored offset from container left edge
-              .attr('y', 14 + (i * lineHeight))  // Slightly higher placement from node origin
+              .attr('x', 0)
+              .attr('y', startY + (i * lineHeight))
               .attr('text-anchor', 'start')
+              .style('font-size', '24px')
+              .style('font-weight', '600')
+              .style('fill', '#4a9eff')
               .text(lineText);
-            
-            // Use textLength to constrain if text is too long
-            // This will compress the text to fit within available space
-            const estimatedWidth = lineText.length * charWidth;
-            if (estimatedWidth > maxWidth) {
-              text.attr('textLength', maxWidth)
-                  .attr('lengthAdjust', 'spacingAndGlyphs');
-            }
           });
         } else {
           // For components, use standard centered label

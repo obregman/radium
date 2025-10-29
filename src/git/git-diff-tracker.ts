@@ -224,6 +224,34 @@ export class GitDiffTracker {
         return 'File deleted';
       }
 
+      if (status === 'added') {
+        // For new files, show the entire file content as a diff
+        try {
+          const { stdout } = await exec(`git diff --cached -- "${filePath}"`, {
+            cwd: this.workspaceRoot
+          });
+          if (stdout) {
+            return stdout;
+          }
+          // If not staged, show the file content directly
+          const fs = require('fs');
+          const path = require('path');
+          const fullPath = path.join(this.workspaceRoot, filePath);
+          if (fs.existsSync(fullPath)) {
+            const content = fs.readFileSync(fullPath, 'utf8');
+            // Format as a diff-like output
+            const lines = content.split('\n');
+            let diffOutput = `+++ ${filePath}\n`;
+            lines.forEach((line: string) => {
+              diffOutput += `+${line}\n`;
+            });
+            return diffOutput;
+          }
+        } catch (error) {
+          console.error(`Failed to get content for new file ${filePath}:`, error);
+        }
+      }
+
       // Get the actual diff with context
       const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
         cwd: this.workspaceRoot

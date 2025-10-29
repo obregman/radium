@@ -1490,6 +1490,10 @@ export class MapPanel {
     .component-container {
       pointer-events: none;
     }
+    .new-files-container {
+      fill: #3a3a3a !important;
+      stroke: #5a5a5a !important;
+    }
     .component-label {
       pointer-events: none;
     }
@@ -1891,8 +1895,12 @@ export class MapPanel {
       });
       
       // Brick-packing layout algorithm
-      // Sort components by width first (wider first), then by area for better horizontal packing
-      const sortedComponents = [...componentNodes].sort((a, b) => {
+      // Separate "New Files" component from regular components
+      const newFilesComponent = componentNodes.find(c => c.componentKey === '__new_files__');
+      const regularComponents = componentNodes.filter(c => c.componentKey !== '__new_files__');
+      
+      // Sort regular components by width first (wider first), then by area for better horizontal packing
+      const sortedComponents = [...regularComponents].sort((a, b) => {
         // Prioritize width over height
         const widthDiff = b._boxWidth - a._boxWidth;
         if (Math.abs(widthDiff) > 50) {
@@ -2061,6 +2069,60 @@ export class MapPanel {
         });
       });
 
+      // Place "New Files" component at the bottom if it exists
+      if (newFilesComponent) {
+        const bounds = getLayoutBounds();
+        const newFilesBoxX = startX;
+        const newFilesBoxY = bounds.maxY + componentGapY;
+        
+        // Store box position
+        newFilesComponent._boxX = newFilesBoxX;
+        newFilesComponent._boxY = newFilesBoxY;
+        
+        // Position component header at the top of the box
+        newFilesComponent.x = newFilesBoxX + newFilesComponent._boxWidth / 2;
+        newFilesComponent.y = newFilesBoxY + headerHeight / 2;
+        newFilesComponent.fx = newFilesComponent.x;
+        newFilesComponent.fy = newFilesComponent.y;
+        
+        const files = newFilesComponent._files;
+        const externals = newFilesComponent._externals;
+        const fileCols = newFilesComponent._fileCols;
+        const fileColWidths = newFilesComponent._fileColWidths;
+        
+        // Calculate externals start position (right side)
+        const externalsStartX = newFilesComponent._boxWidth - externalBoxWidth - contentPadding;
+        
+        // Position files in grid on the left side inside the box
+        files.forEach((file, idx) => {
+          const fileCol = idx % fileCols;
+          const fileRow = Math.floor(idx / fileCols);
+          
+          // Calculate X position based on column widths
+          let fileX = newFilesBoxX + filesStartX;
+          for (let c = 0; c < fileCol; c++) {
+            fileX += fileColWidths[c] + fileSpacingX;
+          }
+          
+          // Position at center of file box
+          file.x = fileX + file._width / 2;
+          file.y = newFilesBoxY + filesStartY + fileRow * (fileBoxHeight + fileSpacingY) + fileBoxHeight / 2;
+          file.fx = file.x;
+          file.fy = file.y;
+        });
+        
+        // Position external objects on the right side inside the box
+        externals.forEach((external, idx) => {
+          // Position at center of external box
+          external.x = newFilesBoxX + externalsStartX + externalBoxWidth / 2;
+          external.y = newFilesBoxY + filesStartY + idx * externalSpacingY + externalBoxHeight / 2;
+          external.fx = external.x;
+          external.fy = external.y;
+          external._width = externalBoxWidth;
+          external._height = externalBoxHeight;
+        });
+      }
+
       // Ensure all nodes have positions
       data.nodes.forEach(node => {
         if (node.x === undefined || node.y === undefined) {
@@ -2210,13 +2272,13 @@ export class MapPanel {
       g.selectAll('.component-container')
         .data(componentNodes)
         .join('rect')
-        .attr('class', 'component-container')
+        .attr('class', d => d.componentKey === '__new_files__' ? 'component-container new-files-container' : 'component-container')
         .attr('x', d => d._boxX)
         .attr('y', d => d._boxY)
         .attr('width', d => d._boxWidth)
         .attr('height', d => d._boxHeight)
-        .attr('fill', 'var(--vscode-editor-background)')
-        .attr('stroke', d => d.color)
+        .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : 'var(--vscode-editor-background)')
+        .attr('stroke', d => d.componentKey === '__new_files__' ? '#5a5a5a' : d.color)
         .attr('stroke-width', 3)
         .attr('rx', 8)
         .attr('ry', 8);
@@ -2225,12 +2287,12 @@ export class MapPanel {
       const componentHeaders = g.selectAll('.component-header')
         .data(componentNodes)
         .join('rect')
-        .attr('class', 'component-header')
+        .attr('class', d => d.componentKey === '__new_files__' ? 'component-header new-files-header' : 'component-header')
         .attr('x', d => d._boxX)
         .attr('y', d => d._boxY)
         .attr('width', d => d._boxWidth)
         .attr('height', 50)
-        .attr('fill', d => d.color)
+        .attr('fill', d => d.componentKey === '__new_files__' ? '#5a5a5a' : d.color)
         .attr('fill-opacity', 0.9)
         .attr('rx', 8)
         .attr('ry', 8)
@@ -2813,7 +2875,7 @@ export class MapPanel {
       if (isZoomedOut) {
         // When zoomed out: Fill entire box with component color
         g.selectAll('.component-container')
-          .attr('fill', d => d.color)
+          .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : d.color)
           .attr('fill-opacity', 0.9);
         
         // Hide the header bar (it's redundant when box is filled)
@@ -2840,7 +2902,7 @@ export class MapPanel {
       } else {
         // Restore normal appearance
         g.selectAll('.component-container')
-          .attr('fill', 'var(--vscode-editor-background)')
+          .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : 'var(--vscode-editor-background)')
           .attr('fill-opacity', 1);
         
         // Show the header bar

@@ -1695,7 +1695,8 @@ export class MapPanel {
         console.log('[Radium Map] Wheel event detected');
         
         const delta = -event.deltaY;
-        const scaleBy = delta > 0 ? 1.1 : 0.9;
+        // Reduced zoom speed for smoother experience, especially on Mac trackpads
+        const scaleBy = delta > 0 ? 1.03 : 0.97;
         const newScale = Math.max(0.1, Math.min(10, transform.k * scaleBy));
         
         // Zoom towards mouse position

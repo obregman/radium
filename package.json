@@ -32,16 +32,6 @@
         "icon": "$(symbol-namespace)"
       },
       {
-        "command": "radium.openDevMode",
-        "title": "Radium: Dev Mode",
-        "icon": "$(tools)"
-      },
-      {
-        "command": "radium.showChanges",
-        "title": "Radium: Show Changes",
-        "icon": "$(diff)"
-      },
-      {
         "command": "radium.applyLLMPlan",
         "title": "Radium: Apply LLM Plan",
         "icon": "$(check)"
@@ -85,11 +75,6 @@
         "command": "radium.reindex",
         "title": "Radium: Re-index Workspace",
         "icon": "$(sync)"
-      },
-      {
-        "command": "radium.selectAIProvider",
-        "title": "Radium: Select AI Provider",
-        "icon": "$(settings-gear)"
       }
     ],
     "viewsContainers": {
@@ -181,26 +166,6 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically run impacted tests after LLM changes"
-        },
-        "radium.devMode.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable dev mode features (requirement management)"
-        },
-        "radium.devMode.aiProvider": {
-          "type": "string",
-          "enum": [
-            "cursor",
-            "claude",
-            "copilot"
-          ],
-          "default": "copilot",
-          "description": "AI provider for requirement validation"
-        },
-        "radium.devMode.showDetailedStatus": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show detailed status labels on requirements instead of just gauges"
         }
       }
     }

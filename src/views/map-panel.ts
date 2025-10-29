@@ -2948,23 +2948,73 @@ export class MapPanel {
         g.selectAll('.component-header')
           .style('display', 'none');
         
-        // Enlarge and center the component label
+        // Enlarge and center the component label with multi-line support
         g.selectAll('.component-label')
-          .attr('font-size', d => {
-            // Calculate font size that fits both width and height
-            const minDimension = Math.min(d._boxWidth, d._boxHeight);
-            const heightBasedSize = Math.min(72, minDimension / 3.5);
-            
-            // Estimate text width (rough approximation: 0.6 * fontSize per character)
-            const padding = 20; // Horizontal padding
+          .each(function(d) {
+            const textElement = d3.select(this);
+            const name = d.name;
+            const padding = 20;
             const availableWidth = d._boxWidth - padding * 2;
-            const widthBasedSize = availableWidth / (d.name.length * 0.6);
+            const availableHeight = d._boxHeight - padding * 2;
             
-            // Use the smaller of the two to ensure it fits
-            return Math.min(heightBasedSize, widthBasedSize, 72) + 'px';
-          })
-          .attr('x', d => d._boxX + d._boxWidth / 2)
-          .attr('y', d => d._boxY + d._boxHeight / 2 + 12); // Vertically centered
+            // Calculate optimal font size for 2 lines
+            const heightBasedSize = Math.min(72, availableHeight / 3); // Allow space for 2 lines + spacing
+            
+            // Estimate if text fits in one line or needs two
+            const avgCharWidth = 0.6; // Rough approximation
+            const estimatedWidth = name.length * heightBasedSize * avgCharWidth;
+            const needsTwoLines = estimatedWidth > availableWidth;
+            
+            let fontSize;
+            if (needsTwoLines) {
+              // For two lines, we can use larger font
+              const twoLineWidthBasedSize = availableWidth / (name.length / 2 * avgCharWidth);
+              fontSize = Math.min(heightBasedSize, twoLineWidthBasedSize, 72);
+            } else {
+              // Single line
+              const widthBasedSize = availableWidth / (name.length * avgCharWidth);
+              fontSize = Math.min(heightBasedSize * 1.5, widthBasedSize, 72); // Allow larger for single line
+            }
+            
+            textElement.attr('font-size', fontSize + 'px');
+            
+            // Clear existing text and tspans
+            textElement.text('');
+            textElement.selectAll('tspan').remove();
+            
+            // Split text into words for wrapping
+            const words = name.split(/\\s+/);
+            const lineHeight = fontSize * 1.2;
+            
+            if (needsTwoLines && words.length > 1) {
+              // Try to split into two balanced lines
+              const midPoint = Math.ceil(words.length / 2);
+              const line1 = words.slice(0, midPoint).join(' ');
+              const line2 = words.slice(midPoint).join(' ');
+              
+              // Center vertically with two lines
+              const startY = d._boxY + d._boxHeight / 2 - lineHeight / 2;
+              
+              textElement.append('tspan')
+                .attr('x', d._boxX + d._boxWidth / 2)
+                .attr('y', startY)
+                .attr('text-anchor', 'middle')
+                .text(line1);
+              
+              textElement.append('tspan')
+                .attr('x', d._boxX + d._boxWidth / 2)
+                .attr('y', startY + lineHeight)
+                .attr('text-anchor', 'middle')
+                .text(line2);
+            } else {
+              // Single line - center vertically
+              textElement.append('tspan')
+                .attr('x', d._boxX + d._boxWidth / 2)
+                .attr('y', d._boxY + d._boxHeight / 2 + fontSize / 3)
+                .attr('text-anchor', 'middle')
+                .text(name);
+            }
+          });
       } else {
         // Restore normal appearance
         g.selectAll('.component-container')
@@ -2975,11 +3025,19 @@ export class MapPanel {
         g.selectAll('.component-header')
           .style('display', 'block');
         
-        // Restore normal label size and position
+        // Restore normal label size and position (single line)
         g.selectAll('.component-label')
           .attr('font-size', '18px')
-          .attr('x', d => d._boxX + d._boxWidth / 2)
-          .attr('y', d => d._boxY + 33);
+          .each(function(d) {
+            const textElement = d3.select(this);
+            textElement.text('');
+            textElement.selectAll('tspan').remove();
+            textElement.append('tspan')
+              .attr('x', d._boxX + d._boxWidth / 2)
+              .attr('y', d._boxY + 33)
+              .attr('text-anchor', 'middle')
+              .text(d.name);
+          });
       }
     }
 

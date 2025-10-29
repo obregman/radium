@@ -1761,7 +1761,9 @@ export class MapPanel {
         
         const delta = -event.deltaY;
         // Reduced zoom speed for smoother experience, especially on Mac trackpads
-        const scaleBy = delta > 0 ? 1.03 : 0.97;
+        // When Shift is held, zoom twice as fast
+        const baseScaleBy = delta > 0 ? 1.03 : 0.97;
+        const scaleBy = event.shiftKey ? (delta > 0 ? 1.06 : 0.94) : baseScaleBy;
         const newScale = Math.max(0.1, Math.min(10, transform.k * scaleBy));
         
         // Zoom towards mouse position

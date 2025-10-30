@@ -37,8 +37,26 @@ export class FeaturesConfigLoader {
   load(): FeaturesConfig | null {
     const configPath = path.join(this.workspaceRoot, '.radium', 'radium-features.yaml');
     
+    console.log(`[Features Config] Looking for config at: ${configPath}`);
+    console.log(`[Features Config] Workspace root: ${this.workspaceRoot}`);
+    
     if (!fs.existsSync(configPath)) {
       console.log('[Features Config] No radium-features.yaml found in .radium directory');
+      
+      // Check if .radium directory exists
+      const radiumDir = path.join(this.workspaceRoot, '.radium');
+      if (fs.existsSync(radiumDir)) {
+        console.log(`[Features Config] .radium directory exists, but no radium-features.yaml file`);
+        try {
+          const files = fs.readdirSync(radiumDir);
+          console.log(`[Features Config] Files in .radium: ${files.join(', ')}`);
+        } catch (err) {
+          console.log(`[Features Config] Could not read .radium directory: ${err}`);
+        }
+      } else {
+        console.log(`[Features Config] .radium directory does not exist at: ${radiumDir}`);
+      }
+      
       return null;
     }
 
@@ -48,7 +66,7 @@ export class FeaturesConfigLoader {
 
       // Parse and validate the configuration
       this.config = this.parseConfig(rawConfig);
-      console.log(`[Features Config] Loaded configuration with ${Object.keys(this.config.features).length} features`);
+      console.log(`[Features Config] ✓ Loaded configuration with ${Object.keys(this.config.features).length} features`);
       
       return this.config;
     } catch (error) {

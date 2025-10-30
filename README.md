@@ -26,6 +26,14 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 
 The extension indexes your workspace and displays an interactive graph.
 
+### Multi-Root Workspaces
+
+Radium supports VS Code multi-root workspaces. When you have multiple projects in your workspace:
+
+- If only one project has a `.radium` directory, Radium automatically uses it
+- If multiple projects have `.radium` directories, you'll be prompted to select which one to use
+- If no projects have `.radium` directories, Radium uses the first workspace folder
+
 
 ### Available Commands
 

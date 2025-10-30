@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { GraphStore } from './store/schema';
 import { Indexer } from './indexer/indexer';
 import { LLMOrchestrator, LLMPlan } from './orchestrator/llm-orchestrator';
@@ -16,6 +17,81 @@ let gitDiffTracker: GitDiffTracker;
 let configLoader: RadiumConfigLoader;
 let featuresLoader: FeaturesConfigLoader;
 let outputChannel: vscode.OutputChannel;
+
+/**
+ * Find the workspace folder that contains a .radium directory
+ * If multiple folders have .radium, prompt user to select
+ * If none have .radium, return the first folder
+ */
+async function findRadiumWorkspaceRoot(workspaceFolders: readonly vscode.WorkspaceFolder[]): Promise<string> {
+  outputChannel.appendLine('=== Searching for .radium directory ===');
+  outputChannel.appendLine(`Total workspace folders: ${workspaceFolders.length}`);
+  
+  const foldersWithRadium: vscode.WorkspaceFolder[] = [];
+  
+  // Check each workspace folder for .radium directory
+  for (const folder of workspaceFolders) {
+    const radiumPath = path.join(folder.uri.fsPath, '.radium');
+    outputChannel.appendLine(`Checking: ${folder.name} (${folder.uri.fsPath})`);
+    outputChannel.appendLine(`  Looking for: ${radiumPath}`);
+    
+    if (fs.existsSync(radiumPath)) {
+      const stats = fs.statSync(radiumPath);
+      if (stats.isDirectory()) {
+        outputChannel.appendLine(`  ✓ Found .radium directory!`);
+        foldersWithRadium.push(folder);
+        
+        // List files in .radium directory
+        try {
+          const files = fs.readdirSync(radiumPath);
+          outputChannel.appendLine(`  Files in .radium: ${files.join(', ')}`);
+        } catch (err) {
+          outputChannel.appendLine(`  Could not read .radium directory: ${err}`);
+        }
+      } else {
+        outputChannel.appendLine(`  ✗ .radium exists but is not a directory`);
+      }
+    } else {
+      outputChannel.appendLine(`  ✗ No .radium directory found`);
+    }
+  }
+  
+  outputChannel.appendLine(`Found ${foldersWithRadium.length} workspace folder(s) with .radium directory`);
+  
+  // If no folders have .radium, use the first folder
+  if (foldersWithRadium.length === 0) {
+    outputChannel.appendLine(`⚠ No .radium directory found in any workspace folder, using first folder: ${workspaceFolders[0].name}`);
+    return workspaceFolders[0].uri.fsPath;
+  }
+  
+  // If only one folder has .radium, use it
+  if (foldersWithRadium.length === 1) {
+    outputChannel.appendLine(`✓ Using workspace folder: ${foldersWithRadium[0].name} (${foldersWithRadium[0].uri.fsPath})`);
+    return foldersWithRadium[0].uri.fsPath;
+  }
+  
+  // Multiple folders have .radium - ask user to select
+  outputChannel.appendLine(`Multiple folders have .radium, prompting user to select...`);
+  const items = foldersWithRadium.map(folder => ({
+    label: folder.name,
+    description: folder.uri.fsPath,
+    folder: folder
+  }));
+  
+  const selected = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Multiple workspace folders contain .radium directory. Select one:',
+    ignoreFocusOut: true
+  });
+  
+  if (selected) {
+    outputChannel.appendLine(`✓ User selected workspace: ${selected.folder.name} (${selected.folder.uri.fsPath})`);
+    return selected.folder.uri.fsPath;
+  }
+  
+  // User cancelled - use the first one with .radium
+  outputChannel.appendLine(`⚠ User cancelled selection, using first folder with .radium: ${foldersWithRadium[0].name}`);
+  return foldersWithRadium[0].uri.fsPath;
+}
 
 export async function activate(context: vscode.ExtensionContext) {
   // Create output channel for reliable logging
@@ -52,14 +128,17 @@ export async function activate(context: vscode.ExtensionContext) {
       return;
     }
 
-    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+    // Find workspace folder(s) with .radium directory
+    const workspaceRoot = await findRadiumWorkspaceRoot(workspaceFolders);
+    outputChannel.appendLine(`=== Using workspace root: ${workspaceRoot} ===`);
+    
     const dbPath = path.join(context.globalStorageUri.fsPath, 'radium.db');
 
     // Ensure storage directory exists
     await vscode.workspace.fs.createDirectory(context.globalStorageUri);
 
     // Initialize store
-    console.log('Radium: Initializing store at:', dbPath);
+    outputChannel.appendLine(`Initializing store at: ${dbPath}`);
     try {
       store = new GraphStore(dbPath);
       await store.init();

@@ -1,3 +1,13 @@
 -- not started        >> in progress         $$ completed
 
 
+-- In the features view - make all step boxes the same color - light gray
+
+-- When hovering over a component in zoomed out mode, display a tooltip with the component description
+
+-- Remove these commands:
+    - `Radium: Preview LLM Plan from Clipboard` - Preview changes
+    - `Radium: Apply LLM Plan` - Apply previewed changes
+    - `Radium: Undo Last LLM Session` - Rollback a session
+    - `Radium: Find Impact` - Analyze impact of selected code
+    - `Radium: Export Session Patch` - Export session as patch file

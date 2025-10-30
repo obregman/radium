@@ -2941,10 +2941,65 @@ export class MapPanel {
       
       // Adjust component appearance based on zoom
       if (isZoomedOut) {
+        // Track tooltip timeout for each component
+        let componentTooltipTimeout = null;
+        
         // When zoomed out: Fill entire box with component color
         g.selectAll('.component-container')
           .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : d.color)
-          .attr('fill-opacity', 0.9);
+          .attr('fill-opacity', 0.9)
+          .style('pointer-events', 'all')
+          .style('cursor', 'pointer')
+          .on('mouseenter', function(event, d) {
+            // Clear any existing timeout
+            if (componentTooltipTimeout) {
+              clearTimeout(componentTooltipTimeout);
+            }
+            
+            // Set timeout to show tooltip after 0.5 seconds
+            componentTooltipTimeout = setTimeout(() => {
+              // Show tooltip with component description
+              if (d.description) {
+                const tooltip = d3.select('body').append('div')
+                  .attr('class', 'component-tooltip')
+                  .style('position', 'fixed')
+                  .style('left', event.clientX + 10 + 'px')
+                  .style('top', event.clientY + 10 + 'px')
+                  .style('background', 'var(--vscode-editorHoverWidget-background)')
+                  .style('color', 'var(--vscode-editorHoverWidget-foreground)')
+                  .style('border', '1px solid var(--vscode-editorHoverWidget-border)')
+                  .style('padding', '10px')
+                  .style('border-radius', '4px')
+                  .style('font-family', 'var(--vscode-font-family)')
+                  .style('font-size', '12px')
+                  .style('max-width', '400px')
+                  .style('z-index', '10000')
+                  .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)')
+                  .style('pointer-events', 'none');
+                
+                // Add component name as header
+                tooltip.append('div')
+                  .style('font-weight', 'bold')
+                  .style('margin-bottom', '8px')
+                  .style('font-size', '13px')
+                  .text(d.name);
+                
+                // Add description
+                tooltip.append('div')
+                  .style('line-height', '1.4')
+                  .text(d.description);
+              }
+            }, 500); // 0.5 second delay
+          })
+          .on('mouseleave', function() {
+            // Clear the timeout if mouse leaves before tooltip appears
+            if (componentTooltipTimeout) {
+              clearTimeout(componentTooltipTimeout);
+              componentTooltipTimeout = null;
+            }
+            // Remove any existing tooltips
+            d3.selectAll('.component-tooltip').remove();
+          });
         
         // Hide the header bar (it's redundant when box is filled)
         g.selectAll('.component-header')
@@ -2995,24 +3050,35 @@ export class MapPanel {
               const line2 = words.slice(midPoint).join(' ');
               
               // Center vertically with two lines
-              const startY = d._boxY + d._boxHeight / 2 - lineHeight / 2;
+              // For two lines, we need to position them so their visual center aligns with box center
+              // The visual center of two lines is between them
+              const centerY = d._boxY + d._boxHeight / 2;
+              // Position first line above center, second line below center
+              // Each line should be lineHeight/2 away from center (accounting for baseline offset)
+              const firstLineY = centerY - lineHeight / 2 + fontSize * 0.35;
+              const secondLineY = centerY + lineHeight / 2 + fontSize * 0.35;
               
               textElement.append('tspan')
                 .attr('x', d._boxX + d._boxWidth / 2)
-                .attr('y', startY)
+                .attr('y', firstLineY)
                 .attr('text-anchor', 'middle')
                 .text(line1);
               
               textElement.append('tspan')
                 .attr('x', d._boxX + d._boxWidth / 2)
-                .attr('y', startY + lineHeight)
+                .attr('y', secondLineY)
                 .attr('text-anchor', 'middle')
                 .text(line2);
             } else {
-              // Single line - center vertically
+              // Single line - center both horizontally and vertically
+              // For baseline positioning, we need to add ~0.35em (35% of font size) to center the text
+              // This accounts for the fact that text baseline is not at the vertical center
+              const centerY = d._boxY + d._boxHeight / 2;
+              const baselineY = centerY + fontSize * 0.35;
+              
               textElement.append('tspan')
                 .attr('x', d._boxX + d._boxWidth / 2)
-                .attr('y', d._boxY + d._boxHeight / 2 + fontSize / 3)
+                .attr('y', baselineY)
                 .attr('text-anchor', 'middle')
                 .text(name);
             }
@@ -3021,7 +3087,14 @@ export class MapPanel {
         // Restore normal appearance
         g.selectAll('.component-container')
           .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : 'var(--vscode-editor-background)')
-          .attr('fill-opacity', 1);
+          .attr('fill-opacity', 1)
+          .style('pointer-events', 'none')
+          .style('cursor', null)
+          .on('mouseenter', null)
+          .on('mouseleave', null);
+        
+        // Remove any lingering tooltips
+        d3.selectAll('.component-tooltip').remove();
         
         // Show the header bar
         g.selectAll('.component-header')

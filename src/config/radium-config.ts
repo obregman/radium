@@ -33,10 +33,10 @@ export class RadiumConfigLoader {
    * Load radium-components.yaml configuration file if it exists
    */
   load(): RadiumConfig | null {
-    const configPath = path.join(this.workspaceRoot, 'radium-components.yaml');
+    const configPath = path.join(this.workspaceRoot, '.radium', 'radium-components.yaml');
     
     if (!fs.existsSync(configPath)) {
-      console.log('[Radium Config] No radium-components.yaml found at project root');
+      console.log('[Radium Config] No radium-components.yaml found in .radium directory');
       return null;
     }
 

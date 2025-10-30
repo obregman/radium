@@ -35,10 +35,10 @@ export class FeaturesConfigLoader {
    * Load radium-features.yaml configuration file if it exists
    */
   load(): FeaturesConfig | null {
-    const configPath = path.join(this.workspaceRoot, 'radium-features.yaml');
+    const configPath = path.join(this.workspaceRoot, '.radium', 'radium-features.yaml');
     
     if (!fs.existsSync(configPath)) {
-      console.log('[Features Config] No radium-features.yaml found at project root');
+      console.log('[Features Config] No radium-features.yaml found in .radium directory');
       return null;
     }
 

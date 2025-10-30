@@ -9,7 +9,7 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 ## Features
 
 - Interactive graph visualization of your codebase
-- Component-based architecture view (defined in `radium-components.yaml`)
+- Component-based architecture view (defined in `.radium/radium-components.yaml`)
 - Track and manage LLM-generated changes
 - Automatic change detection every 1 minute when component view is open
 - Impact analysis for code modifications
@@ -65,9 +65,6 @@ Or via command line:
 code --install-extension radium-0.1.0.vsix
 ```
 
-**Having installation issues?** See [TEST-INSTALLATION.md](TEST-INSTALLATION.md) for detailed debugging steps.
-
-### Building from Source
 
 **Requirements:** Node.js 20 or later
 
@@ -79,36 +76,17 @@ npm run package
 
 This creates a `.vsix` file you can install.
 
-## Automatic Releases
-
-Every push to `main` automatically:
-1. Increments the minor version (e.g., 0.1.0 → 0.1.1)
-2. Commits the version bump back to the repository
-3. Builds the extension
-4. Creates a `.vsix` package
-5. Publishes a GitHub Release with the build
-
-The release is tagged with the new version and the commit SHA.
-
-## Documentation
-
-- [Architecture](docs/architecture.md)
-- [Usage Guide](docs/usage-guide.md)
-- [radium-components.yaml Format](docs/radium-yaml.md)
-- [radium-features.yaml Format](docs/radium-features.md)
-- [Troubleshooting](docs/troubleshooting.md)
-
 ## Prompt
 
 Add this instruction to your project to trigger the generation of the necessary yaml files:
 
 ```markdown
 
-The VSCode add-on Radium requires the following files to be available in the project root folder:
-1. radium-components.yaml - describes a logical visualization of the codebase.
-2. radium-features.yaml - describes the different feature flows
+The VSCode add-on Radium requires the following files to be available in the .radium directory:
+1. .radium/radium-components.yaml - describes a logical visualization of the codebase.
+2. .radium/radium-features.yaml - describes the different feature flows
 
-Review the project code and generate the files in the project root.
+Review the project code and generate the files in the .radium directory.
 
 1. radium-components.yaml syntax:
 

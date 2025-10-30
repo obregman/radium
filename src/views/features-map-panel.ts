@@ -50,7 +50,10 @@ export class FeaturesMapPanel {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [extensionUri]
+        localResourceRoots: [
+          extensionUri,
+          vscode.Uri.joinPath(extensionUri, 'resources', 'feature-steps')
+        ]
       }
     );
 
@@ -337,6 +340,23 @@ export class FeaturesMapPanel {
   }
 
   private getHtmlContent(extensionUri: vscode.Uri): string {
+    // Get URIs for the flow type icons
+    const systemIconUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(extensionUri, 'resources', 'feature-steps', 'system.png')
+    );
+    const userIconUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(extensionUri, 'resources', 'feature-steps', 'user.png')
+    );
+    const uiIconUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(extensionUri, 'resources', 'feature-steps', 'ui.png')
+    );
+    const outboundApiIconUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(extensionUri, 'resources', 'feature-steps', 'outbound_api.png')
+    );
+    const inboundApiIconUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(extensionUri, 'resources', 'feature-steps', 'inbound_api.png')
+    );
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -395,24 +415,24 @@ export class FeaturesMapPanel {
       stroke: #7b1fa2;
     }
     
-    .flow-item-node.window {
+    .flow-item-node.ui {
       fill: #ff9800;
       stroke: #f57c00;
     }
     
-    .flow-item-node.system {
+    .flow-item-node.logic {
       fill: #4caf50;
       stroke: #388e3c;
     }
     
-    .flow-item-node.api {
+    .flow-item-node.inbound_api {
       fill: #f44336;
       stroke: #d32f2f;
     }
     
-    .flow-item-node.database {
-      fill: #607d8b;
-      stroke: #455a64;
+    .flow-item-node.outbound_api {
+      fill: #e91e63;
+      stroke: #c2185b;
     }
     
     .node-label {
@@ -425,7 +445,7 @@ export class FeaturesMapPanel {
     
     .feature-node-label {
       fill: white;
-      font-size: 28px;
+      font-size: 36px;
       text-anchor: start;
       pointer-events: none;
       font-weight: 600;
@@ -514,6 +534,15 @@ export class FeaturesMapPanel {
     let simulation;
     let currentData = null;
     
+    // Icon URIs for flow types
+    const flowTypeIcons = {
+      user: '${userIconUri}',
+      ui: '${uiIconUri}',
+      logic: '${systemIconUri}',
+      inbound_api: '${inboundApiIconUri}',
+      outbound_api: '${outboundApiIconUri}'
+    };
+    
     // Notify ready
     vscode.postMessage({ type: 'ready' });
     
@@ -600,25 +629,45 @@ export class FeaturesMapPanel {
       function getBoxDimensions(label, type) {
         if (type === 'flow-item') {
           // Calculate dynamic width and height based on label length
-          const labelCharWidth = 8; // Character width for flow item text
+          const labelCharWidth = 9; // Character width for flow item text (16px font)
           const minFlowWidth = 160;
           const maxFlowWidth = 280; // Maximum width before wrapping to second line
-          const flowPadding = 30;
-          const lineHeight = 16;
+          const flowPadding = 40; // Increased padding for safety
+          const lineHeight = 20;
           const typeHeight = 20; // Height for <<type>> label
           const baseHeight = 50; // Base height for single line
           
-          const estimatedWidth = label.length * labelCharWidth + flowPadding;
+          // Calculate how many lines we need
+          const words = label.split(/\\s+/);
+          const maxWidth = maxFlowWidth - flowPadding;
+          let line = [];
+          let lineCount = 1;
           
-          // If text is too long, use max width and calculate height for 2 lines
-          if (estimatedWidth > maxFlowWidth) {
-            const calculatedHeight = typeHeight + (lineHeight * 2) + 20; // 2 lines + padding
-            return { width: maxFlowWidth, height: calculatedHeight };
+          words.forEach(word => {
+            line.push(word);
+            const testLine = line.join(' ');
+            const estimatedWidth = testLine.length * labelCharWidth;
+            if (estimatedWidth > maxWidth && line.length > 1) {
+              lineCount++;
+              line = [word];
+            }
+          });
+          
+          // Limit to 2 lines
+          lineCount = Math.min(lineCount, 2);
+          
+          // Calculate dimensions
+          const calculatedHeight = typeHeight + (lineHeight * lineCount) + 25;
+          
+          // If single line and short, use smaller width
+          if (lineCount === 1) {
+            const estimatedWidth = label.length * labelCharWidth + flowPadding;
+            const calculatedWidth = Math.max(minFlowWidth, Math.min(estimatedWidth, maxFlowWidth));
+            return { width: calculatedWidth, height: calculatedHeight };
           }
           
-          // Otherwise use calculated width with single line height
-          const calculatedWidth = Math.max(minFlowWidth, estimatedWidth);
-          return { width: calculatedWidth, height: baseHeight + typeHeight };
+          // Multi-line: use max width
+          return { width: maxFlowWidth, height: calculatedHeight };
         }
         const textWidth = label.length * CHAR_WIDTH;
         const width = Math.max(MIN_WIDTH, textWidth + PADDING_X * 2);
@@ -883,6 +932,20 @@ export class FeaturesMapPanel {
           node.append('title')
             .text(\`\${d.label}\${d.description ? '\\n\\n' + d.description : ''}\`);
         } else if (d.type === 'flow-item') {
+          // Add icon first (behind the box)
+          const iconUri = flowTypeIcons[d.flowType] || flowTypeIcons.logic;
+          const iconSize = 96;
+          const overlap = iconSize * 0.1; // 10% overlap
+          
+          node.append('image')
+            .attr('class', 'flow-icon')
+            .attr('xlink:href', iconUri)
+            .attr('x', -iconSize / 2)
+            .attr('y', -dim.height / 2 - iconSize + overlap)
+            .attr('width', iconSize)
+            .attr('height', iconSize);
+          
+          // Add box on top of icon
           node.append('rect')
             .attr('class', \`flow-item-node \${d.flowType}\`)
             .attr('width', dim.width)
@@ -905,29 +968,10 @@ export class FeaturesMapPanel {
         
         if (d.type === 'flow-item') {
           // For flow items, add type label at top and wrap text if needed
-          const lineHeight = 16;
+          const lineHeight = 20;
           const dim = nodeDimensions.get(d.id) || { width: FLOW_ITEM_WIDTH, height: FLOW_ITEM_HEIGHT };
-          const maxWidth = dim.width - 20;
-          
-          // Get icon for flow type
-          const getFlowIcon = (flowType) => {
-            switch(flowType) {
-              case 'user': return '👤';
-              case 'window': return '🪟';
-              case 'system': return '⚙️';
-              case 'api': return '☁️';
-              case 'database': return '🗄️';
-              default: return '📦';
-            }
-          };
-          
-          // Add icon above the box (larger)
-          node.append('text')
-            .attr('class', 'flow-icon')
-            .attr('dy', -dim.height / 2 - 25)
-            .style('font-size', '40px')
-            .style('text-anchor', 'middle')
-            .text(getFlowIcon(d.flowType));
+          const maxWidth = dim.width - 30; // More padding for safety
+          const charWidth = 9; // Approximate character width for 16px font
           
           // Add type label at top of box with << >>
           node.append('text')
@@ -937,24 +981,32 @@ export class FeaturesMapPanel {
             .style('font-weight', 'bold')
             .text(\`<<\${d.flowType}>>\`);
           
-          // Add main label text below type
+          // Add main label text below type with proper wrapping
           const words = d.label.split(/\\s+/);
           let line = [];
-          let lineNumber = 0;
           const lines = [];
           
           words.forEach(word => {
             line.push(word);
             const testLine = line.join(' ');
-            if (testLine.length * 8 > maxWidth && line.length > 1) {
+            const estimatedWidth = testLine.length * charWidth;
+            if (estimatedWidth > maxWidth && line.length > 1) {
               line.pop();
               lines.push(line.join(' '));
               line = [word];
-              lineNumber++;
             }
           });
           if (line.length > 0) {
             lines.push(line.join(' '));
+          }
+          
+          // Limit to 2 lines and truncate if needed
+          if (lines.length > 2) {
+            lines.length = 2;
+            const lastLine = lines[1];
+            if (lastLine.length > 18) {
+              lines[1] = lastLine.substring(0, 18) + '...';
+            }
           }
           
           // Start text below type label
@@ -963,14 +1015,16 @@ export class FeaturesMapPanel {
             node.append('text')
               .attr('class', 'node-label')
               .attr('dy', startY + i * lineHeight)
+              .style('font-size', '16px')
+              .style('font-weight', '500')
               .text(lineText);
           });
         } else if (d.type === 'feature') {
           // Feature name on the left side
-          const lineHeight = 28;
+          const lineHeight = 42;
           const maxWidth = 280;
           const words = d.label.split(/\\s+/);
-          const charWidth = 14;
+          const charWidth = 22;
           
           let line = [];
           const lines = [];
@@ -999,7 +1053,7 @@ export class FeaturesMapPanel {
               .attr('x', 0)
               .attr('y', startY + (i * lineHeight))
               .attr('text-anchor', 'start')
-              .style('font-size', '24px')
+              .style('font-size', '36px')
               .style('font-weight', '600')
               .style('fill', '#4a9eff')
               .text(lineText);

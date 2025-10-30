@@ -2,7 +2,7 @@
 alwaysApply: true
 ---
 
-The VSCode add-on Radium requires the following files to be available in the project root folder:
+The VSCode add-on Radium requires the following files to be created in the .radium directory in the project root folder:
 1. radium-components.yaml - describes a logical visualization of the codebase.
 2. radium-features.yaml - describes the different feature flows
 
@@ -48,7 +48,7 @@ spec:
           name: The user clicks on add new user
           description: The user clicks on add new customer
           impl: src/components/AddUserButton.tsx
-        - type: window
+        - type: ui
           name: App displays the "new customer" screen
           description: Shows the "new customer" screen to the user
           impl: src/screens/NewCustomerScreen.tsx
@@ -58,5 +58,6 @@ spec:
           impl: src/forms/CustomerForm.tsx
 
 Guidelines:
+- Step type can be one of: user, ui, logic, inbound_api, outbound_api
 - Each flow step can optionally include an 'impl' field pointing to the main file that implements this step
 - The impl path should be relative to the project root

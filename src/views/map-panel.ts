@@ -3118,35 +3118,56 @@ export class MapPanel {
 
     function resetView() {
       console.log('[Radium Map] Reset view called');
-      // Reset to initial view - centered at origin with scale 1
-      const currentTransform = zoom.transform();
       
-      // Animate to identity transform
-      const steps = 30;
-      const duration = 750;
-      const stepDuration = duration / steps;
-      
-      const startK = currentTransform.k;
-      const startX = currentTransform.x;
-      const startY = currentTransform.y;
-      
-      const targetK = 1;
-      const targetX = 0;
-      const targetY = 0;
-      
-      let step = 0;
-      const interval = setInterval(() => {
-        step++;
-        const progress = step / steps;
-        const eased = 1 - Math.pow(1 - progress, 3); // Ease out cubic
+      // Calculate bounding box of all components
+      try {
+        const bounds = g.node().getBBox();
+        const fullWidth = bounds.width;
+        const fullHeight = bounds.height;
+        const midX = bounds.x + fullWidth / 2;
+        const midY = bounds.y + fullHeight / 2;
         
-        zoom.scaleTo(null, startK + (targetK - startK) * eased);
-        zoom.translateTo(null, startX + (targetX - startX) * eased, startY + (targetY - startY) * eased);
+        // Calculate scale to fit all components with some padding (0.8 = 80% of viewport)
+        const scale = 0.8 / Math.max(fullWidth / width, fullHeight / height);
+        const targetX = width / 2 - scale * midX;
+        const targetY = height / 2 - scale * midY;
         
-        if (step >= steps) {
-          clearInterval(interval);
-        }
-      }, stepDuration);
+        // Get current transform
+        const currentTransform = zoom.transform();
+        
+        // Animate to fit view
+        const steps = 30;
+        const duration = 750;
+        const stepDuration = duration / steps;
+        
+        const startK = currentTransform.k;
+        const startX = currentTransform.x;
+        const startY = currentTransform.y;
+        
+        let step = 0;
+        const interval = setInterval(() => {
+          step++;
+          const progress = step / steps;
+          const eased = 1 - Math.pow(1 - progress, 3); // Ease out cubic
+          
+          const newK = startK + (scale - startK) * eased;
+          const newX = startX + (targetX - startX) * eased;
+          const newY = startY + (targetY - startY) * eased;
+          
+          // Update transform manually
+          zoom.scaleTo(null, newK);
+          zoom.translateTo(null, newX, newY);
+          
+          if (step >= steps) {
+            clearInterval(interval);
+          }
+        }, stepDuration);
+      } catch (error) {
+        console.error('[Radium Map] Error calculating bounds for reset view:', error);
+        // Fallback to simple reset
+        zoom.scaleTo(null, 1);
+        zoom.translateTo(null, 0, 0);
+      }
     }
 
     function showAllFiles() {

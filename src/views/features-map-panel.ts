@@ -1069,6 +1069,13 @@ export class FeaturesMapPanel {
       
       // Initial zoom to fit
       setTimeout(() => {
+        resetView();
+      }, 100);
+    }
+    
+    // Reset view function - zoom to fit all components
+    function resetView() {
+      try {
         const bounds = g.node().getBBox();
         const fullWidth = bounds.width;
         const fullHeight = bounds.height;
@@ -1081,7 +1088,9 @@ export class FeaturesMapPanel {
         svg.transition()
           .duration(750)
           .call(zoom.transform, d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale));
-      }, 100);
+      } catch (error) {
+        console.error('[Features Map] Error resetting view:', error);
+      }
     }
     
     // Handle window resize

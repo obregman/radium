@@ -32,46 +32,6 @@
         "icon": "$(symbol-namespace)"
       },
       {
-        "command": "radium.applyLLMPlan",
-        "title": "Radium: Apply LLM Plan",
-        "icon": "$(check)"
-      },
-      {
-        "command": "radium.undoSession",
-        "title": "Radium: Undo Last LLM Session",
-        "icon": "$(discard)"
-      },
-      {
-        "command": "radium.explainSelection",
-        "title": "Radium: Explain Selection",
-        "icon": "$(comment-discussion)"
-      },
-      {
-        "command": "radium.findImpact",
-        "title": "Radium: Find Impact",
-        "icon": "$(references)"
-      },
-      {
-        "command": "radium.previewLLMPlan",
-        "title": "Radium: Preview LLM Plan from Clipboard",
-        "icon": "$(preview)"
-      },
-      {
-        "command": "radium.exportSessionPatch",
-        "title": "Radium: Export Session Patch",
-        "icon": "$(export)"
-      },
-      {
-        "command": "radium.refreshSessions",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "radium.createTestSession",
-        "title": "Radium: Create Test Session (Demo)",
-        "icon": "$(beaker)"
-      },
-      {
         "command": "radium.reindex",
         "title": "Radium: Re-index Workspace",
         "icon": "$(sync)"
@@ -83,43 +43,6 @@
           "id": "radium-explorer",
           "title": "Radium",
           "icon": "resources/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "radium-explorer": [
-        {
-          "id": "radium.codeSlices",
-          "name": "Code Slices"
-        },
-        {
-          "id": "radium.sessions",
-          "name": "Recent Sessions"
-        },
-        {
-          "id": "radium.issues",
-          "name": "Issues"
-        }
-      ]
-    },
-    "menus": {
-      "view/title": [
-        {
-          "command": "radium.refreshSessions",
-          "when": "view == radium.sessions",
-          "group": "navigation"
-        }
-      ],
-      "editor/context": [
-        {
-          "command": "radium.explainSelection",
-          "when": "editorHasSelection",
-          "group": "radium"
-        },
-        {
-          "command": "radium.findImpact",
-          "when": "editorHasSelection",
-          "group": "radium"
         }
       ]
     },

@@ -29,13 +29,8 @@ The extension indexes your workspace and displays an interactive graph.
 
 ### Available Commands
 
-- `Radium: Open Map` - Show the codebase graph
+- `Radium: Codebase Map` - Show the codebase graph
 - `Radium: Features Map` - Visualize features and their relationships
-- `Radium: Preview LLM Plan from Clipboard` - Preview changes
-- `Radium: Apply LLM Plan` - Apply previewed changes
-- `Radium: Undo Last LLM Session` - Rollback a session
-- `Radium: Find Impact` - Analyze impact of selected code
-- `Radium: Export Session Patch` - Export session as patch file
 
 ## Configuration
 

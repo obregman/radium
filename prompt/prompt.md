@@ -10,6 +10,7 @@ Review the project code and generate the files in the project root.
 
 1. radium-components.yaml syntax:
 
+```
 spec:
   components:
     - views:
@@ -30,6 +31,7 @@ spec:
             description: Stores the user data
             usedBy:
               - src/store/db-schema.ts
+```
 
 Guidelines:
 - Keep the description detailed but under 200 words
@@ -39,6 +41,7 @@ Guidelines:
 
 2. radium-features.yaml syntax
 
+```
 spec:
   features:
       - new_customer:
@@ -56,6 +59,7 @@ spec:
           name: The user fills the new customer's details
           description: The user fills customer name, address, phone number and email
           impl: src/forms/CustomerForm.tsx
+```
 
 Guidelines:
 - Step type can be one of: user, ui, logic, inbound_api, outbound_api

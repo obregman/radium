@@ -1,0 +1,27 @@
+# Radium Ignore File
+# Place this file at .radium/radiumignore to exclude files from Real-time Changes view
+
+# Ignore generated files
+*.g.cs
+*.generated.ts
+*.Designer.cs
+
+# Ignore build and debug directories
+debug/
+build/
+dist/
+temp/
+bin/
+obj/
+
+# Ignore test files
+**/*.test.ts
+**/*.spec.ts
+
+# Ignore specific files
+config.local.json
+.env.local
+
+# Ignore documentation builds
+docs/build/
+

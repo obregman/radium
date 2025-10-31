@@ -4,6 +4,7 @@ import * as cp from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
+import { RadiumIgnore } from '../config/radium-ignore';
 
 const exec = promisify(cp.exec);
 
@@ -23,6 +24,8 @@ export class RealtimeChangesPanel {
   private pendingChanges = new Map<string, NodeJS.Timeout>();
   private diffCache = new Map<string, { diff: string; timestamp: number }>();
   private fileHashes = new Map<string, string>(); // Track file content hashes
+  private filesCreatedThisSession = new Set<string>(); // Track files created during this session
+  private radiumIgnore: RadiumIgnore;
   private readonly DEBOUNCE_DELAY = 300; // ms
   private readonly CACHE_TTL = 2000; // ms
 
@@ -33,9 +36,25 @@ export class RealtimeChangesPanel {
   ) {
     this.panel = panel;
     this.workspaceRoot = workspaceRoot;
+    this.radiumIgnore = new RadiumIgnore(workspaceRoot);
 
     // Set HTML content
     this.panel.webview.html = this.getHtmlContent(extensionUri);
+
+    // Handle messages from webview
+    this.panel.webview.onDidReceiveMessage(
+      message => {
+        switch (message.type) {
+          case 'clearAll':
+            // Clear session tracking when user clicks "Clear All"
+            this.filesCreatedThisSession.clear();
+            console.log('[Radium] Cleared session file tracking');
+            break;
+        }
+      },
+      null,
+      this.disposables
+    );
 
     // Clean up when panel is closed
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -89,18 +108,57 @@ export class RealtimeChangesPanel {
     });
 
     this.watcher.on('change', async (filePath: string) => {
-      await this.handleFileChange(filePath);
+      await this.handleFileChange(filePath, false);
     });
 
     this.watcher.on('add', async (filePath: string) => {
-      await this.handleFileChange(filePath);
+      await this.handleFileChange(filePath, true);
+    });
+
+    this.watcher.on('unlink', async (filePath: string) => {
+      // Only track source files
+      if (!this.isSourceFile(filePath)) {
+        return;
+      }
+
+      // Remove from session tracking if file is deleted
+      const relativePath = path.relative(this.workspaceRoot, filePath);
+      const wasInSession = this.filesCreatedThisSession.has(relativePath);
+      this.filesCreatedThisSession.delete(relativePath);
+      
+      console.log(`[Radium] File deleted: ${relativePath}, was in session: ${wasInSession}`);
+      
+      // If the file was being tracked in the view, remove it
+      if (wasInSession) {
+        this.panel.webview.postMessage({
+          type: 'file:deleted',
+          data: {
+            filePath: relativePath,
+            timestamp: Date.now()
+          }
+        });
+      }
     });
   }
 
-  private async handleFileChange(absolutePath: string) {
+  private async handleFileChange(absolutePath: string, isNewFile: boolean) {
     // Only track source files
     if (!this.isSourceFile(absolutePath)) {
       return;
+    }
+
+    // Track files created during this session
+    const relativePath = path.relative(this.workspaceRoot, absolutePath);
+    
+    // Check if file should be ignored
+    if (this.radiumIgnore.shouldIgnore(relativePath)) {
+      console.log(`[Radium] Ignoring file: ${relativePath}`);
+      return;
+    }
+    
+    if (isNewFile) {
+      this.filesCreatedThisSession.add(relativePath);
+      console.log(`[Radium] File created this session: ${relativePath}`);
     }
 
     // Clear existing timeout for this file (debouncing)
@@ -121,7 +179,10 @@ export class RealtimeChangesPanel {
     // Convert to relative path
     const relativePath = path.relative(this.workspaceRoot, absolutePath);
 
-    // Get git diff for the file (with caching)
+    // Clear cache for this file to ensure we get fresh diff
+    this.diffCache.delete(relativePath);
+
+    // Get git diff for the file (without using stale cache)
     const diff = await this.getFileDiff(relativePath);
 
     // Check if changes were reverted (no diff means file matches HEAD)
@@ -138,13 +199,11 @@ export class RealtimeChangesPanel {
         }
       });
       
-      // Clear from cache
-      this.diffCache.delete(relativePath);
       return;
     }
 
-    // Check if file is new (not in git HEAD)
-    const isNew = await this.isNewFile(relativePath);
+    // Check if file was created during this session
+    const isNew = this.filesCreatedThisSession.has(relativePath);
 
     // Send change to webview
     this.panel.webview.postMessage({
@@ -156,31 +215,6 @@ export class RealtimeChangesPanel {
         isNew: isNew
       }
     });
-  }
-
-  private async isNewFile(filePath: string): Promise<boolean> {
-    try {
-      // Check if file exists in git HEAD
-      const { stdout, stderr } = await exec(`git ls-files --error-unmatch "${filePath}"`, {
-        cwd: this.workspaceRoot
-      });
-      
-      // If the command succeeds, the file is tracked in git
-      // Now check if it's in HEAD
-      try {
-        await exec(`git cat-file -e HEAD:"${filePath}"`, {
-          cwd: this.workspaceRoot
-        });
-        // File exists in HEAD, so it's not new
-        return false;
-      } catch {
-        // File is tracked but not in HEAD, so it's new
-        return true;
-      }
-    } catch {
-      // File is not tracked at all, so it's new
-      return true;
-    }
   }
 
   private async getFileDiff(filePath: string): Promise<string> {
@@ -209,22 +243,38 @@ export class RealtimeChangesPanel {
         if (unstagedDiff) {
           diff = unstagedDiff;
         } else {
-          // For completely new untracked files, show the entire file content as additions
+          // Check if file is tracked in git
+          let isTracked = false;
           try {
-            const fullPath = path.join(this.workspaceRoot, filePath);
-            if (fs.existsSync(fullPath)) {
-              const content = fs.readFileSync(fullPath, 'utf8');
-              const lines = content.split('\n');
-              diff = `+++ ${filePath}\n`;
-              lines.forEach((line: string) => {
-                diff += `+${line}\n`;
-              });
-            } else {
+            await exec(`git ls-files --error-unmatch "${filePath}"`, {
+              cwd: this.workspaceRoot
+            });
+            isTracked = true;
+          } catch {
+            isTracked = false;
+          }
+          
+          if (!isTracked) {
+            // For completely new untracked files, show the entire file content as additions
+            try {
+              const fullPath = path.join(this.workspaceRoot, filePath);
+              if (fs.existsSync(fullPath)) {
+                const content = fs.readFileSync(fullPath, 'utf8');
+                const lines = content.split('\n');
+                diff = `+++ ${filePath}\n`;
+                lines.forEach((line: string) => {
+                  diff += `+${line}\n`;
+                });
+              } else {
+                diff = 'No diff available';
+              }
+            } catch (error) {
+              console.error(`Failed to read new file ${filePath}:`, error);
               diff = 'No diff available';
             }
-          } catch (error) {
-            console.error(`Failed to read new file ${filePath}:`, error);
-            diff = 'No diff available';
+          } else {
+            // File is tracked but has no changes - return empty
+            diff = '';
           }
         }
       }
@@ -642,6 +692,7 @@ export class RealtimeChangesPanel {
     // Position tracking for file boxes
     const filePositions = new Map();
     let nextPosition = { x: 100, y: 100 };
+    const FILE_BOX_HEIGHT = 60; // Height including spacing
     
     // Track previous diffs to detect new changes
     const previousDiffs = new Map();
@@ -649,11 +700,8 @@ export class RealtimeChangesPanel {
     function getFilePosition(filePath) {
       if (!filePositions.has(filePath)) {
         filePositions.set(filePath, { ...nextPosition });
-        // Move to next position (vertically)
-        nextPosition.y += 60;
-        if (nextPosition.y > window.innerHeight - 200) {
-          nextPosition.y = 100;
-        }
+        // Move to next position (vertically) - no limit, just keep stacking
+        nextPosition.y += FILE_BOX_HEIGHT;
       }
       return filePositions.get(filePath);
     }
@@ -877,123 +925,147 @@ export class RealtimeChangesPanel {
       
       canvas.appendChild(fileBox);
 
-      // Create diff box with unique ID
-      const diffBox = document.createElement('div');
-      diffBox.className = 'diff-box';
-      const diffBoxId = 'diff-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-      diffBox.innerHTML = formatDiff(diff, diffBoxId, filePath);
-      
-      // Position diff box to the right of file box with more spacing
-      const diffPos = {
-        x: filePos.x + 500,
-        y: filePos.y
-      };
-      diffBox.style.left = diffPos.x + 'px';
-      diffBox.style.top = diffPos.y + 'px';
-      canvas.appendChild(diffBox);
-
-      // Create connection line (SVG)
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('class', 'connection-line');
-      line.setAttribute('x1', filePos.x + 150); // Right edge of file box
-      line.setAttribute('y1', filePos.y + 20);  // Middle of file box
-      line.setAttribute('x2', diffPos.x);       // Left edge of diff box
-      line.setAttribute('y2', diffPos.y + 20);  // Middle of diff box
-      connectionsContainer.appendChild(line);
-
-      // Animate in
+      // Wait for the fileBox to render so we can get its actual width
       setTimeout(() => {
-        diffBox.classList.add('visible');
-        line.classList.add('visible');
-      }, 100);
-      
-      // Wait for the visibility transition to complete before scrolling
-      setTimeout(() => {
-        const latestChange = diffBox.querySelector('#latest-change-' + diffBoxId);
-        console.log('[Radium] Looking for latest change with ID:', 'latest-change-' + diffBoxId);
-        console.log('[Radium] Found element:', latestChange);
+        // Calculate the maximum right edge of all file boxes
+        const allFileBoxes = Array.from(canvas.querySelectorAll('.file-box'));
+        let maxRightEdge = 0;
         
-        if (latestChange) {
-          // Calculate the position to scroll to within the diff box
-          const latestChangeTop = latestChange.offsetTop;
-          const diffBoxHeight = diffBox.clientHeight;
-          const scrollTarget = Math.max(0, latestChangeTop - (diffBoxHeight / 2));
+        allFileBoxes.forEach(box => {
+          const boxLeft = parseInt(box.style.left) || 0;
+          const boxWidth = box.offsetWidth || 0;
+          const rightEdge = boxLeft + boxWidth;
+          if (rightEdge > maxRightEdge) {
+            maxRightEdge = rightEdge;
+          }
+        });
+        
+        // Add spacing (100px gap) after the longest file box
+        const diffStartX = maxRightEdge + 100;
+        
+        // Create diff box with unique ID
+        const diffBox = document.createElement('div');
+        diffBox.className = 'diff-box';
+        const diffBoxId = 'diff-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        diffBox.innerHTML = formatDiff(diff, diffBoxId, filePath);
+        
+        // Position diff box to the right of all file boxes
+        const diffPos = {
+          x: diffStartX,
+          y: filePos.y
+        };
+        diffBox.style.left = diffPos.x + 'px';
+        diffBox.style.top = diffPos.y + 'px';
+        canvas.appendChild(diffBox);
+
+        // Create connection line (SVG)
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('class', 'connection-line');
+        
+        // Calculate actual right edge of this specific file box
+        const fileBoxWidth = fileBox.offsetWidth || 0;
+        const fileBoxRightEdge = filePos.x + fileBoxWidth;
+        
+        line.setAttribute('x1', fileBoxRightEdge); // Right edge of file box
+        line.setAttribute('y1', filePos.y + 20);  // Middle of file box
+        line.setAttribute('x2', diffPos.x);       // Left edge of diff box
+        line.setAttribute('y2', diffPos.y + 20);  // Middle of diff box
+        connectionsContainer.appendChild(line);
+
+        // Animate in
+        setTimeout(() => {
+          diffBox.classList.add('visible');
+          line.classList.add('visible');
+        }, 100);
+        
+        // Wait for the visibility transition to complete before scrolling
+        setTimeout(() => {
+          const latestChange = diffBox.querySelector('#latest-change-' + diffBoxId);
+          console.log('[Radium] Looking for latest change with ID:', 'latest-change-' + diffBoxId);
+          console.log('[Radium] Found element:', latestChange);
           
-          console.log('[Radium] Scroll info:', {
-            latestChangeTop,
-            diffBoxHeight,
-            scrollTarget,
-            currentScrollTop: diffBox.scrollTop,
-            scrollHeight: diffBox.scrollHeight
-          });
-          
-          // Use scrollTo with instant behavior
-          diffBox.scrollTo({
-            top: scrollTarget,
-            behavior: 'instant'
-          });
-          
-          console.log('[Radium] After scroll, scrollTop:', diffBox.scrollTop);
-        } else {
-          console.warn('[Radium] Could not find latest change element');
-        }
-      }, 400);
+          if (latestChange) {
+            // Calculate the position to scroll to within the diff box
+            const latestChangeTop = latestChange.offsetTop;
+            const diffBoxHeight = diffBox.clientHeight;
+            const scrollTarget = Math.max(0, latestChangeTop - (diffBoxHeight / 2));
+            
+            console.log('[Radium] Scroll info:', {
+              latestChangeTop,
+              diffBoxHeight,
+              scrollTarget,
+              currentScrollTop: diffBox.scrollTop,
+              scrollHeight: diffBox.scrollHeight
+            });
+            
+            // Use scrollTo with instant behavior
+            diffBox.scrollTo({
+              top: scrollTarget,
+              behavior: 'instant'
+            });
+            
+            console.log('[Radium] After scroll, scrollTop:', diffBox.scrollTop);
+          } else {
+            console.warn('[Radium] Could not find latest change element');
+          }
+        }, 400);
 
-      // Track for cleanup
-      activeElements.push({ fileBox, diffBox, line, timestamp });
+        // Track for cleanup
+        activeElements.push({ fileBox, diffBox, line, timestamp });
 
-      // Remove highlight from file box after 5 seconds
-      setTimeout(() => {
-        fileBox.classList.remove('highlight');
-      }, 5000);
+        // Track hover state
+        let isHovering = false;
+        let hideTimeout = null;
 
-      // Track hover state
-      let isHovering = false;
-      let hideTimeout = null;
+        const scheduleDiffHide = () => {
+          hideTimeout = setTimeout(() => {
+            if (!isHovering) {
+              diffBox.classList.remove('visible');
+              line.classList.remove('visible');
+              
+              setTimeout(() => {
+                diffBox.remove();
+                line.remove();
+              }, 300); // Wait for fade out
+            }
+          }, 5000);
+        };
 
-      const scheduleDiffHide = () => {
-        hideTimeout = setTimeout(() => {
-          if (!isHovering) {
+        const cancelDiffHide = () => {
+          if (hideTimeout) {
+            clearTimeout(hideTimeout);
+            hideTimeout = null;
+          }
+        };
+
+        // Hover handlers for diff box
+        diffBox.addEventListener('mouseenter', () => {
+          isHovering = true;
+          cancelDiffHide();
+        });
+
+        diffBox.addEventListener('mouseleave', () => {
+          isHovering = false;
+          // Start a new timeout to hide after 2 seconds of leaving
+          hideTimeout = setTimeout(() => {
             diffBox.classList.remove('visible');
             line.classList.remove('visible');
             
             setTimeout(() => {
               diffBox.remove();
               line.remove();
-            }, 300); // Wait for fade out
-          }
-        }, 5000);
-      };
+            }, 300);
+          }, 2000);
+        });
 
-      const cancelDiffHide = () => {
-        if (hideTimeout) {
-          clearTimeout(hideTimeout);
-          hideTimeout = null;
-        }
-      };
+        // Start initial hide timer
+        scheduleDiffHide();
+      }, 10); // Small delay to ensure fileBox is rendered
 
-      // Hover handlers for diff box
-      diffBox.addEventListener('mouseenter', () => {
-        isHovering = true;
-        cancelDiffHide();
-      });
-
-      diffBox.addEventListener('mouseleave', () => {
-        isHovering = false;
-        // Start a new timeout to hide after 2 seconds of leaving
-        hideTimeout = setTimeout(() => {
-          diffBox.classList.remove('visible');
-          line.classList.remove('visible');
-          
-          setTimeout(() => {
-            diffBox.remove();
-            line.remove();
-          }, 300);
-        }, 2000);
-      });
-
-      // Start initial hide timer
-      scheduleDiffHide();
+      // Remove highlight from file box after 5 seconds
+      setTimeout(() => {
+        fileBox.classList.remove('highlight');
+      }, 5000);
 
       // Clean up old file boxes (keep only the most recent one for each file)
       cleanupOldFileBoxes(filePath, fileBox);
@@ -1134,6 +1206,9 @@ export class RealtimeChangesPanel {
       // Reset next position
       nextPosition = { x: 100, y: 100 };
 
+      // Notify extension to clear session tracking
+      vscode.postMessage({ type: 'clearAll' });
+
       console.log('[Radium] Cleared all file boxes');
     });
 
@@ -1148,6 +1223,9 @@ export class RealtimeChangesPanel {
         case 'file:reverted':
           handleFileReverted(message.data);
           break;
+        case 'file:deleted':
+          handleFileDeleted(message.data);
+          break;
       }
     });
 
@@ -1159,7 +1237,11 @@ export class RealtimeChangesPanel {
       // Find and remove all elements for this file
       const allFileBoxes = Array.from(canvas.querySelectorAll('.file-box'));
       allFileBoxes.forEach(box => {
-        if (box.textContent === filePath) {
+        // Match the file path (with or without asterisk)
+        const boxText = box.textContent || '';
+        const boxFilePath = boxText.replace(' *', ''); // Remove asterisk if present
+        
+        if (boxFilePath === filePath) {
           // Fade out animation
           box.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
           box.style.opacity = '0';
@@ -1200,6 +1282,81 @@ export class RealtimeChangesPanel {
           const expectedX1 = filePos.x + 150;
           
           if (Math.abs(x1 - expectedX1) < 50) {
+            line.style.transition = 'opacity 0.3s ease';
+            line.style.opacity = '0';
+            setTimeout(() => line.remove(), 300);
+          }
+        }
+      });
+    }
+
+    function handleFileDeleted(data) {
+      const { filePath, timestamp } = data;
+      
+      console.log(\`[Radium] Handling deletion for \${filePath}\`);
+      
+      // Find and remove all elements for this file
+      const allFileBoxes = Array.from(canvas.querySelectorAll('.file-box'));
+      allFileBoxes.forEach(box => {
+        // Match the file path (with or without asterisk)
+        const boxText = box.textContent || '';
+        const boxFilePath = boxText.replace(' *', ''); // Remove asterisk if present
+        
+        if (boxFilePath === filePath) {
+          // Fade out animation
+          box.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+          box.style.opacity = '0';
+          box.style.transform = 'scale(0.8)';
+          
+          setTimeout(() => {
+            box.remove();
+            // Clear the position so it can be reused
+            filePositions.delete(filePath);
+          }, 500);
+        }
+      });
+      
+      // Also remove any visible diff boxes for this file
+      const allDiffBoxes = Array.from(canvas.querySelectorAll('.diff-box'));
+      allDiffBoxes.forEach(diffBox => {
+        // Check if this diff box is near the file position
+        const filePos = filePositions.get(filePath);
+        if (filePos) {
+          const diffLeft = parseInt(diffBox.style.left);
+          
+          // Get the actual right edge of all file boxes to calculate expected diff position
+          const allFileBoxElements = Array.from(canvas.querySelectorAll('.file-box'));
+          let maxRightEdge = 0;
+          allFileBoxElements.forEach(box => {
+            const boxLeft = parseInt(box.style.left) || 0;
+            const boxWidth = box.offsetWidth || 0;
+            const rightEdge = boxLeft + boxWidth;
+            if (rightEdge > maxRightEdge) {
+              maxRightEdge = rightEdge;
+            }
+          });
+          const expectedDiffLeft = maxRightEdge + 100;
+          
+          // If diff box is at the expected position for this file (same Y coordinate)
+          const diffTop = parseInt(diffBox.style.top);
+          if (Math.abs(diffTop - filePos.y) < 10) {
+            diffBox.style.transition = 'opacity 0.3s ease';
+            diffBox.style.opacity = '0';
+            setTimeout(() => diffBox.remove(), 300);
+          }
+        }
+      });
+      
+      // Remove connection lines
+      const allLines = Array.from(connectionsContainer.querySelectorAll('.connection-line'));
+      allLines.forEach(line => {
+        const filePos = filePositions.get(filePath);
+        if (filePos) {
+          const y1 = parseFloat(line.getAttribute('y1'));
+          const expectedY1 = filePos.y + 20;
+          
+          // Match by Y coordinate (more reliable than X)
+          if (Math.abs(y1 - expectedY1) < 10) {
             line.style.transition = 'opacity 0.3s ease';
             line.style.opacity = '0';
             setTimeout(() => line.remove(), 300);

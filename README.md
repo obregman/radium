@@ -58,6 +58,33 @@ The Real-time Changes view monitors your workspace for file modifications and di
 
 To use: Run `Radium: Real-time Changes` from the command palette.
 
+#### Ignoring Files
+
+You can exclude files and directories from the Real-time Changes view by creating a `radiumignore` file in the `.radium` directory:
+
+```
+# .radium/radiumignore
+
+# Ignore generated files
+*.g.cs
+*.generated.ts
+
+# Ignore directories
+debug/
+build/
+temp/
+
+# Ignore specific files
+config.local.json
+```
+
+Patterns supported:
+- **Extensions**: `*.g.cs` - ignores all files ending with `.g.cs`
+- **Directories**: `debug/` - ignores the `debug` directory and all files within it
+- **Specific files**: `config.local.json` - ignores this exact file
+- **Comments**: Lines starting with `#` are ignored
+- **Glob patterns**: Supports wildcards like `**/*.test.ts`
+
 ## Configuration
 
 Available settings:

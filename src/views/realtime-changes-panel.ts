@@ -352,7 +352,6 @@ export class RealtimeChangesPanel {
       z-index: 5;
       opacity: 0;
       transition: opacity 0.3s ease;
-      scroll-behavior: smooth;
     }
 
     .diff-box.visible {
@@ -571,6 +570,9 @@ export class RealtimeChangesPanel {
     // Position tracking for file boxes
     const filePositions = new Map();
     let nextPosition = { x: 100, y: 100 };
+    
+    // Track previous diffs to detect new changes
+    const previousDiffs = new Map();
 
     function getFilePosition(filePath) {
       if (!filePositions.has(filePath)) {
@@ -584,33 +586,76 @@ export class RealtimeChangesPanel {
       return filePositions.get(filePath);
     }
 
-    function formatDiff(diffText) {
+    function formatDiff(diffText, uniqueId, filePath) {
       const lines = diffText.split('\\n');
       let formattedLines = [];
       let lastChangeIndex = -1;
+      let lowestNewChangeLineNumber = Infinity;
+      let currentHunkStart = 0;
       
-      // First pass: format all lines and find the last change
+      console.log('[Radium] Parsing diff for', uniqueId, 'file:', filePath);
+      
+      // Get previous diff for comparison
+      const previousDiff = previousDiffs.get(filePath) || '';
+      const previousLines = new Set(previousDiff.split('\\n'));
+      
+      // First pass: format all lines and find NEW changes (not in previous diff)
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (line.startsWith('+') && !line.startsWith('+++')) {
-          lastChangeIndex = i;
-          formattedLines.push({ type: 'addition', content: line, index: i });
+        
+        if (line.startsWith('@@')) {
+          // Parse hunk header to get starting line number
+          // Format: @@ -old_start,old_count +new_start,new_count @@
+          const match = line.match(/@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
+          if (match) {
+            currentHunkStart = parseInt(match[1], 10);
+            console.log('[Radium] Found hunk starting at line', currentHunkStart, ':', line);
+          }
+          formattedLines.push({ type: 'hunk', content: line, index: i, lineNumber: currentHunkStart });
+        } else if (line.startsWith('+') && !line.startsWith('+++')) {
+          // This is an addition
+          const isNewChange = !previousLines.has(line);
+          console.log('[Radium] Addition at line', currentHunkStart, ':', line.substring(0, 50), isNewChange ? '(NEW)' : '(old)');
+          
+          if (isNewChange && currentHunkStart < lowestNewChangeLineNumber) {
+            console.log('[Radium] New lowest NEW change line:', currentHunkStart, '(was', lowestNewChangeLineNumber, ')');
+            lowestNewChangeLineNumber = currentHunkStart;
+            lastChangeIndex = i;
+          }
+          formattedLines.push({ type: 'addition', content: line, index: i, lineNumber: currentHunkStart });
+          currentHunkStart++; // Additions increment the line counter
         } else if (line.startsWith('-') && !line.startsWith('---')) {
-          lastChangeIndex = i;
-          formattedLines.push({ type: 'deletion', content: line, index: i });
-        } else if (line.startsWith('@@')) {
-          formattedLines.push({ type: 'hunk', content: line, index: i });
+          // This is a deletion
+          const isNewChange = !previousLines.has(line);
+          console.log('[Radium] Deletion at line', currentHunkStart, ':', line.substring(0, 50), isNewChange ? '(NEW)' : '(old)');
+          
+          if (isNewChange && currentHunkStart < lowestNewChangeLineNumber) {
+            console.log('[Radium] New lowest NEW change line:', currentHunkStart, '(was', lowestNewChangeLineNumber, ')');
+            lowestNewChangeLineNumber = currentHunkStart;
+            lastChangeIndex = i;
+          }
+          formattedLines.push({ type: 'deletion', content: line, index: i, lineNumber: currentHunkStart });
+          // Deletions don't increment the new file line counter
         } else {
-          formattedLines.push({ type: 'context', content: line, index: i });
+          // Context line - exists in both old and new
+          formattedLines.push({ type: 'context', content: line, index: i, lineNumber: currentHunkStart });
+          if (!line.startsWith('---') && !line.startsWith('+++') && line.trim().length > 0) {
+            currentHunkStart++; // Context lines increment the counter
+          }
         }
       }
+      
+      console.log('[Radium] Final lowest NEW change line:', lowestNewChangeLineNumber, 'at index', lastChangeIndex);
+      
+      // Store current diff for next comparison
+      previousDiffs.set(filePath, diffText);
       
       // Second pass: generate HTML with the last change marked
       let formattedHtml = '';
       for (const lineData of formattedLines) {
         const isLatestChange = lineData.index === lastChangeIndex;
         const latestClass = isLatestChange ? ' latest-change' : '';
-        const latestId = isLatestChange ? ' id="latest-change"' : '';
+        const latestId = isLatestChange ? \` id="latest-change-\${uniqueId}"\` : '';
         
         if (lineData.type === 'addition') {
           formattedHtml += \`<div class="diff-line addition\${latestClass}"\${latestId}>\${escapeHtml(lineData.content)}</div>\`;
@@ -632,7 +677,7 @@ export class RealtimeChangesPanel {
       return div.innerHTML;
     }
 
-    function createFileTooltip(filePath, diff, fileBox) {
+    function createFileTooltip(filePath, diff, fileBox, hideTooltipTimeoutRef) {
       const tooltip = document.createElement('div');
       tooltip.className = 'file-hover-tooltip';
       
@@ -644,12 +689,17 @@ export class RealtimeChangesPanel {
       
       // Create diff content
       const diffContent = document.createElement('div');
-      diffContent.innerHTML = formatDiff(diff);
+      const tooltipId = 'tooltip-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      diffContent.innerHTML = formatDiff(diff, tooltipId, filePath);
       tooltip.appendChild(diffContent);
       
-      // Prevent tooltip from closing when hovering over it
+      // Cancel hide timeout when hovering over tooltip
       tooltip.addEventListener('mouseenter', (e) => {
         e.stopPropagation();
+        if (hideTooltipTimeoutRef.value) {
+          clearTimeout(hideTooltipTimeoutRef.value);
+          hideTooltipTimeoutRef.value = null;
+        }
       });
       
       // Close tooltip when leaving it
@@ -700,12 +750,22 @@ export class RealtimeChangesPanel {
       
       // Add hover handlers for tooltip
       let hoverTimeout = null;
+      let hideTooltipTimeout = null;
       let tooltip = null;
       
+      // Create a reference object to share the timeout with the tooltip
+      const hideTooltipTimeoutRef = { value: null };
+      
       fileBox.addEventListener('mouseenter', (e) => {
+        // Cancel any pending hide
+        if (hideTooltipTimeoutRef.value) {
+          clearTimeout(hideTooltipTimeoutRef.value);
+          hideTooltipTimeoutRef.value = null;
+        }
+        
         // Wait 1.8 seconds before showing tooltip
         hoverTimeout = setTimeout(() => {
-          tooltip = createFileTooltip(filePath, diff, fileBox);
+          tooltip = createFileTooltip(filePath, diff, fileBox, hideTooltipTimeoutRef);
           canvas.appendChild(tooltip);
           
           // Position tooltip above or below the file box
@@ -730,24 +790,29 @@ export class RealtimeChangesPanel {
           hoverTimeout = null;
         }
         
-        // Remove tooltip if shown
+        // Delay hiding tooltip to allow moving cursor to it
         if (tooltip) {
-          tooltip.classList.remove('visible');
-          setTimeout(() => {
-            if (tooltip && tooltip.parentNode) {
-              tooltip.remove();
+          hideTooltipTimeoutRef.value = setTimeout(() => {
+            if (tooltip) {
+              tooltip.classList.remove('visible');
+              setTimeout(() => {
+                if (tooltip && tooltip.parentNode) {
+                  tooltip.remove();
+                }
+                tooltip = null;
+              }, 200);
             }
-            tooltip = null;
-          }, 200);
+          }, 300); // 300ms delay to move cursor to tooltip
         }
       });
       
       canvas.appendChild(fileBox);
 
-      // Create diff box
+      // Create diff box with unique ID
       const diffBox = document.createElement('div');
       diffBox.className = 'diff-box';
-      diffBox.innerHTML = formatDiff(diff);
+      const diffBoxId = 'diff-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      diffBox.innerHTML = formatDiff(diff, diffBoxId, filePath);
       
       // Position diff box to the right of file box with more spacing
       const diffPos = {
@@ -771,18 +836,39 @@ export class RealtimeChangesPanel {
       setTimeout(() => {
         diffBox.classList.add('visible');
         line.classList.add('visible');
-        
-        // Scroll to the latest change
-        const latestChange = diffBox.querySelector('#latest-change');
-        if (latestChange) {
-          // Scroll the element into view with smooth behavior
-          latestChange.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'center',
-            inline: 'nearest'
-          });
-        }
       }, 100);
+      
+      // Wait for the visibility transition to complete before scrolling
+      setTimeout(() => {
+        const latestChange = diffBox.querySelector('#latest-change-' + diffBoxId);
+        console.log('[Radium] Looking for latest change with ID:', 'latest-change-' + diffBoxId);
+        console.log('[Radium] Found element:', latestChange);
+        
+        if (latestChange) {
+          // Calculate the position to scroll to within the diff box
+          const latestChangeTop = latestChange.offsetTop;
+          const diffBoxHeight = diffBox.clientHeight;
+          const scrollTarget = Math.max(0, latestChangeTop - (diffBoxHeight / 2));
+          
+          console.log('[Radium] Scroll info:', {
+            latestChangeTop,
+            diffBoxHeight,
+            scrollTarget,
+            currentScrollTop: diffBox.scrollTop,
+            scrollHeight: diffBox.scrollHeight
+          });
+          
+          // Use scrollTo with instant behavior
+          diffBox.scrollTo({
+            top: scrollTarget,
+            behavior: 'instant'
+          });
+          
+          console.log('[Radium] After scroll, scrollTop:', diffBox.scrollTop);
+        } else {
+          console.warn('[Radium] Could not find latest change element');
+        }
+      }, 400);
 
       // Track for cleanup
       activeElements.push({ fileBox, diffBox, line, timestamp });

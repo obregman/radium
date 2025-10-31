@@ -11,6 +11,7 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 - Interactive graph visualization of your codebase
 - Component-based architecture view (defined in `.radium/radium-components.yaml`)
 - Track and manage LLM-generated changes
+- Real-time file change monitoring with visual diff display
 - Automatic change detection every 1 minute when component view is open
 - Impact analysis for code modifications
 - Support for TypeScript, JavaScript, and Python
@@ -39,6 +40,22 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 
 - `Radium: Codebase Map` - Show the codebase graph
 - `Radium: Features Map` - Visualize features and their relationships
+- `Radium: Real-time Changes` - Monitor file changes in real-time with visual diff display
+
+### Real-time Changes
+
+The Real-time Changes view monitors your workspace for file modifications and displays them visually:
+
+- **File boxes** appear when a file changes, highlighted for 5 seconds
+- **Diff boxes** show the actual code changes with syntax highlighting
+- **Auto-focus on changes**: Automatically scrolls to and highlights the latest change with animated indicators
+- **Connection lines** link the file to its diff display
+- **Hover to keep open**: Diff boxes stay visible when you hover over them
+- **Pan and zoom**: Navigate the view with mouse drag and scroll wheel
+- Automatically tracks source files (TypeScript, JavaScript, Python, etc.)
+- Displays git diffs for each change
+
+To use: Run `Radium: Real-time Changes` from the command palette.
 
 ## Configuration
 
@@ -85,9 +102,9 @@ Add this instruction to your project to trigger the generation of the necessary 
 
 ```markdown
 
-The VSCode add-on Radium requires the following files to be available in the .radium directory:
-1. .radium/radium-components.yaml - describes a logical visualization of the codebase.
-2. .radium/radium-features.yaml - describes the different feature flows
+The VSCode add-on Radium requires the following files to be created in the .radium directory in the project root folder:
+1. radium-components.yaml - describes a logical visualization of the codebase.
+2. radium-features.yaml - describes the different feature flows
 
 Review the project code and generate the files in the .radium directory.
 

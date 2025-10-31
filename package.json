@@ -35,6 +35,11 @@
         "command": "radium.reindex",
         "title": "Radium: Re-index Workspace",
         "icon": "$(sync)"
+      },
+      {
+        "command": "radium.realtimeChanges",
+        "title": "Radium: Real-time Changes",
+        "icon": "$(eye)"
       }
     ],
     "viewsContainers": {

@@ -386,9 +386,11 @@ export class RealtimeChangesPanel {
     .diff-line.latest-change::before {
       content: '→';
       position: absolute;
-      left: -20px;
+      left: -24px;
+      font-size: 18px;
       font-weight: bold;
       color: var(--vscode-button-background);
+      text-shadow: 0 0 8px var(--vscode-button-background);
       animation: arrowBounce 1s ease-in-out infinite;
     }
 
@@ -438,7 +440,7 @@ export class RealtimeChangesPanel {
     }
 
     #info h3 {
-      margin-bottom: 8px;
+      margin-bottom: 0;
       font-size: 14px;
       color: var(--vscode-button-background);
     }
@@ -528,8 +530,6 @@ export class RealtimeChangesPanel {
 <body>
   <div id="info">
     <h3>🔴 Watching for Changes</h3>
-    <p>Listening to file changes in real-time</p>
-    <p id="last-change">No changes yet</p>
   </div>
   <div id="zoom-controls">
     <button class="zoom-button" id="zoom-in" title="Zoom In">+</button>
@@ -553,7 +553,6 @@ export class RealtimeChangesPanel {
     const container = document.getElementById('container');
     const canvas = document.getElementById('canvas');
     const connectionsContainer = document.getElementById('connections');
-    const lastChangeEl = document.getElementById('last-change');
     const zoomLevelEl = document.getElementById('zoom-level');
 
     // Track active elements for cleanup
@@ -730,9 +729,6 @@ export class RealtimeChangesPanel {
 
     function handleFileChange(data) {
       const { filePath, timestamp, diff } = data;
-
-      // Update last change info
-      lastChangeEl.textContent = \`Last: \${filePath} at \${formatTimestamp(timestamp)}\`;
 
       // Get or create file box position
       const filePos = getFilePosition(filePath);
@@ -1065,9 +1061,6 @@ export class RealtimeChangesPanel {
       // Reset next position
       nextPosition = { x: 100, y: 100 };
 
-      // Update status
-      lastChangeEl.textContent = 'All cleared';
-
       console.log('[Radium] Cleared all file boxes');
     });
 
@@ -1089,9 +1082,6 @@ export class RealtimeChangesPanel {
       const { filePath, timestamp } = data;
       
       console.log(\`[Radium] Handling revert for \${filePath}\`);
-      
-      // Update last change info
-      lastChangeEl.textContent = \`Reverted: \${filePath} at \${formatTimestamp(timestamp)}\`;
       
       // Find and remove all elements for this file
       const allFileBoxes = Array.from(canvas.querySelectorAll('.file-box'));

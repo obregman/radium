@@ -47,6 +47,7 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 The Real-time Changes view monitors your workspace for file modifications and displays them visually:
 
 - **File boxes** appear when a file changes, highlighted for 5 seconds
+- **New files** are marked with an asterisk (*) after the filename
 - **Diff boxes** show the actual code changes with syntax highlighting
 - **Auto-focus on changes**: Automatically scrolls to and highlights the latest change with animated indicators
 - **Connection lines** link the file to its diff display

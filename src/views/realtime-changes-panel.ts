@@ -3,6 +3,7 @@ import * as chokidar from 'chokidar';
 import * as cp from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
+import * as fs from 'fs';
 
 const exec = promisify(cp.exec);
 
@@ -10,6 +11,7 @@ interface FileChange {
   filePath: string;
   timestamp: number;
   diff: string;
+  isNew: boolean;
 }
 
 export class RealtimeChangesPanel {
@@ -141,15 +143,44 @@ export class RealtimeChangesPanel {
       return;
     }
 
+    // Check if file is new (not in git HEAD)
+    const isNew = await this.isNewFile(relativePath);
+
     // Send change to webview
     this.panel.webview.postMessage({
       type: 'file:changed',
       data: {
         filePath: relativePath,
         timestamp: Date.now(),
-        diff: diff
+        diff: diff,
+        isNew: isNew
       }
     });
+  }
+
+  private async isNewFile(filePath: string): Promise<boolean> {
+    try {
+      // Check if file exists in git HEAD
+      const { stdout, stderr } = await exec(`git ls-files --error-unmatch "${filePath}"`, {
+        cwd: this.workspaceRoot
+      });
+      
+      // If the command succeeds, the file is tracked in git
+      // Now check if it's in HEAD
+      try {
+        await exec(`git cat-file -e HEAD:"${filePath}"`, {
+          cwd: this.workspaceRoot
+        });
+        // File exists in HEAD, so it's not new
+        return false;
+      } catch {
+        // File is tracked but not in HEAD, so it's new
+        return true;
+      }
+    } catch {
+      // File is not tracked at all, so it's new
+      return true;
+    }
   }
 
   private async getFileDiff(filePath: string): Promise<string> {
@@ -174,7 +205,28 @@ export class RealtimeChangesPanel {
         const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
           cwd: this.workspaceRoot
         });
-        diff = unstagedDiff || 'No diff available';
+        
+        if (unstagedDiff) {
+          diff = unstagedDiff;
+        } else {
+          // For completely new untracked files, show the entire file content as additions
+          try {
+            const fullPath = path.join(this.workspaceRoot, filePath);
+            if (fs.existsSync(fullPath)) {
+              const content = fs.readFileSync(fullPath, 'utf8');
+              const lines = content.split('\n');
+              diff = `+++ ${filePath}\n`;
+              lines.forEach((line: string) => {
+                diff += `+${line}\n`;
+              });
+            } else {
+              diff = 'No diff available';
+            }
+          } catch (error) {
+            console.error(`Failed to read new file ${filePath}:`, error);
+            diff = 'No diff available';
+          }
+        }
       }
 
       // Cache the result
@@ -749,7 +801,7 @@ export class RealtimeChangesPanel {
     }
 
     function handleFileChange(data) {
-      const { filePath, timestamp, diff } = data;
+      const { filePath, timestamp, diff, isNew } = data;
 
       // Get or create file box position
       const filePos = getFilePosition(filePath);
@@ -757,7 +809,7 @@ export class RealtimeChangesPanel {
       // Create file box
       const fileBox = document.createElement('div');
       fileBox.className = 'file-box highlight';
-      fileBox.textContent = filePath;
+      fileBox.textContent = filePath + (isNew ? ' *' : '');
       fileBox.style.left = filePos.x + 'px';
       fileBox.style.top = filePos.y + 'px';
       

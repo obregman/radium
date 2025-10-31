@@ -273,7 +273,34 @@ export class GitDiffTracker {
   }
 
   private isSourceFile(filePath: string): boolean {
-    const sourceExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp', '.cs', '.swift', '.kt', '.rb', '.php'];
+    const sourceExtensions = [
+      // JavaScript/TypeScript
+      '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+      // Python
+      '.py', '.pyx', '.pyi',
+      // JVM languages
+      '.java', '.kt', '.scala', '.groovy',
+      // Systems programming
+      '.go', '.rs', '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hxx',
+      // .NET
+      '.cs', '.vb', '.fs', '.xaml',
+      // Mobile
+      '.swift', '.m', '.mm',
+      // Ruby
+      '.rb', '.rake',
+      // PHP
+      '.php',
+      // Web frameworks
+      '.vue', '.svelte',
+      // Markup & Config
+      '.html', '.htm', '.xml', '.json', '.yaml', '.yml', '.toml',
+      // Stylesheets
+      '.css', '.scss', '.sass', '.less',
+      // Shell
+      '.sh', '.bash', '.zsh', '.fish',
+      // Other
+      '.sql', '.graphql', '.proto', '.thrift'
+    ];
     return sourceExtensions.some(ext => filePath.endsWith(ext));
   }
 

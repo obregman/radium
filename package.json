@@ -40,6 +40,16 @@
         "command": "radium.realtimeChanges",
         "title": "Radium: Real-time Changes",
         "icon": "$(eye)"
+      },
+      {
+        "command": "radium.symbolChanges",
+        "title": "Radium: Visualise Real-time Changes",
+        "icon": "$(symbol-class)"
+      },
+      {
+        "command": "radium.detailedCodeChanges",
+        "title": "Radium: Detailed Code Changes",
+        "icon": "$(symbol-class)"
       }
     ],
     "viewsContainers": {

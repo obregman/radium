@@ -41,6 +41,7 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 - `Radium: Codebase Map` - Show the codebase graph
 - `Radium: Features Map` - Visualize features and their relationships
 - `Radium: Real-time Changes` - Monitor file changes in real-time with visual diff display
+- `Radium: Symbol Changes` - Visualize code changes as symbols (functions, classes) with call relationships
 
 ### Real-time Changes
 
@@ -57,6 +58,37 @@ The Real-time Changes view monitors your workspace for file modifications and di
 - Displays git diffs for each change
 
 To use: Run `Radium: Real-time Changes` from the command palette.
+
+### Symbol Changes
+
+The Symbol Changes view provides an intuitive visualization of code changes using symbols instead of raw diffs:
+
+**Symbol Types:**
+- **Function boxes** (teal) - New or modified functions with change details (+/- lines)
+- **Class boxes** (blue, rectangular) - New or modified classes  
+- **Method boxes** (purple) - New or modified methods
+- **Interface boxes** (light blue, dashed) - New or modified interfaces
+- **Variable boxes** (yellow) - New or modified variables with values
+- **Constant boxes** (gold) - New or modified constants with values
+
+**Change Detection:**
+- ✅ **Adding a function** - Shows as new function box with green pulse
+- 🔧 **Changing a function** - Shows modified function with yellow pulse and +/- stats
+- 📦 **Adding variables** - Shows new variable/constant with initial value
+- 🔄 **Changing variable values** - Shows value change with orange pulse (old → new)
+- 📋 **Creating interfaces/types** - Shows new interface with dashed border
+- 🔗 **Adding function calls** - Animated arrows connect caller to callee
+
+**Visual Features:**
+- **Call connectors** - Animated curved arrows showing function calls between symbols
+- **Change indicators** - Pulsing animations: green (added), yellow (modified), orange (value changed), red (deleted)
+- **Details display** - Shows change statistics and values directly on symbols
+- **File grouping** - Symbols are organized by file with clear labels
+- **Pan and zoom** - Navigate the view with mouse drag and scroll wheel
+
+This mode makes complex changes easy to understand at a glance by showing the structural changes to your code rather than line-by-line diffs.
+
+To use: Run `Radium: Symbol Changes` from the command palette.
 
 #### Ignoring Files
 

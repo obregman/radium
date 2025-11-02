@@ -209,14 +209,46 @@ export class SymbolChangesPanel {
     const relativePath = path.relative(this.workspaceRoot, absolutePath);
     this.diffCache.delete(relativePath);
 
-    // If this is the first time we're seeing this file, just store its state without showing changes
     const fullPath = path.join(this.workspaceRoot, relativePath);
-    if (!this.lastKnownFileStates.has(relativePath) && !this.filesCreatedThisSession.has(relativePath)) {
-      this.log(`First time seeing ${relativePath}, storing initial state without showing changes`);
+    const isFirstTimeSeeingFile = !this.lastKnownFileStates.has(relativePath) && !this.filesCreatedThisSession.has(relativePath);
+    
+    // If this is the first time we're seeing this file, get git diff to show changes since last commit
+    if (isFirstTimeSeeingFile) {
+      this.log(`First time seeing ${relativePath}, checking for changes since last commit`);
+      
+      // Get git diff to see what changed since HEAD
+      const diff = await this.getGitDiffOnly(relativePath);
+      const hasChanges = diff && diff !== 'No diff available' && diff !== 'Error getting diff' && diff.trim().length > 0;
+      
+      if (hasChanges) {
+        this.log(`Found changes in ${relativePath} since last commit, showing them`);
+        // Process and show the changes
+        const isNew = this.filesCreatedThisSession.has(relativePath);
+        const symbolChanges = await this.analyzeDiffForSymbols(relativePath, diff, isNew);
+        this.log(`Found ${symbolChanges.symbols.length} symbols in ${relativePath}`);
+
+        for (const symbol of symbolChanges.symbols) {
+          this.log(`Sending symbol: ${symbol.name} (${symbol.type})`);
+          this.panel.webview.postMessage({
+            type: 'symbol:changed',
+            data: {
+              filePath: relativePath,
+              symbol: symbol,
+              timestamp: Date.now(),
+              diff: diff
+            }
+          });
+        }
+      } else {
+        this.log(`No changes in ${relativePath} since last commit`);
+      }
+      
+      // Store current state as baseline for future comparisons
       try {
         if (fs.existsSync(fullPath)) {
           const currentContent = fs.readFileSync(fullPath, 'utf8');
           this.lastKnownFileStates.set(relativePath, currentContent);
+          this.log(`Stored file state for ${relativePath}`);
         }
       } catch (error) {
         this.log(`Failed to store initial file state for ${relativePath}: ${error}`);
@@ -937,6 +969,86 @@ export class SymbolChangesPanel {
     // Use the diff library to generate a proper unified diff
     const patch = Diff.createPatch(filePath, oldContent, newContent, '', '', { context: 3 });
     return patch;
+  }
+
+  private async getGitDiffOnly(filePath: string): Promise<string> {
+    // Get diff from git only (used for first-time file detection)
+    try {
+      const fullPath = path.join(this.workspaceRoot, filePath);
+      
+      // Check if this is a git repository
+      let isGitRepo = false;
+      try {
+        await exec('git rev-parse --git-dir', { cwd: this.workspaceRoot });
+        isGitRepo = true;
+      } catch {
+        this.log(`Not a git repository, cannot show initial changes`);
+        return '';
+      }
+      
+      if (!isGitRepo) {
+        return '';
+      }
+      
+      // Try to get diff from HEAD
+      let diff = '';
+      try {
+        const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
+          cwd: this.workspaceRoot
+        });
+        if (stdout) {
+          this.log(`Got git diff from HEAD for ${filePath}`);
+          diff = stdout;
+        }
+      } catch (headError: any) {
+        this.log(`git diff HEAD failed for ${filePath}: ${headError.message}`);
+      }
+
+      // If no diff from HEAD, try unstaged diff
+      if (!diff) {
+        try {
+          const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
+            cwd: this.workspaceRoot
+          });
+          
+          if (unstagedDiff) {
+            this.log(`Got git unstaged diff for ${filePath}`);
+            diff = unstagedDiff;
+          }
+        } catch (unstagedError: any) {
+          this.log(`git diff unstaged failed for ${filePath}: ${unstagedError.message}`);
+        }
+      }
+      
+      // If still no diff, check if file is untracked
+      if (!diff) {
+        let isTracked = false;
+        try {
+          await exec(`git ls-files --error-unmatch "${filePath}"`, {
+            cwd: this.workspaceRoot
+          });
+          isTracked = true;
+        } catch {
+          isTracked = false;
+        }
+        
+        // If not tracked, generate a full-file diff
+        if (!isTracked && fs.existsSync(fullPath)) {
+          const content = fs.readFileSync(fullPath, 'utf8');
+          const lines = content.split('\n');
+          diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n`;
+          lines.forEach((line: string) => {
+            diff += `+${line}\n`;
+          });
+          this.log(`Generated full-file diff for untracked ${filePath}`);
+        }
+      }
+      
+      return diff;
+    } catch (error: any) {
+      this.log(`Failed to get git diff for ${filePath}: ${error.message || error}`);
+      return '';
+    }
   }
 
   private async getFileDiff(filePath: string): Promise<string> {

@@ -75,7 +75,7 @@ export class RealtimeChangesPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'realtimeChanges',
-      'Radium: Real-time Changes',
+      'Radium: Real-time File Changes',
       column || vscode.ViewColumn.Two,
       {
         enableScripts: true,
@@ -361,7 +361,7 @@ export class RealtimeChangesPanel {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Real-time Changes</title>
+  <title>Real-time File Changes</title>
   <style>
     * {
       margin: 0;

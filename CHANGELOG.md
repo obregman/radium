@@ -96,7 +96,7 @@ All notable changes to the Radium extension will be documented in this file.
 - Configuration options for indexing, privacy, and graph layout
 
 ### Features
-- 📊 Living codebase map with zoom and pan
+- 📊 Living component view with zoom and pan
 - 🤖 Track all LLM-originated edits
 - 🔍 Smart indexing with tree-sitter
 - 🌳 Code navigation tree views

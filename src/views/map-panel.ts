@@ -86,7 +86,7 @@ export class MapPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'vibeMap',
-      'Radium Map',
+      'Radium: Component View',
       column || vscode.ViewColumn.Two,
       {
         enableScripts: true,
@@ -1392,7 +1392,7 @@ export class MapPanel {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}' https://d3js.org; connect-src 'none';">
-  <title>Radium Map</title>
+  <title>Radium: Component View</title>
   <style>
     body { 
       margin: 0; 
@@ -2455,19 +2455,20 @@ export class MapPanel {
               .style('max-height', '400px')
               .style('overflow-y', 'auto')
               .style('overflow-x', 'auto')
-              .style('white-space', 'pre')
               .style('pointer-events', 'auto')
               .style('z-index', '10000')
               .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)');
             
-            // Format diff
-            let diffText = '📝 ' + d.path + '\\n\\n';
+            // Format diff with colored backgrounds
+            let diffHtml = '<div style="font-weight: bold; margin-bottom: 8px;">📝 ' + d.path + '</div>';
             
             // Check if we have actual diff content
             const hunks = d._changeInfo.hunks;
+            let diffText = '';
+            
             if (hunks && hunks.diff) {
               // We have the actual git diff
-              diffText += hunks.diff;
+              diffText = hunks.diff;
             } else if (hunks && hunks.hunks && hunks.hunks.length > 0) {
               // We have detailed hunks
               hunks.hunks.forEach(hunk => {
@@ -2483,10 +2484,10 @@ export class MapPanel {
               });
             } else if (d._changeInfo.summary) {
               // Show summary if available
-              diffText += d._changeInfo.summary;
+              diffText = d._changeInfo.summary;
             } else {
               // Show basic stats
-              diffText += '✏️  File has uncommitted changes\\n';
+              diffText = '✏️  File has uncommitted changes\\n';
               if (hunks && hunks.hunks && hunks.hunks[0]) {
                 const stats = hunks.hunks[0];
                 if (stats.end - stats.start > 0) {
@@ -2495,24 +2496,33 @@ export class MapPanel {
               }
             }
             
-            tooltip.text(diffText);
+            // Parse diff and apply colors
+            if (diffText) {
+              const lines = diffText.split('\\n');
+              lines.forEach(line => {
+                const escapedLine = line
+                  .replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;')
+                  .replace(/ /g, '&nbsp;');
+                
+                if (line.startsWith('+') && !line.startsWith('+++')) {
+                  // Addition - green background
+                  diffHtml += '<div style="background-color: rgba(0, 255, 0, 0.2); padding: 2px 4px; white-space: pre;">' + escapedLine + '</div>';
+                } else if (line.startsWith('-') && !line.startsWith('---')) {
+                  // Deletion - red background
+                  diffHtml += '<div style="background-color: rgba(255, 0, 0, 0.2); padding: 2px 4px; white-space: pre;">' + escapedLine + '</div>';
+                } else {
+                  // Context or header line
+                  diffHtml += '<div style="padding: 2px 4px; white-space: pre; opacity: 0.7;">' + escapedLine + '</div>';
+                }
+              });
+            }
+            
+            tooltip.html(diffHtml);
             
             // Get the actual DOM element for native event handling
             const tooltipElement = tooltip.node();
-            
-            // Debug: Log content and scrollbar info
-            console.log('[Radium] Tooltip content length:', diffText.length);
-            console.log('[Radium] Tooltip scrollHeight:', tooltipElement.scrollHeight);
-            console.log('[Radium] Tooltip clientHeight:', tooltipElement.clientHeight);
-            console.log('[Radium] Tooltip offsetHeight:', tooltipElement.offsetHeight);
-            console.log('[Radium] Computed overflow-y:', window.getComputedStyle(tooltipElement).overflowY);
-            
-            // Force minimum content height to ensure scrollbar appears
-            if (tooltipElement.scrollHeight <= tooltipElement.clientHeight) {
-              console.log('[Radium] Content too short, padding to force scrollbar');
-              // Add extra newlines to force scrollbar
-              tooltip.text(diffText + '\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n');
-            }
             
             // Handle wheel inside tooltip: scroll tooltip, never zoom canvas
             tooltipElement.addEventListener('wheel', function(e) {

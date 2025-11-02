@@ -38,14 +38,14 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 
 ### Available Commands
 
-- `Radium: Codebase Map` - Show the codebase graph
+- `Radium: Component View` - Show the codebase graph
 - `Radium: Features Map` - Visualize features and their relationships
-- `Radium: Real-time Changes` - Monitor file changes in real-time with visual diff display
-- `Radium: Symbol Changes` - Visualize code changes as symbols (functions, classes) with call relationships
+- `Radium: Real-time File Changes` - Monitor file changes in real-time with visual diff display
+- `Radium: Real-time Symbol Visualization` - Visualize code changes as symbols (functions, classes) with call relationships
 
-### Real-time Changes
+### Real-time File Changes
 
-The Real-time Changes view monitors your workspace for file modifications and displays them visually:
+The Real-time File Changes view monitors your workspace for file modifications and displays them visually:
 
 - **File boxes** appear when a file changes, highlighted for 5 seconds
 - **New files** are marked with an asterisk (*) after the filename
@@ -57,7 +57,7 @@ The Real-time Changes view monitors your workspace for file modifications and di
 - Automatically tracks source files (TypeScript, JavaScript, Python, etc.)
 - Displays git diffs for each change
 
-To use: Run `Radium: Real-time Changes` from the command palette.
+To use: Run `Radium: Real-time File Changes` from the command palette.
 
 ### Symbol Changes
 
@@ -92,7 +92,7 @@ To use: Run `Radium: Symbol Changes` from the command palette.
 
 #### Ignoring Files
 
-You can exclude files and directories from the Real-time Changes view by creating a `radiumignore` file in the `.radium` directory:
+You can exclude files and directories from the Real-time File Changes view by creating a `radiumignore` file in the `.radium` directory:
 
 ```
 # .radium/radiumignore

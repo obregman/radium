@@ -127,9 +127,9 @@ The visualization uses tree-sitter parsers to accurately extract symbols from so
 - Complex call chains (callbacks, promises) may not be fully visualized
 - Method calls on objects are simplified (e.g., `obj.method()` becomes `method`)
 
-## Comparison with Real-time Changes
+## Comparison with Real-time File Changes
 
-| Feature | Symbol Changes | Real-time Changes |
+| Feature | Symbol Visualization | Real-time File Changes |
 |---------|---------------|-------------------|
 | View Type | Symbol graph | Code diff |
 | Best For | Understanding structure | Reviewing code details |

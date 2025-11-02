@@ -23,7 +23,7 @@
     "commands": [
       {
         "command": "radium.openMap",
-        "title": "Radium: Codebase Map",
+        "title": "Radium: Component View",
         "icon": "$(graph)"
       },
       {
@@ -38,12 +38,12 @@
       },
       {
         "command": "radium.realtimeChanges",
-        "title": "Radium: Real-time Changes",
+        "title": "Radium: Real-time File Changes",
         "icon": "$(eye)"
       },
       {
         "command": "radium.symbolChanges",
-        "title": "Radium: Visualise Real-time Changes",
+        "title": "Radium: Real-time Symbol Visualization",
         "icon": "$(symbol-class)"
       },
       {

@@ -89,7 +89,7 @@ export class SymbolChangesPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'symbolChanges',
-      'Radium: Visualise Real-time Changes',
+      'Radium: Real-time Symbol Visualization',
       column || vscode.ViewColumn.Two,
       {
         enableScripts: true,
@@ -1220,7 +1220,7 @@ export class SymbolChangesPanel {
 </head>
 <body>
   <div id="info">
-    <h3>📦 Visualise Real-time Changes</h3>
+    <h3>📦 Real-time Symbol Visualization</h3>
   </div>
   
   <div id="zoom-controls">

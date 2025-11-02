@@ -9,6 +9,8 @@ const TypeScript = require('tree-sitter-typescript').typescript;
 const JavaScript = require('tree-sitter-javascript');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Python = require('tree-sitter-python');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const CSharp = require('tree-sitter-c-sharp');
 
 export interface ParsedSymbol {
   kind: string;
@@ -62,6 +64,16 @@ export class CodeParser {
     pyParser.setLanguage(Python);
     this.parsers.set('python', pyParser);
     this.parsers.set('py', pyParser);
+
+    // C# parser
+    try {
+      const csParser = new Parser();
+      csParser.setLanguage(CSharp);
+      this.parsers.set('csharp', csParser);
+      this.parsers.set('cs', csParser);
+    } catch (error) {
+      console.error('[Radium] Failed to initialize C# parser:', error);
+    }
   }
 
   getLanguage(filePath: string): string | undefined {
@@ -87,27 +99,32 @@ export class CodeParser {
     const code = content ?? await fs.promises.readFile(filePath, 'utf-8');
     const hash = crypto.createHash('sha256').update(code).digest('hex');
 
-    // For C#, return basic info without parsing (tree-sitter-c-sharp not installed yet)
-    if (lang === 'csharp') {
+    const parser = this.parsers.get(lang);
+    if (!parser) {
+      console.warn(`[Radium] No parser available for language: ${lang} (file: ${filePath})`);
+      return null;
+    }
+
+    try {
+      const tree = parser.parse(code);
+
+      const symbols: ParsedSymbol[] = [];
+      const imports: ImportDeclaration[] = [];
+      const calls: CallSite[] = [];
+
+      if (lang === 'typescript' || lang === 'javascript') {
+        this.extractTypeScriptSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
+      } else if (lang === 'python') {
+        this.extractPythonSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
+      } else if (lang === 'csharp') {
+        this.extractCSharpSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
+      }
+
+      return { symbols, imports, calls, hash };
+    } catch (error) {
+      console.error(`[Radium] Error parsing file ${filePath}:`, error);
       return { symbols: [], imports: [], calls: [], hash };
     }
-
-    const parser = this.parsers.get(lang);
-    if (!parser) return null;
-
-    const tree = parser.parse(code);
-
-    const symbols: ParsedSymbol[] = [];
-    const imports: ImportDeclaration[] = [];
-    const calls: CallSite[] = [];
-
-    if (lang === 'typescript' || lang === 'javascript') {
-      this.extractTypeScriptSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
-    } else if (lang === 'python') {
-      this.extractPythonSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
-    }
-
-    return { symbols, imports, calls, hash };
   }
 
   private extractTypeScriptSymbols(
@@ -123,8 +140,10 @@ export class CodeParser {
       const nameNode = node.childForFieldName('name');
       if (nameNode) {
         const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        // Special handling for constructors
+        const isConstructor = name === 'constructor';
         symbols.push({
-          kind: 'function',
+          kind: isConstructor ? 'constructor' : 'function',
           name,
           fqname: namespace ? `${namespace}.${name}` : name,
           range: { start: node.startIndex, end: node.endIndex }
@@ -294,6 +313,164 @@ export class CodeParser {
     // Recurse to children
     for (const child of node.children) {
       this.extractPythonSymbols(child, code, symbols, imports, calls, filePath, namespace);
+    }
+  }
+
+  private extractCSharpSymbols(
+    node: Parser.SyntaxNode,
+    code: string,
+    symbols: ParsedSymbol[],
+    imports: ImportDeclaration[],
+    calls: CallSite[],
+    filePath: string,
+    namespace: string = ''
+  ) {
+    // Method declarations
+    if (node.type === 'method_declaration' || node.type === 'local_function_statement') {
+      const nameNode = node.childForFieldName('name');
+      if (nameNode) {
+        const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        symbols.push({
+          kind: 'function',
+          name,
+          fqname: namespace ? `${namespace}.${name}` : name,
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
+    }
+    // Class declarations
+    else if (node.type === 'class_declaration') {
+      const nameNode = node.childForFieldName('name');
+      if (nameNode) {
+        const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        const fqname = namespace ? `${namespace}.${name}` : name;
+        symbols.push({
+          kind: 'class',
+          name,
+          fqname,
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+        // Recurse into class body with new namespace
+        const bodyNode = node.childForFieldName('body');
+        if (bodyNode) {
+          this.extractCSharpSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
+        }
+      }
+    }
+    // Interface declarations
+    else if (node.type === 'interface_declaration') {
+      const nameNode = node.childForFieldName('name');
+      if (nameNode) {
+        const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        symbols.push({
+          kind: 'interface',
+          name,
+          fqname: namespace ? `${namespace}.${name}` : name,
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
+    }
+    // Struct declarations
+    else if (node.type === 'struct_declaration') {
+      const nameNode = node.childForFieldName('name');
+      if (nameNode) {
+        const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        symbols.push({
+          kind: 'class',
+          name,
+          fqname: namespace ? `${namespace}.${name}` : name,
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
+    }
+    // Enum declarations
+    else if (node.type === 'enum_declaration') {
+      const nameNode = node.childForFieldName('name');
+      if (nameNode) {
+        const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        symbols.push({
+          kind: 'type',
+          name,
+          fqname: namespace ? `${namespace}.${name}` : name,
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
+    }
+    // Property declarations
+    else if (node.type === 'property_declaration') {
+      const nameNode = node.childForFieldName('name');
+      if (nameNode) {
+        const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        symbols.push({
+          kind: 'variable',
+          name,
+          fqname: namespace ? `${namespace}.${name}` : name,
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
+    }
+    // Field declarations
+    else if (node.type === 'field_declaration') {
+      // Field declarations can have multiple variables
+      for (const child of node.children) {
+        if (child.type === 'variable_declaration') {
+          const declaratorNode = child.childForFieldName('declarator');
+          if (declaratorNode) {
+            const nameNode = declaratorNode.childForFieldName('name');
+            if (nameNode) {
+              const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+              symbols.push({
+                kind: 'variable',
+                name,
+                fqname: namespace ? `${namespace}.${name}` : name,
+                range: { start: node.startIndex, end: node.endIndex }
+              });
+            }
+          }
+        }
+      }
+    }
+    // Using directives (imports)
+    else if (node.type === 'using_directive') {
+      const nameNode = node.childForFieldName('name');
+      if (nameNode) {
+        const source = code.slice(nameNode.startIndex, nameNode.endIndex);
+        imports.push({
+          source,
+          names: [source],
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
+    }
+    // Invocation expressions (function calls)
+    else if (node.type === 'invocation_expression') {
+      const funcNode = node.childForFieldName('function');
+      if (funcNode) {
+        const callee = code.slice(funcNode.startIndex, funcNode.endIndex);
+        calls.push({
+          callee,
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
+    }
+    // Namespace declarations
+    else if (node.type === 'namespace_declaration') {
+      const nameNode = node.childForFieldName('name');
+      if (nameNode) {
+        const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        const newNamespace = namespace ? `${namespace}.${name}` : name;
+        // Recurse into namespace body with new namespace
+        const bodyNode = node.childForFieldName('body');
+        if (bodyNode) {
+          this.extractCSharpSymbols(bodyNode, code, symbols, imports, calls, filePath, newNamespace);
+        }
+        return; // Don't recurse to children again
+      }
+    }
+
+    // Recurse to children
+    for (const child of node.children) {
+      this.extractCSharpSymbols(child, code, symbols, imports, calls, filePath, namespace);
     }
   }
 }

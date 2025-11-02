@@ -226,56 +226,100 @@ export class RealtimeChangesPanel {
     }
 
     try {
-      // Try to get git diff
-      const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
-        cwd: this.workspaceRoot
-      });
-
-      let diff: string;
-      if (stdout) {
-        diff = stdout;
-      } else {
-        // If no diff with HEAD, try unstaged changes
-        const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
+      console.log(`[Radium] Getting diff for: ${filePath}`);
+      
+      // Check if this is a git repository first
+      let isGitRepo = false;
+      try {
+        await exec('git rev-parse --git-dir', { cwd: this.workspaceRoot });
+        isGitRepo = true;
+      } catch {
+        console.log(`[Radium] Not a git repository, will treat all files as new`);
+      }
+      
+      // If not a git repo, generate full-file diff for all files
+      if (!isGitRepo) {
+        const fullPath = path.join(this.workspaceRoot, filePath);
+        if (fs.existsSync(fullPath)) {
+          const content = fs.readFileSync(fullPath, 'utf8');
+          const lines = content.split('\n');
+          const diff = `+++ ${filePath}\n` + lines.map(line => `+${line}`).join('\n') + '\n';
+          
+          this.diffCache.set(filePath, { diff, timestamp: Date.now() });
+          this.cleanupCache();
+          return diff;
+        } else {
+          return 'No diff available';
+        }
+      }
+      
+      // Try git diff HEAD first
+      let diff: string = '';
+      try {
+        const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
           cwd: this.workspaceRoot
         });
-        
-        if (unstagedDiff) {
-          diff = unstagedDiff;
-        } else {
-          // Check if file is tracked in git
-          let isTracked = false;
-          try {
-            await exec(`git ls-files --error-unmatch "${filePath}"`, {
-              cwd: this.workspaceRoot
-            });
-            isTracked = true;
-          } catch {
-            isTracked = false;
-          }
+        if (stdout) {
+          console.log(`[Radium] Got diff from HEAD for ${filePath}`);
+          diff = stdout;
+        }
+      } catch (headError: any) {
+        console.warn(`[Radium] git diff HEAD failed for ${filePath}:`, headError.message);
+      }
+
+      // If no diff from HEAD, try unstaged diff
+      if (!diff) {
+        try {
+          const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
+            cwd: this.workspaceRoot
+          });
           
-          if (!isTracked) {
-            // For completely new untracked files, show the entire file content as additions
-            try {
-              const fullPath = path.join(this.workspaceRoot, filePath);
-              if (fs.existsSync(fullPath)) {
-                const content = fs.readFileSync(fullPath, 'utf8');
-                const lines = content.split('\n');
-                diff = `+++ ${filePath}\n`;
-                lines.forEach((line: string) => {
-                  diff += `+${line}\n`;
-                });
-              } else {
-                diff = 'No diff available';
-              }
-            } catch (error) {
-              console.error(`Failed to read new file ${filePath}:`, error);
+          if (unstagedDiff) {
+            console.log(`[Radium] Got unstaged diff for ${filePath}`);
+            diff = unstagedDiff;
+          }
+        } catch (unstagedError: any) {
+          console.warn(`[Radium] git diff unstaged failed for ${filePath}:`, unstagedError.message);
+        }
+      }
+      
+      // If still no diff, check if file is tracked
+      if (!diff) {
+        let isTracked = false;
+        try {
+          await exec(`git ls-files --error-unmatch "${filePath}"`, {
+            cwd: this.workspaceRoot
+          });
+          isTracked = true;
+          console.log(`[Radium] File ${filePath} is tracked but has no diff`);
+        } catch {
+          isTracked = false;
+          console.log(`[Radium] File ${filePath} is not tracked`);
+        }
+        
+        // If not tracked, generate a full-file diff
+        if (!isTracked) {
+          try {
+            const fullPath = path.join(this.workspaceRoot, filePath);
+            if (fs.existsSync(fullPath)) {
+              const content = fs.readFileSync(fullPath, 'utf8');
+              const lines = content.split('\n');
+              diff = `+++ ${filePath}\n`;
+              lines.forEach((line: string) => {
+                diff += `+${line}\n`;
+              });
+              console.log(`[Radium] Generated full-file diff for untracked ${filePath}`);
+            } else {
+              console.warn(`[Radium] File does not exist: ${fullPath}`);
               diff = 'No diff available';
             }
-          } else {
-            // File is tracked but has no changes - return empty
-            diff = '';
+          } catch (error) {
+            console.error(`[Radium] Failed to read new file ${filePath}:`, error);
+            diff = 'No diff available';
           }
+        } else {
+          // File is tracked but has no changes
+          diff = '';
         }
       }
 
@@ -289,8 +333,8 @@ export class RealtimeChangesPanel {
       this.cleanupCache();
 
       return diff;
-    } catch (error) {
-      console.error(`Failed to get diff for ${filePath}:`, error);
+    } catch (error: any) {
+      console.error(`[Radium] Failed to get diff for ${filePath}:`, error.message || error);
       return 'Error getting diff';
     }
   }

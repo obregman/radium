@@ -4,6 +4,7 @@ import * as cp from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as Diff from 'diff';
 import { RadiumIgnore } from '../config/radium-ignore';
 import { CodeParser } from '../indexer/parser';
 
@@ -36,6 +37,7 @@ interface FileSymbolChanges {
 
 export class SymbolChangesPanel {
   public static currentPanel: SymbolChangesPanel | undefined;
+  private static outputChannel: vscode.OutputChannel;
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
   private watcher?: chokidar.FSWatcher;
@@ -43,6 +45,7 @@ export class SymbolChangesPanel {
   private pendingChanges = new Map<string, NodeJS.Timeout>();
   private diffCache = new Map<string, { diff: string; timestamp: number }>();
   private filesCreatedThisSession = new Set<string>();
+  private lastKnownFileStates = new Map<string, string>(); // filePath -> content snapshot
   private radiumIgnore: RadiumIgnore;
   private parser: CodeParser;
   private readonly DEBOUNCE_DELAY = 300;
@@ -65,7 +68,8 @@ export class SymbolChangesPanel {
         switch (message.type) {
           case 'clearAll':
             this.filesCreatedThisSession.clear();
-            console.log('[Radium Symbol] Cleared session tracking');
+            this.lastKnownFileStates.clear();
+            this.log('Cleared session tracking and file states');
             break;
         }
       },
@@ -74,10 +78,18 @@ export class SymbolChangesPanel {
     );
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    
+    this.log(`Initializing panel, workspace root: ${this.workspaceRoot}`);
     this.startWatching();
+    this.log(`Panel initialization complete`);
   }
 
   public static createOrShow(extensionUri: vscode.Uri, workspaceRoot: string) {
+    // Initialize output channel if not already created
+    if (!SymbolChangesPanel.outputChannel) {
+      SymbolChangesPanel.outputChannel = vscode.window.createOutputChannel('Radium Symbol Visualization');
+    }
+    
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
@@ -89,7 +101,7 @@ export class SymbolChangesPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'symbolChanges',
-      'Radium: Real-time Symbol Visualization',
+      'Radium: Symbol real-time visualization',
       column || vscode.ViewColumn.Two,
       {
         enableScripts: true,
@@ -101,7 +113,12 @@ export class SymbolChangesPanel {
     SymbolChangesPanel.currentPanel = new SymbolChangesPanel(panel, extensionUri, workspaceRoot);
   }
 
+  private log(message: string) {
+    SymbolChangesPanel.outputChannel.appendLine(`[${new Date().toLocaleTimeString()}] ${message}`);
+  }
+
   private startWatching() {
+    this.log(`Starting file watcher for: ${this.workspaceRoot}`);
     this.watcher = chokidar.watch(this.workspaceRoot, {
       ignored: [
         '**/node_modules/**',
@@ -120,11 +137,21 @@ export class SymbolChangesPanel {
       }
     });
 
+    this.watcher.on('ready', () => {
+      this.log(`File watcher is ready`);
+    });
+
+    this.watcher.on('error', (error) => {
+      this.log(`File watcher error: ${error}`);
+    });
+
     this.watcher.on('change', async (filePath: string) => {
+      this.log(`File changed: ${filePath}`);
       await this.handleFileChange(filePath, false);
     });
 
     this.watcher.on('add', async (filePath: string) => {
+      this.log(`File added: ${filePath}`);
       await this.handleFileChange(filePath, true);
     });
 
@@ -157,13 +184,13 @@ export class SymbolChangesPanel {
     const relativePath = path.relative(this.workspaceRoot, absolutePath);
     
     if (this.radiumIgnore.shouldIgnore(relativePath)) {
-      console.log(`[Radium Symbol] Ignoring file: ${relativePath}`);
+      this.log(`Ignoring file: ${relativePath}`);
       return;
     }
     
     if (isNewFile) {
       this.filesCreatedThisSession.add(relativePath);
-      console.log(`[Radium Symbol] New file detected: ${relativePath}`);
+      this.log(`New file detected: ${relativePath}`);
     }
 
     if (this.pendingChanges.has(absolutePath)) {
@@ -182,13 +209,28 @@ export class SymbolChangesPanel {
     const relativePath = path.relative(this.workspaceRoot, absolutePath);
     this.diffCache.delete(relativePath);
 
+    // If this is the first time we're seeing this file, just store its state without showing changes
+    const fullPath = path.join(this.workspaceRoot, relativePath);
+    if (!this.lastKnownFileStates.has(relativePath) && !this.filesCreatedThisSession.has(relativePath)) {
+      this.log(`First time seeing ${relativePath}, storing initial state without showing changes`);
+      try {
+        if (fs.existsSync(fullPath)) {
+          const currentContent = fs.readFileSync(fullPath, 'utf8');
+          this.lastKnownFileStates.set(relativePath, currentContent);
+        }
+      } catch (error) {
+        this.log(`Failed to store initial file state for ${relativePath}: ${error}`);
+      }
+      return;
+    }
+
     const diff = await this.getFileDiff(relativePath);
     const hasChanges = diff && diff !== 'No diff available' && diff !== 'Error getting diff' && diff.trim().length > 0;
     
-    console.log(`[Radium Symbol] Processing ${relativePath}, hasChanges: ${hasChanges}, diffLength: ${diff?.length || 0}`);
+    this.log(`Processing ${relativePath}, hasChanges: ${hasChanges}, diffLength: ${diff?.length || 0}`);
     
     if (!hasChanges) {
-      console.log(`[Radium Symbol] No changes detected for ${relativePath}`);
+      this.log(`No changes detected for ${relativePath}`);
       this.panel.webview.postMessage({
         type: 'file:reverted',
         data: {
@@ -200,15 +242,15 @@ export class SymbolChangesPanel {
     }
 
     const isNew = this.filesCreatedThisSession.has(relativePath);
-    console.log(`[Radium Symbol] File ${relativePath} isNew: ${isNew}`);
+    this.log(`File ${relativePath} isNew: ${isNew}`);
     
     // Analyze the diff to extract symbol changes
     const symbolChanges = await this.analyzeDiffForSymbols(relativePath, diff, isNew);
-    console.log(`[Radium Symbol] Found ${symbolChanges.symbols.length} symbols in ${relativePath}`);
+    this.log(`Found ${symbolChanges.symbols.length} symbols in ${relativePath}`);
 
     // Send each symbol change individually so they get their own boxes
     for (const symbol of symbolChanges.symbols) {
-      console.log(`[Radium Symbol] Sending symbol: ${symbol.name} (${symbol.type})`);
+      this.log(`Sending symbol: ${symbol.name} (${symbol.type})`);
       this.panel.webview.postMessage({
         type: 'symbol:changed',
         data: {
@@ -220,6 +262,17 @@ export class SymbolChangesPanel {
           diff: diff
         }
       });
+    }
+    
+    // Store the current file state as the new baseline for future comparisons
+    try {
+      if (fs.existsSync(fullPath)) {
+        const currentContent = fs.readFileSync(fullPath, 'utf8');
+        this.lastKnownFileStates.set(relativePath, currentContent);
+        this.log(`Stored file state for ${relativePath}`);
+      }
+    } catch (error) {
+      this.log(`Failed to store file state for ${relativePath}: ${error}`);
     }
   }
 
@@ -248,7 +301,7 @@ export class SymbolChangesPanel {
         }
       }
     } catch (error) {
-      console.error(`[Radium Symbol] Failed to parse ${filePath}:`, error);
+      this.log(`Failed to parse ${filePath}: ${error}`);
     }
 
     // Parse diff to understand what changed
@@ -282,13 +335,19 @@ export class SymbolChangesPanel {
       }
     }
 
-    // Extract variables from diff
+    // Extract variables from diff (only for things tree-sitter doesn't catch well)
     const variables = this.extractVariablesFromDiff(currentContent, addedLines, deletedLines, changedLineNumbers);
-    symbols.push(...variables);
+    
+    // Filter out variables that are already detected by tree-sitter as symbols
+    const treeSymbolNames = new Set(currentSymbols.map(s => s.name));
+    const filteredVariables = variables.filter(v => !treeSymbolNames.has(v.name));
+    
+    this.log(`Extracted ${variables.length} variables from diff, ${filteredVariables.length} after filtering duplicates with tree-sitter`);
+    symbols.push(...filteredVariables);
 
     // Track symbols we've already added to avoid duplicates
     const addedSymbolKeys = new Set<string>();
-    for (const v of variables) {
+    for (const v of filteredVariables) {
       addedSymbolKeys.add(`${v.type}:${v.name}:${v.startLine}`);
     }
 
@@ -323,8 +382,38 @@ export class SymbolChangesPanel {
       }
     }
 
-    // Match symbols to changed lines
-    for (const symbol of currentSymbols) {
+    // Match symbols to changed lines - prioritize innermost (most specific) symbols
+    // Build a map of changed lines to the most specific symbol containing them
+    const lineToMostSpecificSymbol = new Map<number, any>();
+    
+    for (const line of changedLineNumbers) {
+      let mostSpecificSymbol = null;
+      let smallestRange = Infinity;
+      
+      for (const symbol of currentSymbols) {
+        const symbolStartLine = this.byteOffsetToLineNumber(fullPath, symbol.range.start);
+        const symbolEndLine = this.byteOffsetToLineNumber(fullPath, symbol.range.end);
+        
+        if (line >= symbolStartLine && line <= symbolEndLine) {
+          const range = symbolEndLine - symbolStartLine;
+          if (range < smallestRange) {
+            smallestRange = range;
+            mostSpecificSymbol = symbol;
+          }
+        }
+      }
+      
+      if (mostSpecificSymbol) {
+        lineToMostSpecificSymbol.set(line, mostSpecificSymbol);
+      }
+    }
+    
+    this.log(`Line to symbol mapping: ${Array.from(lineToMostSpecificSymbol.entries()).map(([line, sym]) => `${line} -> ${sym.name} (${sym.kind})`).join(', ')}`);
+    
+    // Now process only symbols that are the most specific for at least one changed line
+    const symbolsToProcess = new Set(lineToMostSpecificSymbol.values());
+    
+    for (const symbol of symbolsToProcess) {
       const symbolStartLine = this.byteOffsetToLineNumber(fullPath, symbol.range.start);
       const symbolEndLine = this.byteOffsetToLineNumber(fullPath, symbol.range.end);
       
@@ -343,27 +432,42 @@ export class SymbolChangesPanel {
       }
       
       if (hasChanges || isNewFile) {
-        // For classes, only show if there are direct changes to the class itself
+        // For classes, only show if there are direct changes to the class itself (not in nested functions/methods)
         if (symbol.kind === 'class' && !isNewFile) {
-          let hasNestedSymbolChanges = false;
-          for (const otherSymbol of currentSymbols) {
-            if (otherSymbol === symbol) continue;
-            
-            const otherStart = this.byteOffsetToLineNumber(fullPath, otherSymbol.range.start);
-            const otherEnd = this.byteOffsetToLineNumber(fullPath, otherSymbol.range.end);
-            
-            if (otherStart >= symbolStartLine && otherEnd <= symbolEndLine) {
-              for (let line = otherStart; line <= otherEnd; line++) {
-                if (changedLineNumbers.has(line)) {
-                  hasNestedSymbolChanges = true;
-                  break;
+          // Check if all changes are within nested symbols (functions/methods)
+          let allChangesAreInNestedSymbols = true;
+          
+          for (let line = symbolStartLine; line <= symbolEndLine; line++) {
+            if (changedLineNumbers.has(line)) {
+              // Check if this changed line is inside a nested symbol
+              let isInNestedSymbol = false;
+              
+              for (const otherSymbol of currentSymbols) {
+                if (otherSymbol === symbol) continue;
+                
+                const otherStart = this.byteOffsetToLineNumber(fullPath, otherSymbol.range.start);
+                const otherEnd = this.byteOffsetToLineNumber(fullPath, otherSymbol.range.end);
+                
+                // Check if this other symbol is nested within our class
+                if (otherStart >= symbolStartLine && otherEnd <= symbolEndLine) {
+                  // Check if the changed line is within this nested symbol
+                  if (line >= otherStart && line <= otherEnd) {
+                    isInNestedSymbol = true;
+                    break;
+                  }
                 }
               }
+              
+              // If we found a change that's NOT in a nested symbol, the class has direct changes
+              if (!isInNestedSymbol) {
+                allChangesAreInNestedSymbols = false;
+                break;
+              }
             }
-            if (hasNestedSymbolChanges) break;
           }
           
-          if (hasNestedSymbolChanges && !hasDirectChanges) {
+          // Skip the class if all changes are in nested symbols
+          if (allChangesAreInNestedSymbols) {
             continue;
           }
         }
@@ -557,17 +661,60 @@ export class SymbolChangesPanel {
     const variables: SymbolChange[] = [];
     const seenVariables = new Set<string>();
 
-    // Patterns for variable declarations
-    const patterns = [
-      // TypeScript/JavaScript: const, let, var
-      /\b(const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*[:=]\s*(.+?)(?:;|$)/g,
-      // Python: variable = value
-      /^(\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+?)(?:#|$)/g,
-      // TypeScript interfaces
-      /\binterface\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g,
-      // TypeScript types
-      /\btype\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g
-    ];
+    // First, collect all variable names that existed before
+    // Check BOTH deleted lines AND the current file content (for unchanged existing code)
+    const existingVariables = new Set<string>();
+    
+    // Scan deleted lines
+    for (const [lineNum, lineContent] of deletedLines) {
+      const trimmed = lineContent.trim();
+      
+      // Check for variable declarations in deleted lines
+      const varMatch = trimmed.match(/\b(const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*[:=]/);
+      if (varMatch) {
+        existingVariables.add(varMatch[2]);
+      }
+      
+      // Check for interface/type in deleted lines
+      const typeMatch = trimmed.match(/\b(interface|type)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/);
+      if (typeMatch) {
+        existingVariables.add(typeMatch[2]);
+      }
+      
+      // Python variables
+      const pyVarMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=/);
+      if (pyVarMatch && !trimmed.includes('def ') && !trimmed.includes('class ')) {
+        existingVariables.add(pyVarMatch[1]);
+      }
+    }
+    
+    // Scan current file content for existing variables (to catch unchanged code)
+    const contentLines = content.split('\n');
+    for (let i = 0; i < contentLines.length; i++) {
+      const lineNum = i + 1;
+      // Skip lines that are being added (they're new)
+      if (addedLines.has(lineNum)) continue;
+      
+      const trimmed = contentLines[i].trim();
+      
+      // TypeScript/JavaScript variable declarations
+      const varMatch = trimmed.match(/\b(const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*[:=]/);
+      if (varMatch) {
+        existingVariables.add(varMatch[2]);
+      }
+      
+      // Check for interface/type
+      const typeMatch = trimmed.match(/\b(interface|type)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/);
+      if (typeMatch) {
+        existingVariables.add(typeMatch[2]);
+      }
+      
+      // Python variables
+      const pyVarMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=/);
+      if (pyVarMatch && !trimmed.includes('def ') && !trimmed.includes('class ')) {
+        existingVariables.add(pyVarMatch[1]);
+      }
+    }
 
     // Check added lines for new variables
     for (const [lineNum, lineContent] of addedLines) {
@@ -584,7 +731,8 @@ export class SymbolChangesPanel {
       if (interfaceMatch) {
         const varName = interfaceMatch[2];
         const varType = interfaceMatch[1];
-        if (!seenVariables.has(varName)) {
+        // Only add if it's truly new (not in deleted lines)
+        if (!seenVariables.has(varName) && !existingVariables.has(varName)) {
           seenVariables.add(varName);
           variables.push({
             type: varType === 'interface' ? 'interface' : 'type',
@@ -614,7 +762,8 @@ export class SymbolChangesPanel {
           continue;
         }
         
-        if (!seenVariables.has(varName)) {
+        // Only add if it's truly new (not in deleted lines)
+        if (!seenVariables.has(varName) && !existingVariables.has(varName)) {
           seenVariables.add(varName);
           const varKind = varType === 'const' ? 'constant' : 'variable';
           
@@ -647,7 +796,8 @@ export class SymbolChangesPanel {
         const varName = pyVarMatch[1];
         const varValue = pyVarMatch[2].trim();
         
-        if (!seenVariables.has(varName)) {
+        // Only add if it's truly new (not in deleted lines)
+        if (!seenVariables.has(varName) && !existingVariables.has(varName)) {
           seenVariables.add(varName);
           variables.push({
             type: 'variable',
@@ -783,6 +933,12 @@ export class SymbolChangesPanel {
     }
   }
 
+  private generateDiff(filePath: string, oldContent: string, newContent: string): string {
+    // Use the diff library to generate a proper unified diff
+    const patch = Diff.createPatch(filePath, oldContent, newContent, '', '', { context: 3 });
+    return patch;
+  }
+
   private async getFileDiff(filePath: string): Promise<string> {
     const cached = this.diffCache.get(filePath);
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
@@ -790,52 +946,127 @@ export class SymbolChangesPanel {
     }
 
     try {
-      const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
-        cwd: this.workspaceRoot
-      });
-
-      let diff: string;
-      if (stdout) {
-        diff = stdout;
-      } else {
-        const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
-          cwd: this.workspaceRoot
-        });
+      this.log(`Getting diff for: ${filePath}`);
+      
+      const fullPath = path.join(this.workspaceRoot, filePath);
+      
+      // If we have a stored state for this file, diff against that instead of git
+      if (this.lastKnownFileStates.has(filePath)) {
+        this.log(`Using stored state for ${filePath}`);
+        const lastKnownContent = this.lastKnownFileStates.get(filePath)!;
         
-        if (unstagedDiff) {
-          diff = unstagedDiff;
-        } else {
-          let isTracked = false;
-          try {
-            await exec(`git ls-files --error-unmatch "${filePath}"`, {
-              cwd: this.workspaceRoot
-            });
-            isTracked = true;
-          } catch {
-            isTracked = false;
+        if (fs.existsSync(fullPath)) {
+          const currentContent = fs.readFileSync(fullPath, 'utf8');
+          
+          // Check if content actually changed
+          if (lastKnownContent === currentContent) {
+            this.log(`No changes detected - content identical to stored state`);
+            return '';
           }
           
-          if (!isTracked) {
-            try {
-              const fullPath = path.join(this.workspaceRoot, filePath);
-              if (fs.existsSync(fullPath)) {
-                const content = fs.readFileSync(fullPath, 'utf8');
-                const lines = content.split('\n');
-                // Generate proper git-style diff format with hunk header
-                diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n`;
-                lines.forEach((line: string) => {
-                  diff += `+${line}\n`;
-                });
-              } else {
-                diff = 'No diff available';
-              }
-            } catch (error) {
-              console.error(`Failed to read new file ${filePath}:`, error);
+          // Generate diff between last known state and current state
+          const diff = this.generateDiff(filePath, lastKnownContent, currentContent);
+          this.log(`Generated diff from stored state, length: ${diff.length}`);
+          
+          this.diffCache.set(filePath, { diff, timestamp: Date.now() });
+          return diff;
+        } else {
+          return 'No diff available';
+        }
+      }
+      
+      // Check if this is a git repository first
+      let isGitRepo = false;
+      try {
+        await exec('git rev-parse --git-dir', { cwd: this.workspaceRoot });
+        isGitRepo = true;
+      } catch {
+        this.log(`Not a git repository, will treat all files as new`);
+      }
+      
+      // If not a git repo, generate full-file diff for all files
+      if (!isGitRepo) {
+        if (fs.existsSync(fullPath)) {
+          const content = fs.readFileSync(fullPath, 'utf8');
+          const lines = content.split('\n');
+          const diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n` + 
+                       lines.map(line => `+${line}`).join('\n') + '\n';
+          
+          this.diffCache.set(filePath, { diff, timestamp: Date.now() });
+          return diff;
+        } else {
+          return 'No diff available';
+        }
+      }
+      
+      // Try git diff HEAD first
+      let diff: string = '';
+      try {
+        const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
+          cwd: this.workspaceRoot
+        });
+        if (stdout) {
+          this.log(`Got diff from HEAD for ${filePath}`);
+          diff = stdout;
+        }
+      } catch (headError: any) {
+        this.log(`git diff HEAD failed for ${filePath}: ${headError.message}`);
+      }
+
+      // If no diff from HEAD, try unstaged diff
+      if (!diff) {
+        try {
+          const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
+            cwd: this.workspaceRoot
+          });
+          
+          if (unstagedDiff) {
+            this.log(`Got unstaged diff for ${filePath}`);
+            diff = unstagedDiff;
+          }
+        } catch (unstagedError: any) {
+          this.log(`git diff unstaged failed for ${filePath}: ${unstagedError.message}`);
+        }
+      }
+      
+      // If still no diff, check if file is tracked
+      if (!diff) {
+        let isTracked = false;
+        try {
+          await exec(`git ls-files --error-unmatch "${filePath}"`, {
+            cwd: this.workspaceRoot
+          });
+          isTracked = true;
+          this.log(`File ${filePath} is tracked but has no diff`);
+        } catch {
+          isTracked = false;
+          this.log(`File ${filePath} is not tracked`);
+        }
+        
+        // If not tracked, generate a full-file diff
+        if (!isTracked) {
+          try {
+            const fullPath = path.join(this.workspaceRoot, filePath);
+            if (fs.existsSync(fullPath)) {
+              const content = fs.readFileSync(fullPath, 'utf8');
+              const lines = content.split('\n');
+              // Generate proper git-style diff format with hunk header
+              diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n`;
+              lines.forEach((line: string) => {
+                diff += `+${line}\n`;
+              });
+              this.log(`Generated full-file diff for untracked ${filePath}`);
+            } else {
+              this.log(`File does not exist: ${fullPath}`);
               diff = 'No diff available';
             }
-          } else {
-            diff = '';
+          } catch (error) {
+            this.log(`Failed to read new file ${filePath}: ${error}`);
+            diff = 'No diff available';
           }
+        } else {
+          // File is tracked but has no changes
+          diff = '';
         }
       }
 
@@ -845,8 +1076,8 @@ export class SymbolChangesPanel {
       });
 
       return diff;
-    } catch (error) {
-      console.error(`Failed to get diff for ${filePath}:`, error);
+    } catch (error: any) {
+      this.log(`Failed to get diff for ${filePath}: ${error.message || error}`);
       return 'Error getting diff';
     }
   }
@@ -1220,7 +1451,7 @@ export class SymbolChangesPanel {
 </head>
 <body>
   <div id="info">
-    <h3>📦 Real-time Symbol Visualization</h3>
+    <h3>🔴 Watching for Changes</h3>
   </div>
   
   <div id="zoom-controls">
@@ -1364,9 +1595,15 @@ export class SymbolChangesPanel {
         box.classList.add(symbol.changeType);
         lastGlowingBox = box;
         
+        // Remove glow after 3 seconds
+        setTimeout(() => {
+          box.classList.remove('added', 'modified', 'deleted', 'value_changed');
+        }, 3000);
+        
         // Add hover tooltip for diff
         let hoverTimeout = null;
         let tooltip = null;
+        let isHoveringTooltip = false;
         
         box.addEventListener('mouseenter', (e) => {
           // Wait 1 second before showing tooltip
@@ -1385,6 +1622,23 @@ export class SymbolChangesPanel {
               
               // Show tooltip
               setTimeout(() => tooltip.classList.add('visible'), 10);
+              
+              // Keep tooltip open when hovering over it
+              tooltip.addEventListener('mouseenter', () => {
+                isHoveringTooltip = true;
+              });
+              
+              tooltip.addEventListener('mouseleave', () => {
+                isHoveringTooltip = false;
+                // Hide and remove tooltip when leaving it
+                tooltip.classList.remove('visible');
+                setTimeout(() => {
+                  if (tooltip && tooltip.parentNode) {
+                    tooltip.remove();
+                  }
+                  tooltip = null;
+                }, 200);
+              });
             }
           }, 1000);
         });
@@ -1396,16 +1650,18 @@ export class SymbolChangesPanel {
             hoverTimeout = null;
           }
           
-          // Hide and remove tooltip
-          if (tooltip) {
-            tooltip.classList.remove('visible');
-            setTimeout(() => {
-              if (tooltip && tooltip.parentNode) {
-                tooltip.remove();
-              }
-              tooltip = null;
-            }, 200);
-          }
+          // Only hide tooltip if not hovering over it
+          setTimeout(() => {
+            if (tooltip && !isHoveringTooltip) {
+              tooltip.classList.remove('visible');
+              setTimeout(() => {
+                if (tooltip && tooltip.parentNode) {
+                  tooltip.remove();
+                }
+                tooltip = null;
+              }, 200);
+            }
+          }, 100);
         });
         
       canvas.appendChild(box);
@@ -1438,65 +1694,57 @@ export class SymbolChangesPanel {
         const diffContent = document.createElement('div');
         const lines = diffText.split('\\n');
         
-        // Find lines relevant to this symbol (if we have line info)
-        let relevantLines = lines;
-        if (symbolData.startLine && symbolData.endLine) {
-          // Try to extract only the relevant portion of the diff
-          relevantLines = [];
-          let currentLine = 0;
-          let inRelevantSection = false;
-          
-          for (const line of lines) {
-            if (line.startsWith('@@')) {
-              const match = line.match(/@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
-              if (match) {
-                currentLine = parseInt(match[1], 10);
-                // Check if this hunk overlaps with symbol range
-                inRelevantSection = currentLine <= symbolData.endLine;
-              }
-              if (inRelevantSection) {
-                relevantLines.push(line);
-              }
-            } else if (inRelevantSection) {
-              relevantLines.push(line);
-              
-              if (line.startsWith('+') && !line.startsWith('+++')) {
-                currentLine++;
-              } else if (!line.startsWith('-') && !line.startsWith('\\\\')) {
-                currentLine++;
-              }
-              
-              // Stop if we've passed the symbol's end line
-              if (currentLine > symbolData.endLine + 3) {
-                inRelevantSection = false;
-              }
-            }
-          }
-          
-          // If we didn't find relevant lines, show all
-          if (relevantLines.length === 0) {
-            relevantLines = lines;
-          }
-        }
+        // Track line numbers and find relevant sections
+        let currentLine = 0;
+        let firstRelevantChangeElement = null;
+        let firstChangeInSymbolRange = null;
+        const symbolStart = symbolData.startLine || 0;
+        const symbolEnd = symbolData.endLine || Number.MAX_SAFE_INTEGER;
         
-        // Format diff lines and track first change
-        let firstChangeElement = null;
-        for (const line of relevantLines) {
+        for (const line of lines) {
           const diffLine = document.createElement('div');
           diffLine.className = 'diff-line';
           
-          if (line.startsWith('+') && !line.startsWith('+++')) {
-            diffLine.classList.add('addition');
-            if (!firstChangeElement) {
-              firstChangeElement = diffLine;
+          // Track line numbers from hunk headers
+          if (line.startsWith('@@')) {
+            const match = line.match(/@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/);
+            if (match) {
+              currentLine = parseInt(match[1], 10);
             }
+            diffLine.classList.add('context');
+            diffLine.style.fontWeight = 'bold';
+            diffLine.style.color = 'var(--vscode-textPreformat-foreground)';
+          } else if (line.startsWith('+') && !line.startsWith('+++')) {
+            diffLine.classList.add('addition');
+            
+            // Check if this change is within the symbol's range
+            if (currentLine >= symbolStart && currentLine <= symbolEnd) {
+              if (!firstChangeInSymbolRange) {
+                firstChangeInSymbolRange = diffLine;
+              }
+            }
+            if (!firstRelevantChangeElement) {
+              firstRelevantChangeElement = diffLine;
+            }
+            currentLine++;
           } else if (line.startsWith('-') && !line.startsWith('---')) {
             diffLine.classList.add('deletion');
-            if (!firstChangeElement) {
-              firstChangeElement = diffLine;
+            
+            // Deletions don't increment line number but are relevant
+            if (currentLine >= symbolStart - 1 && currentLine <= symbolEnd) {
+              if (!firstChangeInSymbolRange) {
+                firstChangeInSymbolRange = diffLine;
+              }
             }
-          } else {
+            if (!firstRelevantChangeElement) {
+              firstRelevantChangeElement = diffLine;
+            }
+          } else if (line.startsWith('---') || line.startsWith('+++')) {
             diffLine.classList.add('context');
+            diffLine.style.opacity = '0.5';
+          } else if (!line.startsWith('\\\\')) {
+            diffLine.classList.add('context');
+            currentLine++;
           }
           
           diffLine.textContent = line;
@@ -1505,16 +1753,14 @@ export class SymbolChangesPanel {
         
         tooltip.appendChild(diffContent);
         
-        // Scroll to the first change after tooltip is rendered
-        if (firstChangeElement) {
+        // Scroll to the most relevant change after tooltip is rendered
+        const targetElement = firstChangeInSymbolRange || firstRelevantChangeElement;
+        if (targetElement) {
           setTimeout(() => {
-            const tooltipRect = diffContent.getBoundingClientRect();
-            const changeRect = firstChangeElement.getBoundingClientRect();
-            
-            // Calculate scroll position to center the first change
-            const scrollTop = firstChangeElement.offsetTop - (diffContent.clientHeight / 2) + (firstChangeElement.clientHeight / 2);
+            // Calculate scroll position to show the change near the top (1/3 down)
+            const scrollTop = targetElement.offsetTop - (diffContent.clientHeight / 3);
             diffContent.scrollTop = Math.max(0, scrollTop);
-          }, 10);
+          }, 50);
         }
         
         // Prevent tooltip from closing when hovering over it
@@ -1558,8 +1804,6 @@ export class SymbolChangesPanel {
           group.elements.push(line);
         }
       }
-
-      group.symbols = symbols;
     }
 
     // Pan handlers
@@ -1650,7 +1894,7 @@ export class SymbolChangesPanel {
           setTimeout(() => group.fileLabel.remove(), 300);
         }
         
-        // Remove all symbol boxes
+        // Remove all symbol boxes and elements
         group.symbols.forEach(elements => {
           elements.forEach(el => {
             el.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
@@ -1659,10 +1903,19 @@ export class SymbolChangesPanel {
             setTimeout(() => el.remove(), 300);
           });
         });
+        
+        // Remove all other elements in the group (connections, etc.)
+        group.elements.forEach(el => {
+          if (el && el.parentNode) {
+            el.style.transition = 'opacity 0.3s ease';
+            el.style.opacity = '0';
+            setTimeout(() => el.remove(), 300);
+          }
+        });
       });
 
-      // Remove all connection lines
-      const allLines = Array.from(connectionsContainer.querySelectorAll('path'));
+      // Remove all connection lines from SVG
+      const allLines = Array.from(svg.querySelectorAll('path'));
       allLines.forEach(line => {
         line.style.transition = 'opacity 0.3s ease';
         line.style.opacity = '0';
@@ -1678,7 +1931,7 @@ export class SymbolChangesPanel {
       // Notify extension to clear session tracking
       vscode.postMessage({ type: 'clearAll' });
 
-      console.log('[Radium] Cleared all symbols');
+      this.log('Cleared all symbols');
     });
 
     // Listen for messages

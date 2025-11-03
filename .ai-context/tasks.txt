@@ -2,7 +2,8 @@
 
 
 
--- I want a new mode, similar to realtime changes. It should display the changes as symbols and not as code. For example - new function as a box, new code in a function as a box,
-one function calling another as a connector between two boxes. This should visualize the changes to the user is an intuitive way and should make complex changes easily coherent
+$$ change the symbol visualization layout. instead of vertical stacking, the layout should be more dynamic. use small ellipses for added variables, rounded rectangles for functions
 
-
+-- when the symbol vis view open or cleaned, read the project files (source files only),
+and keep a snapshot of each source file. once a change to a file is detected compare it
+with the existing snapshot to find the changes.

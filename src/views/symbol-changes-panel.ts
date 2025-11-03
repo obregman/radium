@@ -46,6 +46,7 @@ export class SymbolChangesPanel {
   private diffCache = new Map<string, { diff: string; timestamp: number }>();
   private filesCreatedThisSession = new Set<string>();
   private lastKnownFileStates = new Map<string, string>(); // filePath -> content snapshot
+  private baselineFileStates = new Map<string, string>(); // filePath -> original baseline content
   private radiumIgnore: RadiumIgnore;
   private parser: CodeParser;
   private readonly DEBOUNCE_DELAY = 300;
@@ -69,6 +70,7 @@ export class SymbolChangesPanel {
           case 'clearAll':
             this.filesCreatedThisSession.clear();
             this.lastKnownFileStates.clear();
+            this.baselineFileStates.clear();
             this.log('Cleared session tracking and file states');
             break;
         }
@@ -78,6 +80,31 @@ export class SymbolChangesPanel {
     );
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    
+    // Listen for when files are opened to store their initial state
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      const filePath = document.uri.fsPath;
+      if (this.isSourceFile(filePath) && filePath.startsWith(this.workspaceRoot)) {
+        const relativePath = path.relative(this.workspaceRoot, filePath);
+        if (!this.radiumIgnore.shouldIgnore(relativePath)) {
+          try {
+            const content = document.getText();
+            // Store as baseline if we don't have one yet
+            if (!this.baselineFileStates.has(relativePath)) {
+              this.baselineFileStates.set(relativePath, content);
+              this.log(`Stored baseline state for: ${relativePath}`);
+            }
+            // Always update last known state
+            if (!this.lastKnownFileStates.has(relativePath)) {
+              this.lastKnownFileStates.set(relativePath, content);
+              this.log(`Stored initial state for newly opened file: ${relativePath}`);
+            }
+          } catch (error) {
+            this.log(`Failed to store initial state for ${relativePath}: ${error}`);
+          }
+        }
+      }
+    }, null, this.disposables);
     
     this.log(`Initializing panel, workspace root: ${this.workspaceRoot}`);
     this.startWatching();
@@ -137,8 +164,26 @@ export class SymbolChangesPanel {
       }
     });
 
-    this.watcher.on('ready', () => {
+    this.watcher.on('ready', async () => {
       this.log(`File watcher is ready`);
+      
+      // Store initial state of all currently open files
+      const openEditors = vscode.window.visibleTextEditors;
+      for (const editor of openEditors) {
+        const filePath = editor.document.uri.fsPath;
+        if (this.isSourceFile(filePath) && filePath.startsWith(this.workspaceRoot)) {
+          const relativePath = path.relative(this.workspaceRoot, filePath);
+          if (!this.radiumIgnore.shouldIgnore(relativePath)) {
+            try {
+              const content = editor.document.getText();
+              this.lastKnownFileStates.set(relativePath, content);
+              this.log(`Stored initial state for open file: ${relativePath}`);
+            } catch (error) {
+              this.log(`Failed to store initial state for ${relativePath}: ${error}`);
+            }
+          }
+        }
+      }
     });
 
     this.watcher.on('error', (error) => {
@@ -210,50 +255,30 @@ export class SymbolChangesPanel {
     this.diffCache.delete(relativePath);
 
     const fullPath = path.join(this.workspaceRoot, relativePath);
-    const isFirstTimeSeeingFile = !this.lastKnownFileStates.has(relativePath) && !this.filesCreatedThisSession.has(relativePath);
     
-    // If this is the first time we're seeing this file, get git diff to show changes since last commit
-    if (isFirstTimeSeeingFile) {
-      this.log(`First time seeing ${relativePath}, checking for changes since last commit`);
-      
-      // Get git diff to see what changed since HEAD
-      const diff = await this.getGitDiffOnly(relativePath);
-      const hasChanges = diff && diff !== 'No diff available' && diff !== 'Error getting diff' && diff.trim().length > 0;
-      
-      if (hasChanges) {
-        this.log(`Found changes in ${relativePath} since last commit, showing them`);
-        // Process and show the changes
-        const isNew = this.filesCreatedThisSession.has(relativePath);
-        const symbolChanges = await this.analyzeDiffForSymbols(relativePath, diff, isNew);
-        this.log(`Found ${symbolChanges.symbols.length} symbols in ${relativePath}`);
-
-        for (const symbol of symbolChanges.symbols) {
-          this.log(`Sending symbol: ${symbol.name} (${symbol.type})`);
-          this.panel.webview.postMessage({
-            type: 'symbol:changed',
-            data: {
-              filePath: relativePath,
-              symbol: symbol,
-              timestamp: Date.now(),
-              diff: diff
-            }
-          });
-        }
-      } else {
-        this.log(`No changes in ${relativePath} since last commit`);
-      }
-      
-      // Store current state as baseline for future comparisons
+    // If this is the first time we're seeing this file, store it as baseline
+    if (!this.lastKnownFileStates.has(relativePath) && !this.filesCreatedThisSession.has(relativePath)) {
+      this.log(`First time seeing ${relativePath}, storing as baseline without showing changes`);
       try {
         if (fs.existsSync(fullPath)) {
           const currentContent = fs.readFileSync(fullPath, 'utf8');
+          this.baselineFileStates.set(relativePath, currentContent);
           this.lastKnownFileStates.set(relativePath, currentContent);
-          this.log(`Stored file state for ${relativePath}`);
+          this.log(`Stored baseline for ${relativePath}`);
         }
       } catch (error) {
         this.log(`Failed to store initial file state for ${relativePath}: ${error}`);
       }
       return;
+    }
+    
+    // Store baseline if we don't have one yet
+    if (!this.baselineFileStates.has(relativePath)) {
+      const lastKnown = this.lastKnownFileStates.get(relativePath);
+      if (lastKnown) {
+        this.baselineFileStates.set(relativePath, lastKnown);
+        this.log(`Stored existing state as baseline for ${relativePath}`);
+      }
     }
 
     const diff = await this.getFileDiff(relativePath);
@@ -306,6 +331,24 @@ export class SymbolChangesPanel {
     } catch (error) {
       this.log(`Failed to store file state for ${relativePath}: ${error}`);
     }
+  }
+
+  private isNoiseChange(addedLines: Map<number, string>, deletedLines: Map<number, string>): boolean {
+    // Check if changes are only whitespace/comments
+    const normalizeCode = (text: string) => {
+      return text
+        .replace(/\/\/.*$/gm, '') // Remove single-line comments
+        .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
+        .replace(/#.*$/gm, '') // Remove Python comments
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .trim();
+    };
+
+    const addedCode = Array.from(addedLines.values()).map(normalizeCode).join('');
+    const deletedCode = Array.from(deletedLines.values()).map(normalizeCode).join('');
+
+    // If normalized code is identical or both empty, it's noise
+    return addedCode === deletedCode || (addedCode === '' && deletedCode === '');
   }
 
   private async analyzeDiffForSymbols(
@@ -365,6 +408,19 @@ export class SymbolChangesPanel {
       } else if (!line.startsWith('\\')) {
         currentLineNumber++;
       }
+    }
+
+    // Check if this is just noise (whitespace/comments only)
+    if (this.isNoiseChange(addedLines, deletedLines)) {
+      this.log(`Skipping noise-only change in ${filePath}`);
+      return {
+        filePath,
+        symbols: [],
+        calls: [],
+        timestamp: Date.now(),
+        isNew: isNewFile,
+        diff: diff
+      };
     }
 
     // Extract variables from diff (only for things tree-sitter doesn't catch well)
@@ -971,86 +1027,6 @@ export class SymbolChangesPanel {
     return patch;
   }
 
-  private async getGitDiffOnly(filePath: string): Promise<string> {
-    // Get diff from git only (used for first-time file detection)
-    try {
-      const fullPath = path.join(this.workspaceRoot, filePath);
-      
-      // Check if this is a git repository
-      let isGitRepo = false;
-      try {
-        await exec('git rev-parse --git-dir', { cwd: this.workspaceRoot });
-        isGitRepo = true;
-      } catch {
-        this.log(`Not a git repository, cannot show initial changes`);
-        return '';
-      }
-      
-      if (!isGitRepo) {
-        return '';
-      }
-      
-      // Try to get diff from HEAD
-      let diff = '';
-      try {
-        const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
-          cwd: this.workspaceRoot
-        });
-        if (stdout) {
-          this.log(`Got git diff from HEAD for ${filePath}`);
-          diff = stdout;
-        }
-      } catch (headError: any) {
-        this.log(`git diff HEAD failed for ${filePath}: ${headError.message}`);
-      }
-
-      // If no diff from HEAD, try unstaged diff
-      if (!diff) {
-        try {
-          const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
-            cwd: this.workspaceRoot
-          });
-          
-          if (unstagedDiff) {
-            this.log(`Got git unstaged diff for ${filePath}`);
-            diff = unstagedDiff;
-          }
-        } catch (unstagedError: any) {
-          this.log(`git diff unstaged failed for ${filePath}: ${unstagedError.message}`);
-        }
-      }
-      
-      // If still no diff, check if file is untracked
-      if (!diff) {
-        let isTracked = false;
-        try {
-          await exec(`git ls-files --error-unmatch "${filePath}"`, {
-            cwd: this.workspaceRoot
-          });
-          isTracked = true;
-        } catch {
-          isTracked = false;
-        }
-        
-        // If not tracked, generate a full-file diff
-        if (!isTracked && fs.existsSync(fullPath)) {
-          const content = fs.readFileSync(fullPath, 'utf8');
-          const lines = content.split('\n');
-          diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n`;
-          lines.forEach((line: string) => {
-            diff += `+${line}\n`;
-          });
-          this.log(`Generated full-file diff for untracked ${filePath}`);
-        }
-      }
-      
-      return diff;
-    } catch (error: any) {
-      this.log(`Failed to get git diff for ${filePath}: ${error.message || error}`);
-      return '';
-    }
-  }
-
   private async getFileDiff(filePath: string): Promise<string> {
     const cached = this.diffCache.get(filePath);
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
@@ -1259,121 +1235,146 @@ export class SymbolChangesPanel {
 
     .symbol-box {
       position: absolute;
-      padding: 16px 24px;
-      background-color: var(--vscode-editor-background);
-      border: 3px solid var(--vscode-panel-border);
-      border-radius: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-      transition: all 0.3s ease;
+      padding: 8px 12px;
+      background-color: transparent;
+      border: 1.5px solid var(--vscode-panel-border);
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 400;
+      box-shadow: none;
+      transition: all 0.2s ease;
       z-index: 10;
       cursor: pointer;
-      width: 280px;
+      min-width: 60px;
+      max-width: 200px;
+      height: auto;
       text-align: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
     }
 
     .symbol-box.function {
       border-color: #4EC9B0;
-      background: linear-gradient(135deg, rgba(78, 201, 176, 0.1) 0%, rgba(78, 201, 176, 0.05) 100%);
+      background: rgba(78, 201, 176, 0.03);
+      border-radius: 8px;
     }
 
     .symbol-box.class {
       border-color: #4FC1FF;
-      background: linear-gradient(135deg, rgba(79, 193, 255, 0.1) 0%, rgba(79, 193, 255, 0.05) 100%);
-      border-radius: 8px;
+      background: rgba(79, 193, 255, 0.03);
+      border-radius: 4px;
     }
 
     .symbol-box.method {
       border-color: #C586C0;
-      background: linear-gradient(135deg, rgba(197, 134, 192, 0.1) 0%, rgba(197, 134, 192, 0.05) 100%);
+      background: rgba(197, 134, 192, 0.03);
+      border-radius: 8px;
     }
 
     .symbol-box.interface {
       border-color: #9CDCFE;
-      background: linear-gradient(135deg, rgba(156, 220, 254, 0.1) 0%, rgba(156, 220, 254, 0.05) 100%);
+      background: rgba(156, 220, 254, 0.02);
       border-style: dashed;
+      border-radius: 4px;
     }
 
     .symbol-box.type {
       border-color: #9CDCFE;
-      background: linear-gradient(135deg, rgba(156, 220, 254, 0.1) 0%, rgba(156, 220, 254, 0.05) 100%);
+      background: rgba(156, 220, 254, 0.02);
       border-style: dashed;
+      border-radius: 4px;
     }
 
     .symbol-box.variable {
       border-color: #DCDCAA;
-      background: linear-gradient(135deg, rgba(220, 220, 170, 0.1) 0%, rgba(220, 220, 170, 0.05) 100%);
-      border-radius: 6px;
-      min-width: 100px;
-      padding: 12px 16px;
+      background: rgba(220, 220, 170, 0.03);
+      border-radius: 50%;
+      min-width: 60px;
+      max-width: 90px;
+      width: auto;
+      height: 60px;
+      padding: 6px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
 
     .symbol-box.constant {
       border-color: #D7BA7D;
-      background: linear-gradient(135deg, rgba(215, 186, 125, 0.1) 0%, rgba(215, 186, 125, 0.05) 100%);
-      border-radius: 6px;
-      min-width: 100px;
-      padding: 12px 16px;
-      border-width: 2px;
+      background: rgba(215, 186, 125, 0.03);
+      border-radius: 50%;
+      min-width: 60px;
+      max-width: 90px;
+      width: auto;
+      height: 60px;
+      padding: 6px 8px;
+      border-width: 1.5px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
 
     .symbol-box.added {
-      animation: pulseGreen 2s ease-in-out infinite;
+      animation: pulseGreen 3s ease-in-out infinite;
     }
 
     .symbol-box.modified {
-      animation: pulseYellow 2s ease-in-out infinite;
+      animation: pulseYellow 3s ease-in-out infinite;
     }
 
     .symbol-box.deleted {
-      opacity: 0.5;
+      opacity: 0.4;
       border-color: #F48771;
-      animation: pulseRed 2s ease-in-out infinite;
+      animation: pulseRed 3s ease-in-out infinite;
     }
 
     .symbol-box.value_changed {
-      animation: pulseOrange 2s ease-in-out infinite;
+      animation: pulseOrange 3s ease-in-out infinite;
     }
 
     @keyframes pulseGreen {
-      0%, 100% { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
-      50% { box-shadow: 0 4px 24px rgba(78, 201, 176, 0.6); }
+      0%, 100% { border-color: #4EC9B0; opacity: 1; }
+      50% { border-color: #6EDDC0; opacity: 0.85; }
     }
 
     @keyframes pulseYellow {
-      0%, 100% { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
-      50% { box-shadow: 0 4px 24px rgba(255, 193, 7, 0.6); }
+      0%, 100% { border-color: #DCDCAA; opacity: 1; }
+      50% { border-color: #ECECC0; opacity: 0.85; }
     }
 
     @keyframes pulseRed {
-      0%, 100% { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
-      50% { box-shadow: 0 4px 24px rgba(244, 135, 113, 0.6); }
+      0%, 100% { border-color: #F48771; opacity: 0.4; }
+      50% { border-color: #FF9B85; opacity: 0.3; }
     }
 
     @keyframes pulseOrange {
-      0%, 100% { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
-      50% { box-shadow: 0 4px 24px rgba(255, 165, 0, 0.6); }
+      0%, 100% { border-color: #D7BA7D; opacity: 1; }
+      50% { border-color: #E7CA8D; opacity: 0.85; }
     }
 
     .symbol-box:hover {
-      transform: scale(1.05);
+      transform: scale(1.03);
       z-index: 20;
+      border-width: 2px;
     }
 
     .diff-tooltip {
       position: absolute;
       background-color: var(--vscode-editor-background);
-      border: 2px solid var(--vscode-button-background);
-      border-radius: 8px;
-      padding: 16px;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      padding: 12px;
       max-width: 600px;
       max-height: 400px;
       overflow: auto;
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
       z-index: 1000;
       font-family: var(--vscode-editor-font-family);
-      font-size: 12px;
+      font-size: 11px;
       white-space: pre-wrap;
       word-wrap: break-word;
       opacity: 0;
@@ -1416,41 +1417,36 @@ export class SymbolChangesPanel {
 
     .file-path-label {
       position: absolute;
-      font-size: 18px;
-      font-weight: 700;
-      opacity: 0.95;
-      margin-bottom: 20px;
-      font-family: 'Courier New', monospace;
-      color: var(--vscode-button-background);
-      white-space: nowrap;
-      text-align: center;
-    }
-
-    .symbol-label {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 4px;
-      text-align: center;
-    }
-
-    .symbol-type {
-      font-size: 10px;
+      font-size: 13px;
+      font-weight: 500;
       opacity: 0.7;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      margin-bottom: 20px;
+      font-family: var(--vscode-font-family);
+      color: var(--vscode-foreground);
+      white-space: nowrap;
       text-align: center;
     }
 
-    .symbol-details {
-      font-size: 9px;
-      opacity: 0.6;
-      margin-top: 4px;
-      font-family: 'Courier New', monospace;
-      text-align: center;
-      width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    .symbol-content {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
       white-space: nowrap;
+    }
+
+    .symbol-name {
+      font-size: 11px;
+      font-weight: 400;
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    .change-symbol {
+      font-size: 12px;
+      font-weight: 600;
+      opacity: 0.7;
+      flex-shrink: 0;
     }
 
 
@@ -1465,99 +1461,103 @@ export class SymbolChangesPanel {
     }
 
     .call-line {
-      stroke: var(--vscode-button-background);
-      stroke-width: 2;
+      stroke: var(--vscode-panel-border);
+      stroke-width: 1;
       fill: none;
-      opacity: 0.6;
+      opacity: 0.3;
       marker-end: url(#arrowhead);
     }
 
     .call-line.animated {
-      stroke-dasharray: 8, 4;
-      animation: dash 1s linear infinite;
+      stroke-dasharray: 4, 3;
+      animation: dash 2s linear infinite;
     }
 
     @keyframes dash {
       to {
-        stroke-dashoffset: -12;
+        stroke-dashoffset: -7;
       }
     }
 
     #info {
       position: fixed;
-      top: 20px;
-      right: 20px;
-      padding: 12px 16px;
-      background-color: var(--vscode-panel-background);
+      top: 16px;
+      right: 16px;
+      padding: 8px 12px;
+      background-color: transparent;
       border: 1px solid var(--vscode-panel-border);
-      border-radius: 6px;
-      font-size: 13px;
+      border-radius: 4px;
+      font-size: 11px;
       z-index: 100;
     }
 
     #info h3 {
-      margin-bottom: 8px;
-      font-size: 14px;
-      color: var(--vscode-button-background);
+      margin-bottom: 0;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--vscode-foreground);
+      opacity: 0.6;
     }
 
     #zoom-controls {
       position: fixed;
-      bottom: 20px;
-      right: 20px;
+      bottom: 16px;
+      right: 16px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 4px;
       z-index: 100;
     }
 
     .zoom-button {
-      width: 40px;
-      height: 40px;
-      background-color: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-      border: 1px solid var(--vscode-button-border);
-      border-radius: 6px;
-      font-size: 18px;
-      font-weight: bold;
+      width: 32px;
+      height: 32px;
+      background-color: transparent;
+      color: var(--vscode-foreground);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 400;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
+      opacity: 0.6;
     }
 
     .zoom-button:hover {
-      background-color: var(--vscode-button-hoverBackground);
-      transform: scale(1.05);
+      opacity: 1;
+      border-color: var(--vscode-foreground);
     }
 
     #zoom-level {
       text-align: center;
-      font-size: 11px;
-      opacity: 0.7;
-      padding: 4px;
+      font-size: 9px;
+      opacity: 0.5;
+      padding: 2px;
     }
 
     #clear-button {
       position: fixed;
-      bottom: 20px;
-      left: 20px;
-      padding: 10px 16px;
-      background-color: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
-      border: 1px solid var(--vscode-button-border);
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
+      bottom: 16px;
+      left: 16px;
+      padding: 6px 10px;
+      background-color: transparent;
+      color: var(--vscode-foreground);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 400;
       cursor: pointer;
       z-index: 100;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
+      opacity: 0.6;
     }
 
     #clear-button:hover {
-      background-color: var(--vscode-button-secondaryHoverBackground);
-      transform: scale(1.05);
+      opacity: 1;
+      border-color: var(--vscode-foreground);
     }
   </style>
 </head>
@@ -1581,8 +1581,8 @@ export class SymbolChangesPanel {
     <div id="canvas">
       <svg id="connections">
         <defs>
-          <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-            <polygon points="0 0, 10 3, 0 6" fill="var(--vscode-button-background)" />
+          <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="2.5" orient="auto">
+            <polygon points="0 0, 8 2.5, 0 5" fill="var(--vscode-panel-border)" opacity="0.5" />
           </marker>
         </defs>
       </svg>
@@ -1590,39 +1590,126 @@ export class SymbolChangesPanel {
   </div>
 
   <script>
-    const vscode = acquireVsCodeApi();
-    const container = document.getElementById('container');
-    const canvas = document.getElementById('canvas');
-    const svg = document.getElementById('connections');
-    const zoomLevelEl = document.getElementById('zoom-level');
+    (function() {
+      try {
+        console.log('[Symbol Changes] Initializing view...');
+        
+        const vscode = acquireVsCodeApi();
+        const container = document.getElementById('container');
+        const canvas = document.getElementById('canvas');
+        const svg = document.getElementById('connections');
+        const zoomLevelEl = document.getElementById('zoom-level');
 
-    let scale = 1;
-    let translateX = 0;
-    let translateY = 0;
-    let isPanning = false;
-    let startX = 0;
-    let startY = 0;
+        if (!container || !canvas || !svg || !zoomLevelEl) {
+          console.error('[Symbol Changes] Failed to find required DOM elements');
+          return;
+        }
 
-    const fileGroups = new Map(); // filePath -> { symbols: [], x: number }
-    let nextX = 100;
-    const FILE_COLUMN_WIDTH = 400;
-    const SYMBOL_WIDTH = 220;
-    const SYMBOL_HEIGHT = 100;
-    const SYMBOL_SPACING_Y = 20;
-    const FILE_LABEL_HEIGHT = 60;
-    let lastGlowingBox = null; // Track the currently glowing box
+        console.log('[Symbol Changes] DOM elements found successfully');
 
-    function updateTransform() {
-      canvas.style.transform = \`translate(\${translateX}px, \${translateY}px) scale(\${scale})\`;
-      zoomLevelEl.textContent = Math.round(scale * 100) + '%';
-    }
+        let scale = 1;
+        let translateX = 0;
+        let translateY = 0;
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
 
-    function handleSingleSymbolChange(data) {
-      const { filePath, symbol, calls, timestamp, isNew, diff } = data;
+        const fileGroups = new Map(); // filePath -> { symbols: [], x: number }
+        let nextX = 80;
+        const SYMBOL_SPACING_Y = 12; // Vertical spacing between symbols
+        const CATEGORY_SPACING_X = 200; // Horizontal spacing between categories
+        const FILE_LABEL_HEIGHT = 45;
+        const CATEGORY_START_Y = 50 + FILE_LABEL_HEIGHT; // Where first category starts
+        const BASE_FILE_WIDTH = 50; // Base width for file area
+        const MAX_CATEGORIES = 4; // Maximum possible categories
+        const FILE_COLUMN_WIDTH = BASE_FILE_WIDTH + (MAX_CATEGORIES * CATEGORY_SPACING_X); // Dynamic width based on max categories
+        let lastGlowingBox = null; // Track the currently glowing box
+
+        function updateTransform() {
+          canvas.style.transform = \`translate(\${translateX}px, \${translateY}px) scale(\${scale})\`;
+          zoomLevelEl.textContent = Math.round(scale * 100) + '%';
+        }
+
+        // Helper function to escape HTML
+        function escapeHtml(text) {
+          const div = document.createElement('div');
+          div.textContent = text;
+          return div.innerHTML;
+        }
+
+        // Helper function for categorization (global scope)
+        function getSymbolCategory(type) {
+          if (type === 'variable' || type === 'constant') return 'variables';
+          if (type === 'interface' || type === 'type') return 'types';
+          if (type === 'class') return 'classes';
+          return 'functions'; // functions, methods, etc.
+        }
+
+        // Helper function to get change symbol
+        function getChangeSymbol(changeType) {
+          if (changeType === 'added') return '*';
+          if (changeType === 'modified' || changeType === 'value_changed') return '~';
+          if (changeType === 'deleted') return '-';
+          return '';
+        }
+
+        // Helper function to reposition all symbols in a file group to center them
+        function repositionFileSymbols(group) {
+          // Get all symbols and categorize them
+          const allSymbols = Array.from(group.symbols.entries());
+          const symbolsByCategory = {
+            variables: [],
+            types: [],
+            classes: [],
+            functions: []
+          };
+          
+          allSymbols.forEach(([key]) => {
+            const type = key.split(':')[0];
+            const cat = getSymbolCategory(type);
+            symbolsByCategory[cat].push(key);
+          });
+          
+          // Determine active categories
+          const categoryOrder = ['variables', 'types', 'classes', 'functions'];
+          const activeCategories = categoryOrder.filter(cat => symbolsByCategory[cat].length > 0);
+          
+          // Calculate centering
+          const totalColumnsWidth = (activeCategories.length - 1) * CATEGORY_SPACING_X;
+          const fileCenterX = group.x + (FILE_COLUMN_WIDTH / 2);
+          const startX = fileCenterX - (totalColumnsWidth / 2);
+          
+          // Reposition each symbol
+          activeCategories.forEach((cat, columnIndex) => {
+            const columnX = startX + (columnIndex * CATEGORY_SPACING_X);
+            const symbolsInColumn = symbolsByCategory[cat];
+            
+            let currentY = CATEGORY_START_Y;
+            symbolsInColumn.forEach(symbolKey => {
+              const elements = group.symbols.get(symbolKey);
+              if (elements && elements.length > 0) {
+                const box = elements[0];
+                box.style.left = columnX + 'px';
+                box.style.top = currentY + 'px';
+                currentY += box.offsetHeight + SYMBOL_SPACING_Y;
+              }
+            });
+          });
+        }
+
+        function handleSingleSymbolChange(data) {
+          console.log('[Symbol Changes] handleSingleSymbolChange called', data);
+          const { filePath, symbol, calls, timestamp, isNew, diff } = data;
 
       // Get or create file group
       if (!fileGroups.has(filePath)) {
-        const newGroup = { symbols: new Map(), x: nextX, elements: [], fileLabel: null };
+        const newGroup = { 
+          symbols: new Map(), 
+          symbolPositions: new Map(), // Track symbol positions for connections
+          x: nextX, 
+          elements: [], 
+          fileLabel: null 
+        };
         fileGroups.set(filePath, newGroup);
         nextX += FILE_COLUMN_WIDTH;
         
@@ -1635,10 +1722,9 @@ export class SymbolChangesPanel {
         canvas.appendChild(fileLabel);
         
         // Calculate center position after the element is added to DOM
-        // Symbol box is 280px wide, centered at newGroup.x + 140
         setTimeout(() => {
           const labelWidth = fileLabel.offsetWidth;
-          const boxCenterX = newGroup.x + 140; // 280px / 2
+          const boxCenterX = newGroup.x + (FILE_COLUMN_WIDTH / 2);
           const labelX = boxCenterX - (labelWidth / 2);
           fileLabel.style.left = labelX + 'px';
         }, 0);
@@ -1666,37 +1752,113 @@ export class SymbolChangesPanel {
       }
       keysToRemove.forEach(key => group.symbols.delete(key));
       
+      // Categorize symbol type for vertical column layout
+      const category = getSymbolCategory(symbol.type);
+      
       // Remove old box for this specific symbol if it exists
       if (group.symbols.has(symbolKey)) {
         const oldElements = group.symbols.get(symbolKey);
         oldElements.forEach(el => el.remove());
       }
+      const isVariable = category === 'variables';
       
-      // Calculate Y position based on number of symbols in this file
-      const symbolIndex = Array.from(group.symbols.keys()).indexOf(symbolKey);
-      const actualIndex = symbolIndex >= 0 ? symbolIndex : group.symbols.size;
-      const y = 50 + FILE_LABEL_HEIGHT + (actualIndex * (SYMBOL_HEIGHT + SYMBOL_SPACING_Y));
+      // Get all existing symbols in this file and group by category
+      const existingSymbols = Array.from(group.symbols.entries());
+      const symbolsByCategory = {
+        variables: [],
+        types: [],
+        classes: [],
+        functions: []
+      };
       
-      const symbolElements = [];
-      const newElements = [];
-        const box = document.createElement('div');
-        box.className = \`symbol-box \${symbol.type}\`;
-        box.style.left = group.x + 'px';
-        box.style.top = y + 'px';
-        
-        let detailsHtml = '';
-        if (symbol.details) {
-          detailsHtml = \`<div class="symbol-details">\${escapeHtml(symbol.details)}</div>\`;
+      existingSymbols.forEach(([key]) => {
+        const type = key.split(':')[0];
+        const cat = getSymbolCategory(type);
+        symbolsByCategory[cat].push(key);
+      });
+      
+      // Add the current symbol to its category for proper column ordering
+      // This ensures the column appears in the right position even if it's the first/only symbol
+      if (!symbolsByCategory[category].includes(symbolKey)) {
+        symbolsByCategory[category].push(symbolKey);
+      }
+      
+      // Calculate vertical column layout
+      // Each category gets its own column, ONLY if it has symbols
+      // This ensures we don't waste space on empty categories
+      const categoryOrder = ['variables', 'types', 'classes', 'functions'];
+      
+      // Build list of categories that actually have symbols
+      const activeCategories = categoryOrder.filter(cat => {
+        return symbolsByCategory[cat].length > 0;
+      });
+      
+      // Find which column this symbol belongs to (0-based index)
+      const columnIndex = activeCategories.indexOf(category);
+      
+      // Find position within the column (vertical stack)
+      const symbolsInColumn = symbolsByCategory[category];
+      const indexInColumn = symbolsInColumn.indexOf(symbolKey);
+      const actualIndexInColumn = indexInColumn >= 0 ? indexInColumn : symbolsInColumn.length;
+      
+      // Calculate X position: center all columns under the file label
+      // Total width needed for all active columns
+      const totalColumnsWidth = (activeCategories.length - 1) * CATEGORY_SPACING_X;
+      // Center point of the file area
+      const fileCenterX = group.x + (FILE_COLUMN_WIDTH / 2);
+      // Starting X position (leftmost column)
+      const startX = fileCenterX - (totalColumnsWidth / 2);
+      // This column's X position
+      const x = startX + (columnIndex * CATEGORY_SPACING_X);
+      
+      // Calculate Y position: stack vertically within the column
+      let y = CATEGORY_START_Y;
+      for (let i = 0; i < actualIndexInColumn; i++) {
+        const prevKey = symbolsInColumn[i];
+        if (group.symbols.has(prevKey)) {
+          const prevElements = group.symbols.get(prevKey);
+          if (prevElements && prevElements.length > 0) {
+            const prevBox = prevElements[0];
+            y += prevBox.offsetHeight + SYMBOL_SPACING_Y;
+          }
         }
-        
-        box.innerHTML = \`
-          <div class="symbol-label">\${escapeHtml(symbol.name)}</div>
-          <div class="symbol-type">\${symbol.type}</div>
-          \${detailsHtml}
-        \`;
-        
-        canvas.appendChild(box);
-        group.elements.push(box);
+      }
+      
+      // Create the box first to measure its width
+      const newElements = [];
+      const box = document.createElement('div');
+      box.className = \`symbol-box \${symbol.type}\`;
+      
+      // Get change symbol using the global helper function
+      const changeSymbol = getChangeSymbol(symbol.changeType);
+      
+      // Add () suffix for functions and methods
+      const displayName = (symbol.type === 'function' || symbol.type === 'method') 
+        ? symbol.name + '()' 
+        : symbol.name;
+      
+      // Simple content: just name and change symbol
+      box.innerHTML = \`
+        <div class="symbol-content">
+          <span class="symbol-name">\${escapeHtml(displayName)}</span>
+          <span class="change-symbol">\${changeSymbol}</span>
+        </div>
+      \`;
+      
+      // Append to DOM first to measure dimensions
+      box.style.visibility = 'hidden';
+      canvas.appendChild(box);
+      
+      // Get the actual dimensions after rendering
+      const boxWidth = box.offsetWidth;
+      
+      // Set position and make visible
+      box.style.left = x + 'px';
+      box.style.top = y + 'px';
+      box.style.visibility = 'visible';
+      
+      group.elements.push(box);
+      newElements.push(box);
         
         // Remove glow from previous box
         if (lastGlowingBox) {
@@ -1725,11 +1887,16 @@ export class SymbolChangesPanel {
               canvas.appendChild(tooltip);
               
               // Position tooltip to the right of the box
+              const boxRect = box.getBoundingClientRect();
+              const canvasRect = canvas.getBoundingClientRect();
+              
+              // Calculate position relative to canvas
               const boxX = parseInt(box.style.left);
               const boxY = parseInt(box.style.top);
+              const boxWidth = box.offsetWidth;
               
-              // Position to the right of the symbol box
-              tooltip.style.left = (boxX + 300) + 'px';
+              // Position to the right of the symbol box with some spacing
+              tooltip.style.left = (boxX + boxWidth + 10) + 'px';
               tooltip.style.top = boxY + 'px';
               
               // Show tooltip
@@ -1775,22 +1942,19 @@ export class SymbolChangesPanel {
             }
           }, 100);
         });
-        
-      canvas.appendChild(box);
-      newElements.push(box);
       
-      symbolElements.push({
+      // Calculate center position for connections using actual box dimensions
+      const boxHeight = box.offsetHeight;
+      const centerX = x + boxWidth / 2;
+      const centerY = y + boxHeight / 2;
+      
+      // Store symbol position for connections
+      group.symbolPositions.set(symbol.name, {
         name: symbol.name,
         element: box,
-        x: group.x + SYMBOL_WIDTH / 2,
-        y: y + SYMBOL_HEIGHT / 2
+        x: centerX,
+        y: centerY
       });
-      
-      function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-      }
 
       function createDiffTooltip(symbolData, diffText, symbolBox) {
         const tooltip = document.createElement('div');
@@ -1890,11 +2054,15 @@ export class SymbolChangesPanel {
       
       // Store the elements for this symbol
       group.symbols.set(symbolKey, newElements);
+      
+      // Reposition all symbols in this file to center them under the file label
+      // This ensures columns stay centered when categories are added/removed
+      repositionFileSymbols(group);
 
-      // Draw call relationships
+      // Draw call relationships using stored symbol positions
       for (const call of calls) {
-        const fromSymbol = symbolElements.find(s => s.name === call.from);
-        const toSymbol = symbolElements.find(s => s.name === call.to);
+        const fromSymbol = group.symbolPositions.get(call.from);
+        const toSymbol = group.symbolPositions.get(call.to);
         
         if (fromSymbol && toSymbol) {
           const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -2038,12 +2206,12 @@ export class SymbolChangesPanel {
       fileGroups.clear();
 
       // Reset next position
-      nextX = 100;
+      nextX = 80;
 
       // Notify extension to clear session tracking
       vscode.postMessage({ type: 'clearAll' });
 
-      this.log('Cleared all symbols');
+      console.log('[Symbol Changes] Cleared all symbols');
     });
 
     // Listen for messages
@@ -2079,6 +2247,13 @@ export class SymbolChangesPanel {
           break;
       }
     });
+
+        console.log('[Symbol Changes] View initialized successfully');
+      } catch (error) {
+        console.error('[Symbol Changes] Initialization error:', error);
+        console.error('[Symbol Changes] Stack trace:', error.stack);
+      }
+    })();
   </script>
 </body>
 </html>`;

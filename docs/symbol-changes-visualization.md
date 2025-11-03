@@ -8,24 +8,72 @@ The Symbol Changes visualization mode provides an intuitive, graph-based view of
 
 ### Visual Symbol Types
 
-Each code structure is represented by a distinct visual element:
+Each code structure is represented by a distinct visual element with minimalist styling:
 
-- **Functions** - Teal rounded boxes with change statistics
-- **Classes** - Blue rectangular boxes  
-- **Methods** - Purple rounded boxes
-- **Interfaces** - Light blue dashed boxes
-- **Types** - Light blue dashed boxes
-- **Variables** - Yellow rounded boxes with values
-- **Constants** - Gold rounded boxes with values
+- **Functions** - Teal rounded rectangles (180×70px) in right column
+- **Classes** - Blue rounded rectangles in right column
+- **Methods** - Purple rounded rectangles in right column
+- **Interfaces** - Light blue dashed rectangles in right column
+- **Types** - Light blue dashed rectangles in right column
+- **Variables** - Yellow circles (80px diameter) in left column
+- **Constants** - Gold circles (80px diameter) in left column
+
+### Layout
+
+The visualization uses a **dynamic row-based layout** for each file:
+
+- **Adaptive Rows**: Only categories with changes are displayed
+- **Row Order** (top to bottom):
+  1. Variables & Constants (circles)
+  2. Types & Interfaces (rounded rectangles)
+  3. Classes (rounded rectangles)
+  4. Functions & Methods (rounded rectangles)
+- **Horizontal Flow**: Symbols of the same type flow left-to-right within their row
+- **Smart Spacing**: 15px between symbols, 25px between rows
+
+#### Examples
+
+**Only functions changed:**
+```
+Row 1: [function1] [function2] [function3]
+```
+
+**Functions and variables changed:**
+```
+Row 1: [var1] [var2]
+Row 2: [function1] [function2]
+```
+
+**All types changed:**
+```
+Row 1: [var1] [var2] [var3]
+Row 2: [IType1] [IType2]
+Row 3: [MyClass]
+Row 4: [func1] [func2] [func3]
+```
 
 ### Change Indicators
 
-Symbols pulse with different colors to indicate the type of change:
+Each symbol displays a **change symbol** next to its name:
 
-- **Green pulse** - Newly added symbols (functions, variables, interfaces)
-- **Yellow pulse** - Modified symbols (changed function bodies)
-- **Orange pulse** - Value changed (variable/constant values updated)
-- **Red pulse** - Deleted symbols (shown with reduced opacity)
+- `*` (asterisk) - **Added**: Newly created symbol
+- `~` (tilde) - **Modified**: Changed or value updated
+- `-` (minus) - **Deleted**: Removed symbol (shown with reduced opacity)
+
+Additionally, symbols use subtle border animations:
+- **Green border pulse** - Added symbols
+- **Yellow border pulse** - Modified symbols
+- **Red border pulse** - Deleted symbols
+
+All animations are gentle and non-distracting, with a 3-second cycle time.
+
+### Symbol Content
+
+Each symbol box contains **only two elements**:
+1. **Symbol name** - The function/variable/type/class name
+2. **Change symbol** - `*`, `~`, or `-` indicator
+
+This minimalist design ensures maximum clarity and scannability.
 
 ### Detected Changes
 

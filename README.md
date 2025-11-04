@@ -14,7 +14,8 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 - Real-time file change monitoring with visual diff display
 - Automatic change detection every 1 minute when component view is open
 - Impact analysis for code modifications
-- Support for TypeScript, JavaScript, Python, and C#
+- Support for TypeScript, JavaScript, Python, and C# (including `.xaml.cs` files)
+- Cross-platform support (macOS, Linux, Windows)
 - Session history and rollback capability
 
 ## Usage

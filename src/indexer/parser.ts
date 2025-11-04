@@ -89,7 +89,14 @@ export class CodeParser {
       'cs': 'csharp'
     };
 
-    return langMap[ext];
+    const language = langMap[ext];
+    
+    // Log for debugging .xaml.cs files
+    if (filePath.includes('.xaml.cs')) {
+      console.log(`[Radium Parser] .xaml.cs file detected: ${filePath}, extension: ${ext}, language: ${language}`);
+    }
+
+    return language;
   }
 
   private treeHasErrors(node: Parser.SyntaxNode): boolean {

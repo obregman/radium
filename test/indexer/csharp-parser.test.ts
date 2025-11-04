@@ -117,6 +117,91 @@ namespace MyApp
     assert.ok(constructors.length >= 1, 'Should find at least 1 constructor');
   });
 
+  test('should parse .xaml.cs files with Windows paths', async () => {
+    const code = `
+using System;
+
+namespace MyApp
+{
+    public partial class MainPage
+    {
+        public MainPage()
+        {
+            InitializeComponent();
+        }
+        
+        private void OnButtonClicked(object sender, EventArgs e)
+        {
+            Console.WriteLine("Button clicked");
+        }
+    }
+}`;
+    
+    // Test with Windows-style path
+    const result = await parser.parseFile('C:\\Users\\Project\\MainPage.xaml.cs', code);
+    
+    assert.ok(result, 'Should return parse result for Windows .xaml.cs file');
+    assert.ok(result!.symbols.length > 0, 'Should find symbols in Windows .xaml.cs file');
+    
+    const constructor = result!.symbols.find(s => s.kind === 'constructor');
+    assert.ok(constructor, 'Should find constructor in Windows .xaml.cs file');
+    
+    const methods = result!.symbols.filter(s => s.kind === 'function');
+    assert.ok(methods.length >= 1, `Should find at least 1 method, found ${methods.length}`);
+  });
+
+  test('should parse .xaml.cs files (compound extension)', async () => {
+    const code = `
+using System;
+
+namespace MyApp
+{
+    public partial class MainPage
+    {
+        public MainPage()
+        {
+            InitializeComponent();
+        }
+        
+        private void OnButtonClicked(object sender, EventArgs e)
+        {
+            Console.WriteLine("Button clicked");
+        }
+        
+        public void UpdateUI()
+        {
+            // Update UI logic
+        }
+    }
+}`;
+    
+    // Test with .xaml.cs extension
+    const result = await parser.parseFile('MainPage.xaml.cs', code);
+    
+    assert.ok(result, 'Should return parse result for .xaml.cs file');
+    assert.ok(result!.symbols.length > 0, 'Should find symbols in .xaml.cs file');
+    
+    // Find the constructor
+    const constructor = result!.symbols.find(s => s.kind === 'constructor');
+    assert.ok(constructor, 'Should find constructor in .xaml.cs file');
+    assert.strictEqual(constructor!.name, 'MainPage', 'Constructor name should be MainPage');
+    
+    // Find the methods
+    const methods = result!.symbols.filter(s => s.kind === 'function');
+    assert.ok(methods.length >= 2, `Should find at least 2 methods, found ${methods.length}`);
+    
+    const onButtonClicked = methods.find(m => m.name === 'OnButtonClicked');
+    assert.ok(onButtonClicked, 'Should find OnButtonClicked method');
+    
+    const updateUI = methods.find(m => m.name === 'UpdateUI');
+    assert.ok(updateUI, 'Should find UpdateUI method');
+    
+    // Find the class
+    const classSymbol = result!.symbols.find(s => s.kind === 'class');
+    assert.ok(classSymbol, 'Should find class in .xaml.cs file');
+    assert.strictEqual(classSymbol!.name, 'MainPage', 'Class name should be MainPage');
+  });
+
   test('should detect methods, properties, and fields in C# classes', async () => {
     const code = `
 namespace MyApp

@@ -1399,50 +1399,50 @@ export class SymbolChangesPanel {
     }
 
     .symbol-box.function {
-      border-color: #90EE90;
+      border-color: #141414;
       background: #90EE90;
     }
 
     .symbol-box.class {
-      border-color: #FFC0CB;
+      border-color: #141414;
       background: #FFC0CB;
     }
 
     .symbol-box.method {
-      border-color: #90EE90;
+      border-color: #141414;
       background: #90EE90;
     }
 
     .symbol-box.constructor {
-      border-color: #90EE90;
+      border-color: #141414;
       background: #90EE90;
     }
 
     .symbol-box.interface {
-      border-color: #FFFF00;
+      border-color: #141414;
       background: #FFFF00;
       border-style: dashed;
     }
 
     .symbol-box.type {
-      border-color: #FFFF00;
+      border-color: #141414;
       background: #FFFF00;
       border-style: dashed;
     }
 
     .symbol-box.variable {
-      border-color: #808080;
+      border-color: #141414;
       background: #808080;
     }
 
     .symbol-box.constant {
-      border-color: #808080;
+      border-color: #141414;
       background: #808080;
       border-width: 2px;
     }
 
     .symbol-box.file {
-      border-color: #ADD8E6;
+      border-color: #141414;
       background: #ADD8E6;
       border-style: solid;
       min-width: 120px;
@@ -1549,7 +1549,7 @@ export class SymbolChangesPanel {
       position: absolute;
       border: 2px solid var(--vscode-panel-border);
       border-radius: 0;
-      background-color: #000000;
+      background-color: #4c4d4c;
       padding: 40px 0 0 0;
       box-sizing: border-box; /* Width/height includes border and padding */
       /* Make this the positioning context for child symbol boxes */
@@ -1744,6 +1744,19 @@ export class SymbolChangesPanel {
       try {
         console.log('[Symbol Changes] Initializing view...');
         
+        // Cross-platform path utilities
+        function getFileName(filePath) {
+          // Normalize to forward slashes, then get the last part
+          const normalized = filePath.replace(/\\/g, '/');
+          return normalized.split('/').pop() || filePath;
+        }
+        
+        function splitPath(filePath) {
+          // Normalize to forward slashes, then split
+          const normalized = filePath.replace(/\\/g, '/');
+          return normalized.split('/');
+        }
+        
         const vscode = acquireVsCodeApi();
         const container = document.getElementById('container');
         const canvas = document.getElementById('canvas');
@@ -1917,7 +1930,7 @@ export class SymbolChangesPanel {
           }
           
           // Split at slashes and try to fit in 2 lines
-          const parts = filePath.split('/');
+          const parts = splitPath(filePath);
           if (parts.length <= 2) {
             return filePath; // Can't split meaningfully
           }
@@ -2146,8 +2159,9 @@ export class SymbolChangesPanel {
           // Container has box-sizing: border-box, so width/height includes border (2px each side = 4px total)
           // and padding (40px top). The content area for symbols is the full width/height minus these.
           // Since symbols are positioned in the content area, we set container size to exactly match packed size.
+          // Add 3px padding at the bottom to ensure the container fully wraps the symbols.
           const finalWidth = Math.max(packed.contentW, labelMinWidth);
-          const finalHeight = packed.contentH + 40;
+          const finalHeight = packed.contentH + 40 + 3; // 40px for label, 3px bottom padding
           
           console.log('[Layout] Final container size:', finalWidth, 'x', finalHeight, '(label min:', labelMinWidth, ', packed:', packed.contentW, 'x', packed.contentH, ')');
           group.fileContainer.style.width = finalWidth + 'px';
@@ -2174,8 +2188,8 @@ export class SymbolChangesPanel {
         const fileLabel = document.createElement('div');
         fileLabel.className = 'file-path-label';
         
-        // Extract just the filename from the path
-        const fileName = filePath.split('/').pop() || filePath;
+        // Extract just the filename from the path (cross-platform)
+        const fileName = getFileName(filePath);
         const fileDisplay = fileName + (isNew ? ' (new)' : '');
         fileLabel.textContent = fileDisplay;
         
@@ -2200,29 +2214,29 @@ export class SymbolChangesPanel {
 
       const group = fileGroups.get(filePath);
       
-      // Create a unique key based on position (type + line), not name
-      // This allows renaming to update the same box
-      const symbolKey = symbol.type + ':' + symbol.startLine;
-      
-      // Check if we need to clean up old keys with different names at the same position
-      const keysToRemove = [];
-      for (const [key, elements] of group.symbols.entries()) {
-        // If same type and line but different key (different name), remove it
-        if (key.startsWith(symbol.type + ':') && key !== symbolKey) {
-          const oldLine = key.split(':')[1];
-          if (oldLine === String(symbol.startLine)) {
-            keysToRemove.push(key);
-            elements.forEach(el => el.remove());
-          }
-        }
-      }
-      keysToRemove.forEach(key => group.symbols.delete(key));
+      // Create a unique key based on symbol type and name
+      // This ensures only one box per symbol regardless of line number changes
+      const symbolKey = symbol.type + ':' + symbol.name;
       
       // Remove old box for this specific symbol if it exists
+      // This handles updates to the same symbol (e.g., adding lines to a function)
       if (group.symbols.has(symbolKey)) {
         const oldElements = group.symbols.get(symbolKey);
         oldElements.forEach(el => el.remove());
+        group.symbols.delete(symbolKey);
       }
+      
+      // Also check for and remove any symbols with the same name but different type
+      // (e.g., if a function was converted to a method)
+      const keysToRemove = [];
+      for (const [key, elements] of group.symbols.entries()) {
+        const [keyType, keyName] = key.split(':');
+        if (keyName === symbol.name && key !== symbolKey) {
+          keysToRemove.push(key);
+          elements.forEach(el => el.remove());
+        }
+      }
+      keysToRemove.forEach(key => group.symbols.delete(key));
       
       // Create the symbol box
       const newElements = [];

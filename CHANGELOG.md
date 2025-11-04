@@ -9,6 +9,13 @@ All notable changes to the Radium extension will be documented in this file.
   - Constructor declarations are now properly recognized as `constructor` symbols
   - Fixes issue where changes to C# constructors were categorized as FILE changes instead of symbol-level changes
   - Added comprehensive test suite for C# constructor parsing including overloaded and static constructors
+  - Verified support for `.xaml.cs` files (compound file extensions)
+- **Windows Path Support**: Fixed cross-platform path handling issues
+  - File labels now correctly show only the filename on Windows (was showing full path)
+  - Added `getFileName()` and `splitPath()` utilities to normalize Windows backslashes to forward slashes
+  - Parser correctly handles Windows paths like `C:\Users\Project\MainPage.xaml.cs`
+  - Added test to verify Windows path parsing
+- **Debug Logging**: Added specific logging for `.xaml.cs` file detection to help troubleshoot parsing issues
 - **Tooltip Positioning**: Tooltips in Symbol Changes view now appear near the cursor instead of fixed to the symbol box
   - Makes tooltips easier to access and read
   - Accounts for zoom and pan transformations
@@ -22,7 +29,8 @@ All notable changes to the Radium extension will be documented in this file.
 
 ### Changed
 - **Symbol Changes View Color Scheme**: Complete visual redesign with solid color fills
-  - **File containers**: Black background (#000000) with white text labels
+  - **File containers**: Dark gray background (#4c4d4c) with white text labels
+  - **All symbol boxes**: Dark gray borders (#141414)
   - **Functions/Methods/Constructors**: Light green (#90EE90)
   - **Classes**: Pink (#FFC0CB)
   - **Variables/Constants**: Gray (#808080)

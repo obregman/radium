@@ -175,6 +175,7 @@ export class Indexer {
       '**/dist/**',
       '**/.git/**',
       '**/build/**',
+      '**/release/**',
       '**/__pycache__/**',
       '**/.venv/**',
       '**/venv/**'

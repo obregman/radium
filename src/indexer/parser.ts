@@ -92,9 +92,29 @@ export class CodeParser {
     return langMap[ext];
   }
 
+  private treeHasErrors(node: Parser.SyntaxNode): boolean {
+    // Check if this node is an ERROR node
+    if (node.type === 'ERROR' || node.isMissing) {
+      return true;
+    }
+    
+    // Recursively check children
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child && this.treeHasErrors(child)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
   async parseFile(filePath: string, content?: string): Promise<ParseResult | null> {
     const lang = this.getLanguage(filePath);
-    if (!lang) return null;
+    if (!lang) {
+      console.warn(`[Radium] No language detected for file: ${filePath}`);
+      return null;
+    }
 
     const code = content ?? await fs.promises.readFile(filePath, 'utf-8');
     const hash = crypto.createHash('sha256').update(code).digest('hex');
@@ -105,24 +125,88 @@ export class CodeParser {
       return null;
     }
 
+    console.log(`[Radium Parser] Parsing ${filePath} as ${lang}, length: ${code.length}`);
+
     try {
-      const tree = parser.parse(code);
+      // Validate input
+      if (typeof code !== 'string') {
+        console.error(`[Radium] Invalid code type for ${filePath}: ${typeof code}`);
+        return { symbols: [], imports: [], calls: [], hash };
+      }
+      
+      if (code.length === 0) {
+        console.warn(`[Radium] Empty file: ${filePath}`);
+        return { symbols: [], imports: [], calls: [], hash };
+      }
+
+      // Skip very large files that might cause parser issues
+      const MAX_FILE_SIZE = 200000; // 200KB
+      if (code.length > MAX_FILE_SIZE) {
+        console.warn(`[Radium] Skipping large file ${filePath} (${code.length} bytes, max: ${MAX_FILE_SIZE})`);
+        return { symbols: [], imports: [], calls: [], hash };
+      }
+
+      // Check for null bytes or other invalid characters that break tree-sitter
+      if (code.includes('\0')) {
+        console.warn(`[Radium] File contains null bytes, skipping: ${filePath}`);
+        return { symbols: [], imports: [], calls: [], hash };
+      }
+
+      let tree;
+      try {
+        tree = parser.parse(code);
+      } catch (parseError) {
+        // Tree-sitter can fail on certain valid TypeScript syntax
+        // This is a known limitation - try to extract what we can from the code anyway
+        console.warn(`[Radium] Tree-sitter parse failed for ${filePath} (${code.length} bytes), attempting fallback extraction`);
+        console.warn(`[Radium] Parse error:`, parseError);
+        
+        // Try a simple regex-based extraction as fallback
+        const symbols: ParsedSymbol[] = [];
+        try {
+          this.extractSymbolsWithRegex(code, symbols, filePath);
+          console.log(`[Radium Parser] Fallback extracted ${symbols.length} symbols from ${filePath}`);
+          return { symbols, imports: [], calls: [], hash };
+        } catch (fallbackError) {
+          console.warn(`[Radium] Fallback extraction also failed:`, fallbackError);
+          return { symbols: [], imports: [], calls: [], hash };
+        }
+      }
+
+      if (!tree || !tree.rootNode) {
+        console.warn(`[Radium] Invalid parse tree for ${filePath}`);
+        return { symbols: [], imports: [], calls: [], hash };
+      }
+
+      // Check if the tree has syntax errors
+      const hasErrors = this.treeHasErrors(tree.rootNode);
+      if (hasErrors) {
+        console.warn(`[Radium] Parse tree has syntax errors for ${filePath}, attempting extraction anyway`);
+      }
 
       const symbols: ParsedSymbol[] = [];
       const imports: ImportDeclaration[] = [];
       const calls: CallSite[] = [];
 
-      if (lang === 'typescript' || lang === 'javascript') {
-        this.extractTypeScriptSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
-      } else if (lang === 'python') {
-        this.extractPythonSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
-      } else if (lang === 'csharp') {
-        this.extractCSharpSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
+      try {
+        if (lang === 'typescript' || lang === 'javascript') {
+          this.extractTypeScriptSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
+        } else if (lang === 'python') {
+          this.extractPythonSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
+        } else if (lang === 'csharp') {
+          this.extractCSharpSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
+        }
+      } catch (extractError) {
+        console.warn(`[Radium] Symbol extraction failed for ${filePath}:`, extractError);
+        // Return partial results if any were extracted before the error
       }
 
+      console.log(`[Radium Parser] Extracted ${symbols.length} symbols, ${imports.length} imports, ${calls.length} calls from ${filePath}`);
+      
       return { symbols, imports, calls, hash };
     } catch (error) {
-      console.error(`[Radium] Error parsing file ${filePath}:`, error);
+      console.error(`[Radium] Unexpected error parsing file ${filePath}:`, error);
+      console.error(`[Radium] Code length: ${code?.length}, type: ${typeof code}`);
       return { symbols: [], imports: [], calls: [], hash };
     }
   }
@@ -472,6 +556,79 @@ export class CodeParser {
     for (const child of node.children) {
       this.extractCSharpSymbols(child, code, symbols, imports, calls, filePath, namespace);
     }
+  }
+
+  // Fallback regex-based symbol extraction for when tree-sitter fails
+  private extractSymbolsWithRegex(code: string, symbols: ParsedSymbol[], filePath: string) {
+    const lines = code.split('\n');
+    
+    // Extract functions: function name(...) or async function name(...)
+    const functionRegex = /(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/g;
+    let match;
+    while ((match = functionRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      symbols.push({
+        kind: 'function',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: startIndex + match[0].length }
+      });
+    }
+    
+    // Extract classes: class ClassName
+    const classRegex = /(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/g;
+    while ((match = classRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      symbols.push({
+        kind: 'class',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: startIndex + match[0].length }
+      });
+    }
+    
+    // Extract interfaces: interface InterfaceName
+    const interfaceRegex = /(?:export\s+)?interface\s+(\w+)/g;
+    while ((match = interfaceRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      symbols.push({
+        kind: 'interface',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: startIndex + match[0].length }
+      });
+    }
+    
+    // Extract type aliases: type TypeName =
+    const typeRegex = /(?:export\s+)?type\s+(\w+)\s*=/g;
+    while ((match = typeRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      symbols.push({
+        kind: 'type',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: startIndex + match[0].length }
+      });
+    }
+    
+    // Extract const: const NAME =
+    const constRegex = /(?:export\s+)?const\s+(\w+)\s*=/g;
+    while ((match = constRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      symbols.push({
+        kind: 'constant',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: startIndex + match[0].length }
+      });
+    }
+    
+    console.log(`[Radium] Regex extraction found: ${symbols.length} symbols`);
   }
 }
 

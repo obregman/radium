@@ -64,12 +64,15 @@ To use: Run `Radium: Real-time File Changes` from the command palette.
 The Symbol Changes view provides an intuitive visualization of code changes using symbols instead of raw diffs:
 
 **Symbol Types:**
-- **Function boxes** (teal) - New or modified functions with change details (+/- lines)
-- **Class boxes** (blue, rectangular) - New or modified classes  
-- **Method boxes** (purple) - New or modified methods
-- **Interface boxes** (light blue, dashed) - New or modified interfaces
-- **Variable boxes** (yellow) - New or modified variables with values
-- **Constant boxes** (gold) - New or modified constants with values
+- **Function boxes** (teal, rounded) - New or modified functions with change details (+/- lines)
+- **Class boxes** (blue, rounded) - New or modified classes  
+- **Method boxes** (purple, rounded) - New or modified methods
+- **Interface boxes** (light blue, dashed, rounded) - New or modified interfaces
+- **Variable boxes** (yellow, rounded) - New or modified variables with values
+- **Constant boxes** (gold, rounded) - New or modified constants with values
+- **File boxes** (gray, rounded) - Fallback when no symbols are detected in a changed file
+
+Each symbol box displays the symbol type (FUNCTION, CLASS, etc.) at the top for easy identification.
 
 **Change Detection:**
 - ✅ **Adding a function** - Shows as new function box with green pulse
@@ -92,7 +95,7 @@ To use: Run `Radium: Symbol Changes` from the command palette.
 
 #### Ignoring Files
 
-You can exclude files and directories from the Real-time File Changes view by creating a `radiumignore` file in the `.radium` directory:
+You can exclude files and directories from both the Real-time File Changes and Symbol Changes views by creating a `radiumignore` file in the `.radium` directory:
 
 ```
 # .radium/radiumignore

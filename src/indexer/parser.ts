@@ -422,6 +422,19 @@ export class CodeParser {
         });
       }
     }
+    // Constructor declarations
+    else if (node.type === 'constructor_declaration') {
+      const nameNode = node.childForFieldName('name');
+      if (nameNode) {
+        const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        symbols.push({
+          kind: 'constructor',
+          name,
+          fqname: namespace ? `${namespace}.${name}` : name,
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
+    }
     // Class declarations
     else if (node.type === 'class_declaration') {
       const nameNode = node.childForFieldName('name');

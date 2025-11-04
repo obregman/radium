@@ -14,7 +14,7 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 - Real-time file change monitoring with visual diff display
 - Automatic change detection every 1 minute when component view is open
 - Impact analysis for code modifications
-- Support for TypeScript, JavaScript, and Python
+- Support for TypeScript, JavaScript, Python, and C#
 - Session history and rollback capability
 
 ## Usage
@@ -66,6 +66,7 @@ The Symbol Changes view provides an intuitive visualization of code changes usin
 **Symbol Types:**
 - **Function boxes** (teal, rounded) - New or modified functions with change details (+/- lines)
 - **Class boxes** (blue, rounded) - New or modified classes  
+- **Constructor boxes** (purple, rounded) - New or modified constructors
 - **Method boxes** (purple, rounded) - New or modified methods
 - **Interface boxes** (light blue, dashed, rounded) - New or modified interfaces
 - **Variable boxes** (yellow, rounded) - New or modified variables with values

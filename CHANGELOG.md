@@ -4,6 +4,12 @@ All notable changes to the Radium extension will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **C# Constructor Detection**: Added support for detecting C# constructors in the parser
+  - Constructor declarations are now properly recognized as `constructor` symbols
+  - Fixes issue where changes to C# constructors were categorized as FILE changes instead of symbol-level changes
+  - Added comprehensive test suite for C# constructor parsing including overloaded and static constructors
+
 ### Removed
 - **Dev Mode and Requirements Management**
   - Removed dev mode panel and all requirement management features

@@ -11,7 +11,7 @@ import { CodeParser } from '../indexer/parser';
 const exec = promisify(cp.exec);
 
 interface SymbolChange {
-  type: 'function' | 'class' | 'method' | 'interface' | 'type' | 'variable' | 'constant' | 'file';
+  type: 'function' | 'class' | 'method' | 'interface' | 'type' | 'variable' | 'constant' | 'constructor' | 'file';
   name: string;
   changeType: 'added' | 'modified' | 'deleted' | 'value_changed';
   filePath: string;

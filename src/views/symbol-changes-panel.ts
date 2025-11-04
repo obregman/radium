@@ -1344,7 +1344,7 @@ export class SymbolChangesPanel {
 
     .symbol-box {
       position: absolute;
-      padding: 20px 8px 6px 8px;
+      padding: 24px 12px 12px 12px;
       background-color: transparent;
       border: 1.5px solid var(--vscode-panel-border);
       border-radius: 0;
@@ -1374,7 +1374,7 @@ export class SymbolChangesPanel {
       font-size: 8px;
       font-weight: 600;
       text-transform: uppercase;
-      color: var(--vscode-descriptionForeground);
+      color: #000000;
       opacity: 0.8;
       letter-spacing: 0.8px;
       white-space: nowrap;
@@ -1399,46 +1399,51 @@ export class SymbolChangesPanel {
     }
 
     .symbol-box.function {
-      border-color: #4EC9B0;
-      background: rgba(78, 201, 176, 0.03);
+      border-color: #90EE90;
+      background: #90EE90;
     }
 
     .symbol-box.class {
-      border-color: #4FC1FF;
-      background: rgba(79, 193, 255, 0.03);
+      border-color: #FFC0CB;
+      background: #FFC0CB;
     }
 
     .symbol-box.method {
-      border-color: #C586C0;
-      background: rgba(197, 134, 192, 0.03);
+      border-color: #90EE90;
+      background: #90EE90;
+    }
+
+    .symbol-box.constructor {
+      border-color: #90EE90;
+      background: #90EE90;
     }
 
     .symbol-box.interface {
-      border-color: #9CDCFE;
-      background: rgba(156, 220, 254, 0.02);
+      border-color: #FFFF00;
+      background: #FFFF00;
       border-style: dashed;
     }
 
     .symbol-box.type {
-      border-color: #9CDCFE;
-      background: rgba(156, 220, 254, 0.02);
+      border-color: #FFFF00;
+      background: #FFFF00;
       border-style: dashed;
     }
 
     .symbol-box.variable {
-      border-color: #DCDCAA;
-      background: rgba(220, 220, 170, 0.03);
+      border-color: #808080;
+      background: #808080;
     }
 
     .symbol-box.constant {
-      border-color: #D7BA7D;
-      background: rgba(215, 186, 125, 0.03);
+      border-color: #808080;
+      background: #808080;
       border-width: 2px;
     }
 
     .symbol-box.file {
-      border-color: #858585;
-      background: rgba(133, 133, 133, 0.05);
+      border-color: #ADD8E6;
+      background: #ADD8E6;
       border-style: solid;
       min-width: 120px;
     }
@@ -1544,7 +1549,7 @@ export class SymbolChangesPanel {
       position: absolute;
       border: 2px solid var(--vscode-panel-border);
       border-radius: 0;
-      background-color: rgba(0, 0, 0, 0.1);
+      background-color: #000000;
       padding: 40px 0 0 0;
       box-sizing: border-box; /* Width/height includes border and padding */
       /* Make this the positioning context for child symbol boxes */
@@ -1559,7 +1564,7 @@ export class SymbolChangesPanel {
       font-size: 13px;
       font-weight: 600;
       font-family: var(--vscode-font-family);
-      color: var(--vscode-foreground);
+      color: #FFFFFF;
       text-align: center;
       line-height: 1.3;
       word-break: break-word;
@@ -1567,6 +1572,7 @@ export class SymbolChangesPanel {
       overflow: hidden;
       text-overflow: ellipsis;
       padding: 0 8px;
+      cursor: help;
     }
 
     .symbol-content {
@@ -1579,9 +1585,10 @@ export class SymbolChangesPanel {
 
     .symbol-name {
       font-size: 11px;
-      font-weight: 400;
+      font-weight: 600;
       white-space: nowrap;
       text-align: center;
+      color: #000000;
     }
 
     .change-symbol {
@@ -1589,6 +1596,7 @@ export class SymbolChangesPanel {
       font-weight: 600;
       opacity: 0.7;
       flex-shrink: 0;
+      color: #000000;
     }
 
 
@@ -1989,41 +1997,62 @@ export class SymbolChangesPanel {
           return Math.max(minWidth, Math.min(bestW, 900));
         }
 
-        // Helper function to reposition all files based on their actual widths
+        // Helper function to reposition all files using brick-packing layout
         function repositionAllFiles() {
-          let currentX = 80;
+          const CONTAINER_WIDTH = 1400; // Max width before wrapping
+          const FILE_PADDING = 20; // Padding between file containers
+          const START_X = 80;
+          const START_Y = 50;
+          
+          let currentX = START_X;
+          let currentY = START_Y;
+          let rowHeight = 0;
           
           // Use fileOrder array to maintain creation order
           fileOrder.forEach(filePath => {
             const group = fileGroups.get(filePath);
             if (!group) return;
             
-            // Update group position
-            group.x = currentX;
-            
             // Calculate label width estimate
             let labelWidth = 300;
             if (group.fileLabel) {
-              // Prefer actual rendered width; fallback to text length estimate
               const measured = group.fileLabel.offsetWidth || 0;
               const estimate = (group.fileLabel.textContent || '').length * 7 + 30;
               labelWidth = Math.max(300, measured || estimate);
             }
+            
             // Calculate optimal container width for packing
             const optimalWidth = calculateOptimalContainerWidth(group.symbols, labelWidth);
             group.width = optimalWidth;
             
+            // Update all symbol positions in this file to get the height
+            repositionFileSymbols(group);
+            
+            // Get the actual height from the container
+            const containerHeight = parseInt(group.fileContainer.style.height) || 100;
+            
+            // Check if we need to wrap to next row
+            if (currentX + group.width > CONTAINER_WIDTH && currentX > START_X) {
+              currentX = START_X;
+              currentY += rowHeight + FILE_PADDING;
+              rowHeight = 0;
+            }
+            
+            // Update group position
+            group.x = currentX;
+            group.y = currentY;
+            
             // Update file container position
             if (group.fileContainer) {
               group.fileContainer.style.left = currentX + 'px';
+              group.fileContainer.style.top = currentY + 'px';
             }
             
-            // Update all symbol positions in this file
-            // This will also set the exact container width and height
-            repositionFileSymbols(group);
+            // Track row height
+            rowHeight = Math.max(rowHeight, containerHeight);
             
-            // Move to next file position (use the actual width from repositionFileSymbols)
-            currentX += group.width + FILE_SPACING;
+            // Move to next position in row
+            currentX += group.width + FILE_PADDING;
           });
         }
 
@@ -2089,7 +2118,7 @@ export class SymbolChangesPanel {
             
             // Store symbol position for connections (absolute coordinates)
             const absoluteX = group.x + pos.x + pos.width / 2;
-            const absoluteY = 50 + 40 + pos.y + pos.height / 2; // 50px container top + 40px label padding + pos.y
+            const absoluteY = group.y + 40 + pos.y + pos.height / 2; // group.y container top + 40px label padding + pos.y
             
             // Get the actual symbol name from the box content
             const nameSpan = box.querySelector('.symbol-name');
@@ -2138,20 +2167,28 @@ export class SymbolChangesPanel {
         const fileContainer = document.createElement('div');
         fileContainer.className = 'file-container';
         fileContainer.style.left = nextX + 'px';
-        fileContainer.style.top = '50px';
+        fileContainer.style.top = '50px'; // Initial position, will be updated by repositionAllFiles
         canvas.appendChild(fileContainer);
         
         // Create file path label inside the container
         const fileLabel = document.createElement('div');
         fileLabel.className = 'file-path-label';
-        const fileDisplay = filePath + (isNew ? ' (new)' : '');
+        
+        // Extract just the filename from the path
+        const fileName = filePath.split('/').pop() || filePath;
+        const fileDisplay = fileName + (isNew ? ' (new)' : '');
         fileLabel.textContent = fileDisplay;
+        
+        // Add tooltip with full path
+        fileLabel.title = filePath;
+        
         fileContainer.appendChild(fileLabel);
         
         const newGroup = { 
           symbols: new Map(), 
           symbolPositions: new Map(), // Track symbol positions for connections
-          x: nextX, 
+          x: nextX,
+          y: 50, // Initial y position, will be updated by repositionAllFiles
           width: 400, // Initial width, will grow
           elements: [], 
           fileLabel: fileLabel,
@@ -2261,25 +2298,35 @@ export class SymbolChangesPanel {
         let tooltip = null;
         let isHoveringTooltip = false;
         
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        
+        box.addEventListener('mousemove', (e) => {
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+        });
+        
         box.addEventListener('mouseenter', (e) => {
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+          
           // Wait 1 second before showing tooltip
           hoverTimeout = setTimeout(() => {
             if (diff) {
               tooltip = createDiffTooltip(symbol, diff, box);
               canvas.appendChild(tooltip);
               
-              // Position tooltip to the right of the box
-              const boxRect = box.getBoundingClientRect();
+              // Position tooltip near the cursor
               const canvasRect = canvas.getBoundingClientRect();
+              const containerRect = container.getBoundingClientRect();
               
-              // Calculate position relative to canvas
-              const boxX = parseInt(box.style.left);
-              const boxY = parseInt(box.style.top);
-              const boxWidth = box.offsetWidth;
+              // Convert mouse position to canvas coordinates (accounting for zoom and pan)
+              const canvasX = (lastMouseX - canvasRect.left) / scale;
+              const canvasY = (lastMouseY - canvasRect.top) / scale;
               
-              // Position to the right of the symbol box with some spacing
-              tooltip.style.left = (boxX + boxWidth + 10) + 'px';
-              tooltip.style.top = boxY + 'px';
+              // Position tooltip slightly offset from cursor
+              tooltip.style.left = (canvasX + 15) + 'px';
+              tooltip.style.top = (canvasY + 15) + 'px';
               
               // Show tooltip
               setTimeout(() => tooltip.classList.add('visible'), 10);

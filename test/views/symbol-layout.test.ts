@@ -582,6 +582,80 @@ suite('Symbol Layout Tests', () => {
     }
   });
 
+  test('symbol height increases with more lines added - function example', () => {
+    // This test verifies that when more lines are added to a function,
+    // the symbol box height increases proportionally
+    
+    // Simulate a function with different amounts of lines added
+    const scenarios = [
+      { lines: 1, description: 'minimal change (1 line)' },
+      { lines: 5, description: 'small change (5 lines)' },
+      { lines: 10, description: 'medium change (10 lines)' },
+      { lines: 25, description: 'large change (25 lines)' },
+      { lines: 50, description: 'very large change (50 lines)' },
+      { lines: 100, description: 'massive change (100 lines)' }
+    ];
+
+    let previousHeight = 0;
+    
+    for (const scenario of scenarios) {
+      const size = calculateBoxSize(scenario.lines);
+      
+      console.log(`\n[Height Scaling] ${scenario.description}:`);
+      console.log(`  Lines changed: ${scenario.lines}`);
+      console.log(`  Box size: ${size.width}x${size.height}`);
+      console.log(`  Height increase from previous: ${previousHeight > 0 ? size.height - previousHeight : 'N/A'}px`);
+      
+      // Verify height is within valid range
+      assert.ok(size.height >= MIN_HEIGHT, 
+        `Height ${size.height} should be >= minimum ${MIN_HEIGHT}`);
+      assert.ok(size.height <= MAX_HEIGHT,
+        `Height ${size.height} should be <= maximum ${MAX_HEIGHT}`);
+      
+      // Verify height increases with more lines (except for the first one)
+      if (previousHeight > 0) {
+        assert.ok(size.height > previousHeight,
+          `Height ${size.height} should be greater than previous ${previousHeight} for ${scenario.lines} lines`);
+      }
+      
+      // Verify the 10:3 aspect ratio is maintained
+      const ratio = size.width / size.height;
+      assert.ok(Math.abs(ratio - 10/3) < 0.1,
+        `Aspect ratio ${ratio.toFixed(2)} should be close to 3.33 (10:3)`);
+      
+      previousHeight = size.height;
+    }
+    
+    // Verify specific expectations
+    const size1Line = calculateBoxSize(1);
+    const size10Lines = calculateBoxSize(10);
+    const size50Lines = calculateBoxSize(50);
+    const size100Lines = calculateBoxSize(100);
+    
+    // 1 line should give minimum size
+    assert.strictEqual(size1Line.height, MIN_HEIGHT, 
+      '1 line change should have minimum height');
+    
+    // 10 lines should be significantly larger than 1 line
+    assert.ok(size10Lines.height > size1Line.height * 1.5,
+      '10 lines should be at least 50% taller than 1 line');
+    
+    // 50 lines should be larger than 10 lines
+    assert.ok(size50Lines.height > size10Lines.height * 1.3,
+      '50 lines should be at least 30% taller than 10 lines');
+    
+    // 100 lines should give maximum size
+    assert.strictEqual(size100Lines.height, MAX_HEIGHT,
+      '100 lines change should have maximum height');
+    
+    // Verify logarithmic scaling - the difference between 1 and 10 lines
+    // should be larger than the difference between 50 and 100 lines
+    const diff1to10 = size10Lines.height - size1Line.height;
+    const diff50to100 = size100Lines.height - size50Lines.height;
+    assert.ok(diff1to10 > diff50to100,
+      'Logarithmic scaling: early differences should be larger than later differences');
+  });
+
   test('CRITICAL: symbols fit snugly with box-sizing border-box', () => {
     // Test that verifies the container sizing with border-box model
     const changeAmounts = [2, 8, 15, 30];

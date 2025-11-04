@@ -9,6 +9,36 @@ All notable changes to the Radium extension will be documented in this file.
   - Constructor declarations are now properly recognized as `constructor` symbols
   - Fixes issue where changes to C# constructors were categorized as FILE changes instead of symbol-level changes
   - Added comprehensive test suite for C# constructor parsing including overloaded and static constructors
+- **Tooltip Positioning**: Tooltips in Symbol Changes view now appear near the cursor instead of fixed to the symbol box
+  - Makes tooltips easier to access and read
+  - Accounts for zoom and pan transformations
+
+### Verified
+- **Symbol Height Scaling**: Confirmed that symbol box height increases with more lines changed
+  - Uses logarithmic scaling from 30px (1 line) to 120px (100+ lines)
+  - Maintains 10:3 aspect ratio across all sizes
+  - Added comprehensive unit test demonstrating height scaling for 1, 5, 10, 25, 50, and 100 line changes
+  - Test output shows clear progression: 1 line (30px) → 5 lines (61px) → 10 lines (75px) → 25 lines (93px) → 50 lines (106px) → 100 lines (120px)
+
+### Changed
+- **Symbol Changes View Color Scheme**: Complete visual redesign with solid color fills
+  - **File containers**: Black background (#000000) with white text labels
+  - **Functions/Methods/Constructors**: Light green (#90EE90)
+  - **Classes**: Pink (#FFC0CB)
+  - **Variables/Constants**: Gray (#808080)
+  - **Types/Interfaces**: Yellow (#FFFF00) with dashed borders
+  - **Unidentified file changes**: Light blue (#ADD8E6)
+  - All symbol text in black for maximum contrast and readability
+- **Symbol Box Padding**: Increased internal padding (24px top, 12px sides/bottom)
+  - Text labels have more breathing room and are easier to read
+  - Better visual balance within symbol boxes
+- **File Label Display**: File containers now show only the filename instead of the full path
+  - Hover over the filename to see the full file path in a tooltip
+  - Cleaner, more compact display with help cursor indicator
+- **File Container Layout**: File containers now use brick-packing layout instead of horizontal line
+  - Containers wrap to multiple rows based on available width (1400px max per row)
+  - More efficient use of screen space with 20px padding between containers
+  - Better visualization for projects with many changed files
 
 ### Removed
 - **Dev Mode and Requirements Management**

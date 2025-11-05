@@ -46,6 +46,7 @@ spec:
   features:
       - new_customer:
         name: Add a new customer to the system
+        area: Customer Management
         flow:
         - type: user
           name: The user clicks on add new user
@@ -62,6 +63,8 @@ spec:
 ```
 
 Guidelines:
+- Each feature should have an 'area' field to group related features (e.g., "Authentication", "Reporting", "User Management", "API Integration")
 - Step type can be one of: user, ui, logic, inbound_api, outbound_api
 - Each flow step can optionally include an 'impl' field pointing to the main file that implements this step
 - The impl path should be relative to the project root
+- Features are displayed in a collapsible card layout, grouped by area

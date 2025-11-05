@@ -17,6 +17,7 @@ export interface FeatureConfig {
   components?: string[];
   dependencies?: string[];
   flow?: FlowItem[];
+  area?: string;
 }
 
 export interface FeaturesConfig {
@@ -115,7 +116,8 @@ export class FeaturesConfigLoader {
           owner: featureData.owner,
           components: Array.isArray(featureData.components) ? featureData.components : [],
           dependencies: Array.isArray(featureData.dependencies) ? featureData.dependencies : [],
-          flow: Array.isArray(featureData.flow) ? featureData.flow : undefined
+          flow: Array.isArray(featureData.flow) ? featureData.flow : undefined,
+          area: featureData.area || 'General'
         };
       }
     }

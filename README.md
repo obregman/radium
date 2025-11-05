@@ -208,6 +208,7 @@ spec:
   features:
       - new_customer:
         name: Add a new customer to the system
+        area: Customer Management
         flow:
         - type: user
           name: The user clicks on add new user
@@ -223,6 +224,7 @@ spec:
           impl: src/forms/CustomerForm.tsx
 
 Guidelines:
+- Each feature should have an 'area' field to group related features (e.g., "Authentication", "Reporting", "User Management")
 - Each flow step can optionally include an 'impl' field pointing to the main file that implements this step
 - The impl path should be relative to the project root
 ```

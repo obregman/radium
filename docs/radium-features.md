@@ -48,6 +48,7 @@ Each feature is defined as an object with a single key (the feature identifier).
 - **description** (optional): Detailed description of the feature
 - **status** (optional): One of `planned`, `in-progress`, `completed`, or `deprecated`. Defaults to `in-progress`
 - **owner** (optional): Team or person responsible for the feature
+- **area** (optional): Category or area this feature belongs to (e.g., "Authentication", "User Management", "Reporting"). Defaults to `General`
 - **components** (optional): Array of component keys from `radium-components.yaml`
 - **dependencies** (optional): Array of other feature keys this feature depends on
 - **flow** (optional): Array of flow items describing the feature's user flow or process steps
@@ -77,6 +78,7 @@ spec:
       description: Complete authentication system with login, registration, and password reset
       status: completed
       owner: Backend Team
+      area: Security
       components:
         - backend
         - frontend
@@ -87,6 +89,7 @@ spec:
       description: Allow users to view and edit their profiles
       status: in-progress
       owner: Frontend Team
+      area: User Management
       components:
         - frontend
       dependencies:
@@ -97,6 +100,7 @@ spec:
       description: Feature for adding a new customer to the system
       status: in-progress
       owner: Sales Team
+      area: Customer Management
       components:
         - frontend
         - backend
@@ -168,39 +172,77 @@ Run the command: `Radium: Features Map`
 
 ### Visual Elements
 
-The features map displays features in a **hierarchical tree layout**:
+The features map displays features organized by **areas** in a **collapsible card layout**:
 
-- **Root Features**: Parent features appear at the top (larger boxes)
-- **Sub-features**: Child features appear below their parents
-- **Flow Items**: Sequential steps in a feature's flow appear horizontally below the feature
-- **Components**: Technical components appear at the bottom
-
-- **Feature Nodes**: Blue rectangular boxes representing features
-  - Root features are larger and more prominent
-  - Sub-features are smaller and positioned below their parents
-
-- **Flow Item Nodes**: Colored rounded rectangles representing flow steps
-  - **Purple**: User actions
-  - **Orange**: Window/screen changes
-  - **Green**: System processes
-  - **Red**: API calls
-  - **Gray**: Database operations
-
-- **Component Nodes**: Cyan rectangular boxes representing technical components
-
-- **Edges**:
-  - **Gray lines**: Parent-child relationships between features
-  - **Blue curved lines**: Feature uses component
-  - **Purple dashed lines**: Connection from feature to its flow
-  - **Gray arrows**: Sequential flow between steps
+- **Area Sections**: Features are grouped by their `area` property (e.g., "Authentication", "User Management")
+- **Feature Cards**: Each feature is shown as a collapsible card with:
+  - Feature name
+  - Description (when collapsed)
+  - Expand/collapse icon (▼)
+  
+- **Flow Visualization**: When a feature card is expanded, it shows:
+  - Horizontal flow of steps from left to right
+  - Arrows connecting sequential steps
+  - Color-coded flow items by type:
+    - **Purple**: User actions
+    - **Orange**: UI/Window changes
+    - **Green**: Logic/System processes
+    - **Red**: Inbound API calls
+    - **Pink**: Outbound API calls
 
 ### Interactions
 
-- **Click a feature**: View details including status, owner, components, and dependencies
-- **Zoom**: Mouse wheel or pinch gesture
-- **Pan**: Click and drag the background
+- **Click a feature card**: Expand to view the flow diagram
+- **Click again**: Collapse the feature card
+- **Click a flow item**: If it has an `impl` property, opens the implementation file
+- **Only one feature can be expanded at a time** for clarity
 
 ## Use Cases
+
+### Organizing Features by Area
+
+Group related features into areas for better organization:
+
+```yaml
+spec:
+  features:
+  - login:
+      name: User Login
+      area: Authentication
+      status: completed
+      
+  - register:
+      name: User Registration
+      area: Authentication
+      status: completed
+      
+  - password-reset:
+      name: Password Reset
+      area: Authentication
+      status: in-progress
+      
+  - view-profile:
+      name: View Profile
+      area: User Management
+      status: completed
+      
+  - edit-profile:
+      name: Edit Profile
+      area: User Management
+      status: in-progress
+      
+  - sales-report:
+      name: Sales Report
+      area: Reporting
+      status: planned
+      
+  - inventory-report:
+      name: Inventory Report
+      area: Reporting
+      status: planned
+```
+
+In the visualization, features will be grouped under their respective area headers, making it easy to see all features in a specific domain at a glance.
 
 ### Feature Flows
 

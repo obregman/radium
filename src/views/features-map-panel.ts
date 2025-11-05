@@ -167,12 +167,16 @@ export class FeaturesMapPanel {
     const edges: any[] = [];
     let nodeId = 1;
 
-    // Create a map of component keys to component info
-    const componentMap = new Map<string, any>();
-    if (componentsConfig) {
-      for (const [key, component] of Object.entries(componentsConfig.projectSpec.components)) {
-        componentMap.set(key, { id: nodeId++, key, component });
+    // Group features by area
+    const featuresByArea = new Map<string, Array<[string, FeatureConfig]>>();
+    for (const [featureKey, feature] of Object.entries(featuresConfig.features)) {
+      const featureData = feature as FeatureConfig;
+      const area = featureData.area || 'General';
+      
+      if (!featuresByArea.has(area)) {
+        featuresByArea.set(area, []);
       }
+      featuresByArea.get(area)!.push([featureKey, featureData]);
     }
 
     // Create feature nodes and determine hierarchy
@@ -180,42 +184,11 @@ export class FeaturesMapPanel {
     const flowItemMap = new Map<string, number[]>(); // featureKey -> array of flow item node IDs
     const allFeatureKeys = new Set(Object.keys(featuresConfig.features));
     
-    // Build parent-child relationships
-    const childrenMap = new Map<string, Set<string>>(); // parent -> children
-    const parentMap = new Map<string, string>(); // child -> parent
-    
-    for (const [featureKey, feature] of Object.entries(featuresConfig.features)) {
-      const featureData = feature as FeatureConfig;
-      
-      // A feature's parent is its first valid dependency
-      if (featureData.dependencies && featureData.dependencies.length > 0) {
-        const validDep = featureData.dependencies.find(dep => allFeatureKeys.has(dep));
-        if (validDep) {
-          parentMap.set(featureKey, validDep);
-          if (!childrenMap.has(validDep)) {
-            childrenMap.set(validDep, new Set());
-          }
-          childrenMap.get(validDep)!.add(featureKey);
-        }
-      }
-    }
-    
-    // Identify root features (those with no parent)
-    const rootFeatures = new Set<string>();
-    for (const featureKey of allFeatureKeys) {
-      if (!parentMap.has(featureKey)) {
-        rootFeatures.add(featureKey);
-      }
-    }
-    
-    // Create feature nodes with hierarchy info and flow items
+    // Create feature nodes with area info and flow items
     for (const [featureKey, feature] of Object.entries(featuresConfig.features)) {
       const featureData = feature as FeatureConfig;
       const featureNodeId = nodeId++;
       featureMap.set(featureKey, featureNodeId);
-
-      const parent = parentMap.get(featureKey);
-      const children = childrenMap.get(featureKey);
 
       nodes.push({
         id: featureNodeId,
@@ -225,9 +198,7 @@ export class FeaturesMapPanel {
         description: featureData.description,
         owner: featureData.owner,
         key: featureKey,
-        isRoot: rootFeatures.has(featureKey),
-        parent: parent,
-        children: children ? Array.from(children) : [],
+        area: featureData.area || 'General',
         hasFlow: featureData.flow && featureData.flow.length > 0
       });
 
@@ -274,69 +245,14 @@ export class FeaturesMapPanel {
       }
     }
 
-    // Create component nodes (only those referenced by features)
-    const usedComponents = new Set<string>();
-    for (const feature of Object.values(featuresConfig.features)) {
-      const featureData = feature as FeatureConfig;
-      if (featureData.components) {
-        for (const componentKey of featureData.components) {
-          usedComponents.add(componentKey);
-        }
-      }
-    }
-
-    const componentNodeMap = new Map<string, number>();
-    for (const componentKey of usedComponents) {
-      const componentInfo = componentMap.get(componentKey);
-      const componentNodeId = nodeId++;
-      componentNodeMap.set(componentKey, componentNodeId);
-
-      nodes.push({
-        id: componentNodeId,
-        label: componentInfo?.component?.name || componentKey,
-        type: 'component',
-        description: componentInfo?.component?.description,
-        key: componentKey
-      });
-    }
-
-    // Create edges from features to components
-    for (const [featureKey, feature] of Object.entries(featuresConfig.features)) {
-      const featureData = feature as FeatureConfig;
-      const featureNodeId = featureMap.get(featureKey);
-
-      if (featureData.components) {
-        for (const componentKey of featureData.components) {
-          const componentNodeId = componentNodeMap.get(componentKey);
-          if (featureNodeId && componentNodeId) {
-            edges.push({
-              source: featureNodeId,
-              target: componentNodeId,
-              type: 'uses'
-            });
-          }
-        }
-      }
-
-      // Create edges for parent-child relationships
-      const parent = parentMap.get(featureKey);
-      if (parent) {
-        const parentNodeId = featureMap.get(parent);
-        if (parentNodeId && featureNodeId) {
-          edges.push({
-            source: parentNodeId,
-            target: featureNodeId,
-            type: 'parent-child'
-          });
-        }
-      }
-    }
-
     console.log('[Backend] Built graph with', nodes.length, 'nodes and', edges.length, 'edges');
-    console.log('[Backend] Root features:', Array.from(rootFeatures));
+    console.log('[Backend] Features by area:', Array.from(featuresByArea.keys()));
     console.log('[Backend] Sample nodes:', nodes.slice(0, 3));
     
-    return { nodes, edges, rootFeatures: Array.from(rootFeatures) };
+    return { nodes, edges, featuresByArea: Array.from(featuresByArea.entries()).map(([area, features]) => ({
+      area,
+      features: features.map(([key]) => key)
+    })) };
   }
 
   private getHtmlContent(extensionUri: vscode.Uri): string {
@@ -363,158 +279,166 @@ export class FeaturesMapPanel {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Radium: Features Map</title>
-  <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     body {
       margin: 0;
-      padding: 0;
-      overflow: hidden;
+      padding: 20px;
       background: #1e1e1e;
       color: #d4d4d4;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow-y: auto;
     }
     
     #container {
-      width: 100vw;
-      height: 100vh;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    .area-section {
+      margin-bottom: 30px;
+    }
+    
+    .area-header {
+      font-size: 24px;
+      font-weight: 600;
+      color: #4a9eff;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #4a9eff;
+    }
+    
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 15px;
+    }
+    
+    .feature-box {
+      background: #2d2d2d;
+      border: 2px solid #444;
+      border-radius: 8px;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .feature-box:hover {
+      border-color: #4a9eff;
+      box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+    }
+    
+    .feature-box.expanded {
+      grid-column: 1 / -1;
+      border-color: #4a9eff;
+    }
+    
+    .feature-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .feature-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #d4d4d4;
+    }
+    
+    .feature-description {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #999;
+    }
+    
+    .feature-flow {
+      margin-top: 20px;
+      display: none;
+    }
+    
+    .feature-box.expanded .feature-flow {
+      display: block;
+    }
+    
+    .flow-container {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      overflow-x: auto;
+      padding: 20px 0;
+    }
+    
+    .flow-item {
+      min-width: 200px;
+      background: #3d3d3d;
+      border: 2px solid;
+      border-radius: 8px;
+      padding: 15px;
       position: relative;
     }
     
-    svg {
-      width: 100%;
-      height: 100%;
+    .flow-item.user {
+      border-color: #9c27b0;
     }
     
-    .node {
-      cursor: pointer;
-      transition: all 0.2s;
+    .flow-item.ui {
+      border-color: #ff9800;
     }
     
-    .node:hover {
-      filter: brightness(1.3);
+    .flow-item.logic {
+      border-color: #4caf50;
     }
     
-    .feature-node {
-      fill: #4a9eff;
-      stroke: #2d7dd2;
-      stroke-width: 2px;
+    .flow-item.inbound_api {
+      border-color: #f44336;
     }
     
-    .component-node {
-      fill: #00bcd4;
-      stroke: #0097a7;
-      stroke-width: 2px;
+    .flow-item.outbound_api {
+      border-color: #e91e63;
     }
     
-    .flow-item-node {
-      stroke-width: 2px;
+    .flow-type {
+      font-size: 11px;
+      font-weight: bold;
+      text-transform: uppercase;
+      color: #999;
+      margin-bottom: 8px;
     }
     
-    .flow-item-node.user {
-      fill: #9c27b0;
-      stroke: #7b1fa2;
-    }
-    
-    .flow-item-node.ui {
-      fill: #ff9800;
-      stroke: #f57c00;
-    }
-    
-    .flow-item-node.logic {
-      fill: #4caf50;
-      stroke: #388e3c;
-    }
-    
-    .flow-item-node.inbound_api {
-      fill: #f44336;
-      stroke: #d32f2f;
-    }
-    
-    .flow-item-node.outbound_api {
-      fill: #e91e63;
-      stroke: #c2185b;
-    }
-    
-    .node-label {
-      fill: white;
-      font-size: 14px;
-      text-anchor: middle;
-      pointer-events: none;
+    .flow-name {
+      font-size: 16px;
       font-weight: 500;
+      color: #d4d4d4;
+      margin-bottom: 5px;
     }
     
-    .feature-node-label {
-      fill: white;
-      font-size: 36px;
-      text-anchor: start;
-      pointer-events: none;
-      font-weight: 600;
+    .flow-description {
+      font-size: 13px;
+      color: #999;
     }
     
-    .edge {
-      stroke: #666;
-      stroke-width: 2px;
-      fill: none;
-      opacity: 0.6;
+    .flow-arrow {
+      font-size: 24px;
+      color: #666;
     }
     
-    .edge.uses {
-      stroke: #4a9eff;
+    .expand-icon {
+      font-size: 20px;
+      color: #4a9eff;
+      transition: transform 0.3s ease;
     }
     
-    .edge.parent-child {
-      stroke: #888;
-      stroke-width: 3px;
-    }
-    
-    .edge.feature-to-flow {
-      stroke: #9c27b0;
-      stroke-width: 2px;
-      stroke-dasharray: 5, 5;
-    }
-    
-    .edge.flow-sequence {
-      stroke: #666;
-      stroke-width: 3px;
-      marker-end: url(#arrowhead);
-    }
-    
-    .legend {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: rgba(30, 30, 30, 0.9);
-      border: 1px solid #444;
-      border-radius: 4px;
-      padding: 15px;
-      font-size: 12px;
-    }
-    
-    .legend-item {
-      display: flex;
-      align-items: center;
-      margin: 8px 0;
-    }
-    
-    .legend-color {
-      width: 20px;
-      height: 20px;
-      border-radius: 3px;
-      margin-right: 10px;
-      border: 1px solid #666;
+    .feature-box.expanded .expand-icon {
+      transform: rotate(180deg);
     }
     
     .error-message {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
       text-align: center;
       padding: 30px;
       background: rgba(30, 30, 30, 0.95);
       border: 1px solid #444;
       border-radius: 8px;
       max-width: 500px;
+      margin: 50px auto;
     }
     
     .error-message h2 {
@@ -524,24 +448,12 @@ export class FeaturesMapPanel {
   </style>
 </head>
 <body>
-  <div id="container">
-    <svg id="graph"></svg>
-  </div>
+  <div id="container"></div>
   
   <script>
     const vscode = acquireVsCodeApi();
-    
-    let simulation;
     let currentData = null;
-    
-    // Icon URIs for flow types
-    const flowTypeIcons = {
-      user: '${userIconUri}',
-      ui: '${uiIconUri}',
-      logic: '${systemIconUri}',
-      inbound_api: '${inboundApiIconUri}',
-      outbound_api: '${outboundApiIconUri}'
-    };
+    let expandedFeature = null;
     
     // Notify ready
     vscode.postMessage({ type: 'ready' });
@@ -551,7 +463,7 @@ export class FeaturesMapPanel {
       
       switch (message.type) {
         case 'graph:update':
-          renderGraph(message.data);
+          renderFeatures(message.data);
           break;
         case 'error':
           showError(message.message);
@@ -572,533 +484,110 @@ export class FeaturesMapPanel {
       \`;
     }
     
-    function renderGraph(data) {
+    function renderFeatures(data) {
       currentData = data;
+      const container = document.getElementById('container');
       
-      const svg = d3.select('#graph');
-      svg.selectAll('*').remove();
-      
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      
-      const g = svg.append('g');
-      
-      // Add arrowhead marker for flow sequences
-      const defs = svg.append('defs');
-      defs.append('marker')
-        .attr('id', 'arrowhead')
-        .attr('viewBox', '0 0 10 10')
-        .attr('refX', 9)
-        .attr('refY', 5)
-        .attr('markerWidth', 6)
-        .attr('markerHeight', 6)
-        .attr('orient', 'auto')
-        .append('path')
-        .attr('d', 'M 0 0 L 10 5 L 0 10 z')
-        .attr('fill', '#666');
-      
-      // Add zoom behavior
-      const zoom = d3.zoom()
-        .scaleExtent([0.1, 4])
-        .wheelDelta((event) => {
-          // When Shift is held, zoom three times as fast
-          const multiplier = event.shiftKey ? 3 : 1;
-          return -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002) * (event.ctrlKey ? 10 : 1) * multiplier;
-        })
-        .on('zoom', (event) => {
-          g.attr('transform', event.transform);
-        });
-      
-      svg.call(zoom);
-      
-      // Constants for layout
-      const VERTICAL_SPACING = 100;
-      const HORIZONTAL_SPACING = 40;
-      const TREE_SPACING = 120;
-      const FLOW_SPACING = 100; // Increased spacing between flow items
-      const FLOW_VERTICAL_OFFSET = 120;
-      const PADDING_X = 30; // Increased padding for feature boxes
-      const PADDING_Y = 20; // Increased padding for feature boxes
-      const CHAR_WIDTH = 10; // Increased character width for larger text
-      const MIN_WIDTH = 180; // Increased minimum width for features
-      const MIN_HEIGHT = 80; // Increased minimum height for features
-      const FLOW_ITEM_WIDTH = 160; // Width for flow items
-      const FLOW_ITEM_HEIGHT = 70; // Height for type label + text
-      
-      // Helper function to calculate box dimensions based on text
-      function getBoxDimensions(label, type) {
-        if (type === 'flow-item') {
-          // Calculate dynamic width and height based on label length
-          const labelCharWidth = 9; // Character width for flow item text (16px font)
-          const minFlowWidth = 160;
-          const maxFlowWidth = 280; // Maximum width before wrapping to second line
-          const flowPadding = 40; // Increased padding for safety
-          const lineHeight = 20;
-          const typeHeight = 20; // Height for <<type>> label
-          const baseHeight = 50; // Base height for single line
-          
-          // Calculate how many lines we need
-          const words = label.split(/\\s+/);
-          const maxWidth = maxFlowWidth - flowPadding;
-          let line = [];
-          let lineCount = 1;
-          
-          words.forEach(word => {
-            line.push(word);
-            const testLine = line.join(' ');
-            const estimatedWidth = testLine.length * labelCharWidth;
-            if (estimatedWidth > maxWidth && line.length > 1) {
-              lineCount++;
-              line = [word];
-            }
-          });
-          
-          // Limit to 2 lines
-          lineCount = Math.min(lineCount, 2);
-          
-          // Calculate dimensions
-          const calculatedHeight = typeHeight + (lineHeight * lineCount) + 25;
-          
-          // If single line and short, use smaller width
-          if (lineCount === 1) {
-            const estimatedWidth = label.length * labelCharWidth + flowPadding;
-            const calculatedWidth = Math.max(minFlowWidth, Math.min(estimatedWidth, maxFlowWidth));
-            return { width: calculatedWidth, height: calculatedHeight };
-          }
-          
-          // Multi-line: use max width
-          return { width: maxFlowWidth, height: calculatedHeight };
-        }
-        const textWidth = label.length * CHAR_WIDTH;
-        const width = Math.max(MIN_WIDTH, textWidth + PADDING_X * 2);
-        const height = type === 'component' ? MIN_HEIGHT : MIN_HEIGHT + 10;
-        return { width, height };
-      }
-      
-      // Pre-calculate dimensions for all nodes
-      const nodeDimensions = new Map();
-      data.nodes.forEach(node => {
-        nodeDimensions.set(node.id, getBoxDimensions(node.label, node.type));
-      });
-      
-      // Build hierarchical structure
+      // Create a map of nodes by key for easy lookup
       const nodeMap = new Map();
-      data.nodes.forEach(n => nodeMap.set(n.id, n));
-      
-      // Create D3 hierarchy from features
-      const featureNodes = data.nodes.filter(n => n.type === 'feature');
-      const componentNodes = data.nodes.filter(n => n.type === 'component');
-      const flowItemNodes = data.nodes.filter(n => n.type === 'flow-item');
-      
-      // Build tree structure
-      const rootNodes = featureNodes.filter(n => n.isRoot);
-      
-      console.log('[Frontend] Total nodes:', data.nodes.length);
-      console.log('[Frontend] Feature nodes:', featureNodes.length);
-      console.log('[Frontend] Root nodes:', rootNodes.length);
-      console.log('[Frontend] Component nodes:', componentNodes.length);
-      console.log('[Frontend] Sample feature node:', featureNodes[0]);
-      console.log('[Frontend] Sample root node:', rootNodes[0]);
-      
-      if (rootNodes.length === 0 && featureNodes.length > 0) {
-        console.warn('[Frontend] No root nodes found! All features have parents.');
-        // Fallback: treat all features as roots
-        featureNodes.forEach(f => f.isRoot = true);
-        rootNodes.push(...featureNodes);
-      }
-      
-      const positionedNodes = new Map();
-      
-      // Helper function to calculate tree width recursively
-      function calculateTreeWidth(nodeKey) {
-        const node = featureNodes.find(n => n.key === nodeKey);
-        if (!node) return MIN_WIDTH;
-        
-        const nodeDim = nodeDimensions.get(node.id);
-        const nodeWidth = nodeDim ? nodeDim.width : MIN_WIDTH;
-        
-        const children = featureNodes.filter(n => n.parent === nodeKey);
-        if (children.length === 0) {
-          return nodeWidth;
-        }
-        
-        let totalWidth = 0;
-        children.forEach((child, idx) => {
-          totalWidth += calculateTreeWidth(child.key);
-          if (idx < children.length - 1) {
-            totalWidth += HORIZONTAL_SPACING;
-          }
-        });
-        
-        return Math.max(nodeWidth, totalWidth);
-      }
-      
-      // Helper function to position a subtree
-      function positionSubtree(nodeKey, centerX, y) {
-        const node = featureNodes.find(n => n.key === nodeKey);
-        if (!node) return;
-        
-        // Position this node at center
-        positionedNodes.set(node.id, { x: centerX, y: y });
-        
-        // Find children
-        const children = featureNodes.filter(n => n.parent === nodeKey);
-        if (children.length === 0) return;
-        
-        // Calculate total width needed for children
-        const childWidths = children.map(child => calculateTreeWidth(child.key));
-        const totalChildWidth = childWidths.reduce((sum, w) => sum + w, 0) + 
-                                (children.length - 1) * HORIZONTAL_SPACING;
-        
-        // Position children centered below parent
-        let childX = centerX - totalChildWidth / 2;
-        const childY = y + VERTICAL_SPACING;
-        
-        children.forEach((child, idx) => {
-          const childWidth = childWidths[idx];
-          const childCenterX = childX + childWidth / 2;
-          
-          positionSubtree(child.key, childCenterX, childY);
-          
-          childX += childWidth + HORIZONTAL_SPACING;
-        });
-      }
-      
-      // Position features with name on left and flows on right
-      const FEATURE_NAME_WIDTH = 300; // Width reserved for feature name on left
-      const FEATURE_NAME_X = 100; // X position for feature names
-      const FLOW_START_X = FEATURE_NAME_X + FEATURE_NAME_WIDTH + 80; // Start X for flow items
-      let currentY = 100;
-      const FEATURE_VERTICAL_SPACING = 250; // Space between feature rows
-      
-      // Calculate positions for features and their flows
-      featureNodes.forEach((feature) => {
-        // Get flow items for this feature
-        const featureFlowItems = flowItemNodes.filter(f => f.featureKey === feature.key).sort((a, b) => a.flowIndex - b.flowIndex);
-        
-        if (feature.hasFlow && featureFlowItems.length > 0) {
-          // Calculate flow row dimensions
-          const flowItemWidths = featureFlowItems.map(item => {
-            const dim = nodeDimensions.get(item.id);
-            return dim ? dim.width : FLOW_ITEM_WIDTH;
-          });
-          const maxFlowItemHeight = Math.max(...featureFlowItems.map(item => {
-            const dim = nodeDimensions.get(item.id);
-            return dim ? dim.height : FLOW_ITEM_HEIGHT;
-          }));
-          
-          // Position feature name on the left, vertically centered with flow
-          positionedNodes.set(feature.id, { 
-            x: FEATURE_NAME_X,
-            y: currentY
-          });
-          
-          // Position flow items horizontally starting from FLOW_START_X
-          let flowX = FLOW_START_X;
-          const flowY = currentY;
-          
-          featureFlowItems.forEach(flowItem => {
-            const itemWidth = flowItemWidths[featureFlowItems.indexOf(flowItem)];
-            positionedNodes.set(flowItem.id, { x: flowX + itemWidth / 2, y: flowY });
-            flowX += itemWidth + FLOW_SPACING;
-          });
-          
-          // Move down for next feature row
-          currentY += FEATURE_VERTICAL_SPACING;
-        } else {
-          // Feature without flows - just show name on left
-          positionedNodes.set(feature.id, { 
-            x: FEATURE_NAME_X,
-            y: currentY
-          });
-          
-          currentY += FEATURE_VERTICAL_SPACING;
-        }
-      });
-      
-      // Position components at the bottom if any exist
-      if (componentNodes.length > 0) {
-        let compX = 150;
-        const compY = currentY + 100;
-        componentNodes.forEach(comp => {
-          if (!positionedNodes.has(comp.id)) {
-            const dim = nodeDimensions.get(comp.id);
-            const compWidth = dim ? dim.width : MIN_WIDTH;
-            positionedNodes.set(comp.id, { x: compX + compWidth / 2, y: compY });
-            compX += compWidth + HORIZONTAL_SPACING;
-          }
-        });
-      }
-      
-      // Apply positions to nodes
       data.nodes.forEach(node => {
-        const pos = positionedNodes.get(node.id);
-        if (pos) {
-          node.x = pos.x;
-          node.y = pos.y;
-        }
+        nodeMap.set(node.key, node);
       });
       
-      console.log('[Frontend] Positioned nodes:', positionedNodes.size);
-      console.log('[Frontend] Sample node positions:', Array.from(positionedNodes.entries()).slice(0, 3));
-      console.log('[Frontend] Nodes with x,y:', data.nodes.filter(n => n.x !== undefined && n.y !== undefined).length);
+      // Group features by area
+      const featuresByArea = new Map();
+      data.nodes.filter(n => n.type === 'feature').forEach(feature => {
+        const area = feature.area || 'General';
+        if (!featuresByArea.has(area)) {
+          featuresByArea.set(area, []);
+        }
+        featuresByArea.get(area).push(feature);
+      });
       
-      // Draw edges
-      const edges = g.append('g')
-        .selectAll('path')
-        .data(data.edges)
-        .enter()
-        .append('path')
-        .attr('class', d => \`edge \${d.type}\`)
-        .attr('d', d => {
-          const source = nodeMap.get(d.source);
-          const target = nodeMap.get(d.target);
-          if (!source || !target) return '';
+      // Build HTML for all areas
+      let html = '';
+      for (const [area, features] of featuresByArea.entries()) {
+        html += \`
+          <div class="area-section">
+            <div class="area-header">\${area}</div>
+            <div class="features-grid">
+        \`;
+        
+        features.forEach(feature => {
+          const flowItems = data.nodes.filter(n => 
+            n.type === 'flow-item' && n.featureKey === feature.key
+          ).sort((a, b) => a.flowIndex - b.flowIndex);
           
-          const sourceDim = nodeDimensions.get(source.id) || { width: MIN_WIDTH, height: MIN_HEIGHT };
-          const targetDim = nodeDimensions.get(target.id) || { width: MIN_WIDTH, height: MIN_HEIGHT };
-          
-          // For parent-child relationships, draw straight lines
-          if (d.type === 'parent-child') {
-            return \`M \${source.x} \${source.y + sourceDim.height/2} 
-                    L \${target.x} \${target.y - targetDim.height/2}\`;
-          }
-          
-          // For feature-to-flow relationships, don't draw (feature is now container)
-          if (d.type === 'feature-to-flow') {
-            return '';
-          }
-          
-          // For flow-sequence relationships, draw straight lines with arrows
-          if (d.type === 'flow-sequence') {
-            const startX = source.x + sourceDim.width/2;
-            const endX = target.x - targetDim.width/2;
-            return \`M \${startX} \${source.y} 
-                    L \${endX} \${target.y}\`;
-          }
-          
-          // For uses relationships, draw curved lines
-          const midY = (source.y + target.y) / 2;
-          return \`M \${source.x} \${source.y + sourceDim.height/2} 
-                  Q \${source.x} \${midY}, \${(source.x + target.x) / 2} \${midY}
-                  T \${target.x} \${target.y - targetDim.height/2}\`;
-        })
-        .attr('fill', 'none');
+          html += \`
+            <div class="feature-box" data-feature-key="\${feature.key}">
+              <div class="feature-header">
+                <div class="feature-name">\${feature.label}</div>
+                <span class="expand-icon">▼</span>
+              </div>
+              \${feature.description ? \`<div class="feature-description">\${feature.description}</div>\` : ''}
+              \${flowItems.length > 0 ? \`
+                <div class="feature-flow">
+                  <div class="flow-container">
+                    \${flowItems.map((item, idx) => \`
+                      \${idx > 0 ? '<div class="flow-arrow">→</div>' : ''}
+                      <div class="flow-item \${item.flowType}" \${item.impl ? \`data-impl="\${item.impl}"\` : ''}>
+                        <div class="flow-type">&lt;&lt;\${item.flowType}&gt;&gt;</div>
+                        <div class="flow-name">\${item.label}</div>
+                        \${item.description ? \`<div class="flow-description">\${item.description}</div>\` : ''}
+                      </div>
+                    \`).join('')}
+                  </div>
+                </div>
+              \` : ''}
+            </div>
+          \`;
+        });
+        
+        html += \`
+            </div>
+          </div>
+        \`;
+      }
       
-      // Draw nodes
-      const nodes = g.append('g')
-        .selectAll('g')
-        .data(data.nodes.filter(n => n.x !== undefined && n.y !== undefined))
-        .enter()
-        .append('g')
-        .attr('class', 'node')
-        .attr('transform', d => \`translate(\${d.x},\${d.y})\`)
-        .on('click', (event, d) => {
-          if (d.type === 'feature') {
-            vscode.postMessage({
-              type: 'feature:selected',
-              featureKey: d.key
-            });
-          } else if (d.type === 'flow-item' && d.impl) {
-            vscode.postMessage({
-              type: 'flowItem:clicked',
-              implPath: d.impl
-            });
+      container.innerHTML = html;
+      
+      // Add click handlers
+      document.querySelectorAll('.feature-box').forEach(box => {
+        box.addEventListener('click', (e) => {
+          const featureKey = box.getAttribute('data-feature-key');
+          
+          // Check if clicking on a flow item with impl
+          if (e.target.closest('.flow-item')) {
+            const flowItem = e.target.closest('.flow-item');
+            const impl = flowItem.getAttribute('data-impl');
+            if (impl) {
+              vscode.postMessage({
+                type: 'flowItem:clicked',
+                implPath: impl
+              });
+              e.stopPropagation();
+              return;
+            }
+          }
+          
+          // Toggle expansion
+          const wasExpanded = box.classList.contains('expanded');
+          
+          // Collapse all boxes
+          document.querySelectorAll('.feature-box').forEach(b => {
+            b.classList.remove('expanded');
+          });
+          
+          // Expand clicked box if it wasn't expanded
+          if (!wasExpanded) {
+            box.classList.add('expanded');
+            expandedFeature = featureKey;
+          } else {
+            expandedFeature = null;
           }
         });
-      
-      console.log('[Frontend] Drew', nodes.size(), 'nodes');
-      
-      // Add shapes based on type
-      nodes.each(function(d) {
-        const node = d3.select(this);
-        const dim = nodeDimensions.get(d.id) || { width: MIN_WIDTH, height: MIN_HEIGHT };
-        
-        if (d.type === 'feature') {
-          // Features are now just text labels (container box drawn separately)
-          // Add tooltip
-          node.append('title')
-            .text(\`\${d.label}\${d.description ? '\\n\\n' + d.description : ''}\`);
-        } else if (d.type === 'component') {
-          node.append('rect')
-            .attr('class', 'component-node')
-            .attr('width', dim.width)
-            .attr('height', dim.height)
-            .attr('x', -dim.width / 2)
-            .attr('y', -dim.height / 2)
-            .attr('rx', 4);
-            
-          // Add tooltip
-          node.append('title')
-            .text(\`\${d.label}\${d.description ? '\\n\\n' + d.description : ''}\`);
-        } else if (d.type === 'flow-item') {
-          // Add icon first (behind the box)
-          const iconUri = flowTypeIcons[d.flowType] || flowTypeIcons.logic;
-          const iconSize = 96;
-          const overlap = iconSize * 0.1; // 10% overlap
-          
-          node.append('image')
-            .attr('class', 'flow-icon')
-            .attr('xlink:href', iconUri)
-            .attr('x', -iconSize / 2)
-            .attr('y', -dim.height / 2 - iconSize + overlap)
-            .attr('width', iconSize)
-            .attr('height', iconSize);
-          
-          // Add box on top of icon
-          node.append('rect')
-            .attr('class', \`flow-item-node \${d.flowType}\`)
-            .attr('width', dim.width)
-            .attr('height', dim.height)
-            .attr('x', -dim.width / 2)
-            .attr('y', -dim.height / 2)
-            .attr('rx', 8)
-            .style('cursor', d.impl ? 'pointer' : 'default');
-            
-          // Add tooltip
-          const tooltipText = \`\${d.flowType.toUpperCase()}: \${d.label}\${d.description ? '\\n\\n' + d.description : ''}\${d.impl ? '\\n\\nClick to open: ' + d.impl : ''}\`;
-          node.append('title')
-            .text(tooltipText);
-        }
       });
-      
-      // Add labels - show full text since boxes are sized to fit
-      nodes.each(function(d) {
-        const node = d3.select(this);
-        
-        if (d.type === 'flow-item') {
-          // For flow items, add type label at top and wrap text if needed
-          const lineHeight = 20;
-          const dim = nodeDimensions.get(d.id) || { width: FLOW_ITEM_WIDTH, height: FLOW_ITEM_HEIGHT };
-          const maxWidth = dim.width - 30; // More padding for safety
-          const charWidth = 9; // Approximate character width for 16px font
-          
-          // Add type label at top of box with << >>
-          node.append('text')
-            .attr('class', 'node-label')
-            .attr('dy', -dim.height / 2 + 16)
-            .style('font-size', '11px')
-            .style('font-weight', 'bold')
-            .text(\`<<\${d.flowType}>>\`);
-          
-          // Add main label text below type with proper wrapping
-          const words = d.label.split(/\\s+/);
-          let line = [];
-          const lines = [];
-          
-          words.forEach(word => {
-            line.push(word);
-            const testLine = line.join(' ');
-            const estimatedWidth = testLine.length * charWidth;
-            if (estimatedWidth > maxWidth && line.length > 1) {
-              line.pop();
-              lines.push(line.join(' '));
-              line = [word];
-            }
-          });
-          if (line.length > 0) {
-            lines.push(line.join(' '));
-          }
-          
-          // Limit to 2 lines and truncate if needed
-          if (lines.length > 2) {
-            lines.length = 2;
-            const lastLine = lines[1];
-            if (lastLine.length > 18) {
-              lines[1] = lastLine.substring(0, 18) + '...';
-            }
-          }
-          
-          // Start text below type label
-          const startY = -(lines.length - 1) * lineHeight / 2 + 18;
-          lines.forEach((lineText, i) => {
-            node.append('text')
-              .attr('class', 'node-label')
-              .attr('dy', startY + i * lineHeight)
-              .style('font-size', '16px')
-              .style('font-weight', '500')
-              .text(lineText);
-          });
-        } else if (d.type === 'feature') {
-          // Feature name on the left side
-          const lineHeight = 42;
-          const maxWidth = 280;
-          const words = d.label.split(/\\s+/);
-          const charWidth = 22;
-          
-          let line = [];
-          const lines = [];
-          
-          words.forEach(word => {
-            line.push(word);
-            const testLine = line.join(' ');
-            const estimatedWidth = testLine.length * charWidth;
-            if (estimatedWidth > maxWidth && line.length > 1) {
-              line.pop();
-              lines.push(line.join(' '));
-              line = [word];
-            }
-          });
-          if (line.length > 0) {
-            lines.push(line.join(' '));
-          }
-          
-          // Calculate vertical offset to center text
-          const totalHeight = lines.length * lineHeight;
-          const startY = -(totalHeight / 2) + lineHeight;
-          
-          lines.forEach((lineText, i) => {
-            node.append('text')
-              .attr('class', 'feature-node-label')
-              .attr('x', 0)
-              .attr('y', startY + (i * lineHeight))
-              .attr('text-anchor', 'start')
-              .style('font-size', '36px')
-              .style('font-weight', '600')
-              .style('fill', '#4a9eff')
-              .text(lineText);
-          });
-        } else {
-          // For components, use standard centered label
-          node.append('text')
-            .attr('class', 'node-label')
-            .attr('dy', 5)
-            .text(d.label);
-        }
-      });
-      
-      // Initial zoom to fit
-      setTimeout(() => {
-        resetView();
-      }, 100);
     }
-    
-    // Reset view function - zoom to fit all components
-    function resetView() {
-      try {
-        const bounds = g.node().getBBox();
-        const fullWidth = bounds.width;
-        const fullHeight = bounds.height;
-        const midX = bounds.x + fullWidth / 2;
-        const midY = bounds.y + fullHeight / 2;
-        
-        const scale = 0.8 / Math.max(fullWidth / width, fullHeight / height);
-        const translate = [width / 2 - scale * midX, height / 2 - scale * midY];
-        
-        svg.transition()
-          .duration(750)
-          .call(zoom.transform, d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale));
-      } catch (error) {
-        console.error('[Features Map] Error resetting view:', error);
-      }
-    }
-    
-    // Handle window resize
-    window.addEventListener('resize', () => {
-      if (currentData) {
-        renderGraph(currentData);
-      }
-    });
   </script>
 </body>
 </html>`;
@@ -1116,4 +605,3 @@ export class FeaturesMapPanel {
     }
   }
 }
-

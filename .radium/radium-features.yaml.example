@@ -7,8 +7,7 @@ spec:
     - code-visualization:
       name: Code Visualization
       description: Interactive graph showing codebase structure and relationships
-      status: completed
-      owner: Core Team
+      area: Core Visualization
       components:
         - visualization
         - data-layer
@@ -17,8 +16,7 @@ spec:
   - llm-change-tracking:
       name: LLM Change Tracking
       description: Track and manage changes made by LLMs
-      status: completed
-      owner: Core Team
+      area: AI Integration
       components:
         - integrations
         - data-layer
@@ -29,8 +27,7 @@ spec:
   - component-based-view:
       name: Component-Based Architecture View
       description: Organize files by logical components instead of directories
-      status: completed
-      owner: Core Team
+      area: Core Visualization
       components:
         - core
         - visualization
@@ -40,8 +37,7 @@ spec:
   - git-integration:
       name: Git Integration
       description: Visualize uncommitted changes and git history
-      status: completed
-      owner: Core Team
+      area: Version Control
       components:
         - integrations
         - visualization
@@ -51,8 +47,7 @@ spec:
   - features-roadmap:
       name: Features Roadmap Visualization
       description: Visualize product features and their component dependencies
-      status: completed
-      owner: Core Team
+      area: Product Management
       components:
         - core
         - visualization
@@ -72,14 +67,13 @@ spec:
           description: User clicks on a feature node to see details
         - type: system
           name: Show feature info
-          description: Display feature status, owner, and dependencies
+          description: Display feature details and dependencies
           impl: src/views/features-map-panel.ts
 
   - impact-analysis:
       name: Impact Analysis
       description: Analyze the impact of code changes across the codebase
-      status: in-progress
-      owner: Core Team
+      area: Code Analysis
       components:
         - core
         - data-layer
@@ -89,8 +83,7 @@ spec:
   - test-integration:
       name: Test Integration
       description: Automatically run impacted tests after changes
-      status: planned
-      owner: Core Team
+      area: Testing
       components:
         - integrations
         - core
@@ -100,15 +93,14 @@ spec:
   - multi-language-support:
       name: Multi-Language Support
       description: Extend support beyond TypeScript/JavaScript/Python
-      status: planned
-      owner: Core Team
+      area: Language Support
       components:
         - data-layer
         - core
       dependencies:
         - code-visualization
 
-# Status values: planned, in-progress, completed, deprecated
+# Area: Optional category to group related features (e.g., "Authentication", "Reporting")
 # Components should reference keys from radium-components.yaml
 # Dependencies should reference other feature keys
 

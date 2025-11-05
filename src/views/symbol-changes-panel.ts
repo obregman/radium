@@ -76,6 +76,26 @@ export class SymbolChangesPanel {
             // Re-snapshot all files after clearing
             await this.snapshotAllSourceFiles();
             break;
+          case 'openFile':
+            // Open the file at the specified line
+            const filePath = path.join(this.workspaceRoot, message.filePath);
+            try {
+              const document = await vscode.workspace.openTextDocument(filePath);
+              const editor = await vscode.window.showTextDocument(document);
+              // Navigate to the line (convert to 0-based index)
+              const line = Math.max(0, (message.line || 1) - 1);
+              const position = new vscode.Position(line, 0);
+              editor.selection = new vscode.Selection(position, position);
+              editor.revealRange(
+                new vscode.Range(position, position),
+                vscode.TextEditorRevealType.InCenter
+              );
+              this.log(`Opened ${message.filePath} at line ${message.line}`);
+            } catch (error) {
+              this.log(`Failed to open file ${message.filePath}: ${error}`);
+              vscode.window.showErrorMessage(`Failed to open file: ${message.filePath}`);
+            }
+            break;
         }
       },
       null,
@@ -955,16 +975,24 @@ export class SymbolChangesPanel {
           continue;
         }
         
+        // Try to determine context (inside class, interface, function, etc.)
+        const context = this.detectVariableContext(content, lineNum);
+        
+        // Skip if variable is inside a function (only show file-level or class-level variables)
+        if (context === null) {
+          // context is null when inside a function - skip this variable
+          continue;
+        }
+        
         // Only add if it's truly new (not in deleted lines)
         if (!seenVariables.has(varName) && !existingVariables.has(varName)) {
           seenVariables.add(varName);
           const varKind = varType === 'const' ? 'constant' : 'variable';
-          
-          // Try to determine context (inside class, interface, etc.)
-          const context = this.detectVariableContext(content, lineNum);
           let description = '';
           
-          if (context) {
+          if (context === 'file-level') {
+            description = `${this.capitalize(varKind)} added`;
+          } else if (context && typeof context === 'object') {
             description = `${this.capitalize(varKind)} added to ${context.type.toLowerCase()}`;
           } else {
             description = `${this.capitalize(varKind)} added`;
@@ -989,6 +1017,13 @@ export class SymbolChangesPanel {
       if (pyVarMatch && !trimmed.includes('def ') && !trimmed.includes('class ')) {
         const varName = pyVarMatch[1];
         const varValue = pyVarMatch[2].trim();
+        
+        // Check if variable is inside a function (skip if it is)
+        const context = this.detectVariableContext(content, lineNum);
+        if (context === null) {
+          // Inside a function - skip this variable
+          continue;
+        }
         
         // Only add if it's truly new (not in deleted lines)
         if (!seenVariables.has(varName) && !existingVariables.has(varName)) {
@@ -1033,6 +1068,13 @@ export class SymbolChangesPanel {
         const oldValue = deletedVars.get(varName);
         
         if (oldValue && oldValue !== newValue && !seenVariables.has(varName)) {
+          // Check if variable is inside a function (skip if it is)
+          const context = this.detectVariableContext(content, lineNum);
+          if (context === null) {
+            // Inside a function - skip this variable
+            continue;
+          }
+          
           seenVariables.add(varName);
           const oldShort = oldValue.substring(0, 15);
           const newShort = newValue.substring(0, 15);
@@ -1057,6 +1099,13 @@ export class SymbolChangesPanel {
         const oldValue = deletedVars.get(varName);
         
         if (oldValue && oldValue !== newValue && !seenVariables.has(varName)) {
+          // Check if variable is inside a function (skip if it is)
+          const context = this.detectVariableContext(content, lineNum);
+          if (context === null) {
+            // Inside a function - skip this variable
+            continue;
+          }
+          
           seenVariables.add(varName);
           const oldShort = oldValue.substring(0, 15);
           const newShort = newValue.substring(0, 15);
@@ -1077,47 +1126,73 @@ export class SymbolChangesPanel {
     return variables;
   }
 
-  private detectVariableContext(content: string, lineNumber: number): { type: string; name: string } | null {
+  private detectVariableContext(content: string, lineNumber: number): { type: string; name: string } | null | 'file-level' {
     const lines = content.split('\n');
     
     // Look backwards from the line to find containing structure
     let braceDepth = 0;
+    let foundFunction = false;
+    let foundClass = false;
+    let classInfo: { type: string; name: string } | null = null;
     
     for (let i = lineNumber - 1; i >= 0; i--) {
       const line = lines[i];
       
-      // Count braces to track nesting (going backward, so reversed)
-      for (const char of line) {
-        if (char === '{') braceDepth++;
-        if (char === '}') braceDepth--;
-      }
-      
-      // Only check at the same nesting level (braceDepth === 0)
+      // Check for patterns BEFORE counting braces
       if (braceDepth === 0) {
         // Check for function first (more specific) - if found, variable is in function
         const functionMatch = line.match(/\b(function|async\s+function)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/);
         if (functionMatch) {
-          return null; // Variable is inside a function
+          foundFunction = true;
+          break; // Variable is inside a function
         }
         
-        // Arrow functions or method definitions
+        // Arrow functions (e.g., const fn = () => { or const fn = (x) => {)
+        const arrowMatch = line.match(/=\s*\([^)]*\)\s*=>/);
+        if (arrowMatch) {
+          foundFunction = true;
+          break; // Variable is inside an arrow function
+        }
+        
+        // Method definitions (e.g., methodName() { or methodName(params) {)
         const methodMatch = line.match(/\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*[:{]/);
         if (methodMatch) {
-          return null; // Variable is inside a method/function
+          foundFunction = true;
+          break; // Variable is inside a method/function
         }
         
         // Check for class/interface
         const classMatch = line.match(/\b(class|interface)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/);
         if (classMatch) {
-          return { type: classMatch[1], name: classMatch[2] };
+          foundClass = true;
+          classInfo = { type: classMatch[1], name: classMatch[2] };
+          // Don't break - keep looking for functions inside the class
         }
       }
       
-      // Stop if we've exited the containing scope
-      if (braceDepth > 0) break;
+      // Count braces to track nesting (going backward, so we reverse the logic)
+      // When going backwards: '}' increases depth (we're entering a scope), '{' decreases it (we're exiting)
+      for (const char of line) {
+        if (char === '}') braceDepth++;
+        if (char === '{') braceDepth--;
+      }
+      
+      // Stop if we've exited the containing scope (braceDepth < 0 means we've gone too far out)
+      if (braceDepth < 0) break;
     }
     
-    return null;
+    // If inside a function, return null (skip this variable)
+    if (foundFunction) {
+      return null;
+    }
+    
+    // If inside a class but not inside a function, return class info
+    if (foundClass && classInfo) {
+      return classInfo;
+    }
+    
+    // File-level variable (not inside any function or class)
+    return 'file-level';
   }
 
   private byteOffsetToLineNumber(filePath: string, byteOffset: number): number {
@@ -1366,6 +1441,11 @@ export class SymbolChangesPanel {
       word-wrap: break-word;
     }
 
+    /* Highlight effect for newly added/updated symbols */
+    .symbol-box.highlight {
+      box-shadow: inset 0 0 0 4px #FFD700;
+    }
+
     .symbol-type-label {
       position: absolute;
       top: 4px;
@@ -1490,6 +1570,7 @@ export class SymbolChangesPanel {
       transform: scale(1.03);
       z-index: 20;
       border-width: 2px;
+      cursor: pointer;
     }
 
     .diff-tooltip {
@@ -2306,6 +2387,22 @@ export class SymbolChangesPanel {
         setTimeout(() => {
           box.classList.remove('added', 'modified', 'deleted', 'value_changed');
         }, 3000);
+        
+        // Add yellow highlight border for 3 seconds
+        box.classList.add('highlight');
+        setTimeout(() => {
+          box.classList.remove('highlight');
+        }, 3000);
+        
+        // Add click handler to open file at symbol line
+        box.addEventListener('click', (e) => {
+          e.stopPropagation(); // Prevent pan/zoom from interfering
+          vscode.postMessage({
+            type: 'openFile',
+            filePath: filePath,
+            line: symbol.startLine
+          });
+        });
         
         // Add hover tooltip for diff
         let hoverTimeout = null;

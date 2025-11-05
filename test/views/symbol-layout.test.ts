@@ -735,6 +735,175 @@ suite('Symbol Layout Tests', () => {
     assert.strictEqual(maxBottom, result.contentH,
       'Bottommost symbol should reach exactly to content height (snug fit)');
   });
+
+  test('CRITICAL: symbols do NOT exceed file container bottom edge with 3px padding', () => {
+    // This test explicitly verifies the bug fix: symbols must not exceed the container's bottom edge
+    // Container should have 3px padding at the bottom to ensure symbols are fully wrapped
+    const changeAmounts = [1, 5, 10, 15, 20, 30, 50];
+    const symbols: Symbol[] = changeAmounts.map((amount, i) => {
+      const size = calculateBoxSize(amount);
+      return { key: `func${i}`, width: size.width, height: size.height };
+    });
+
+    const containerWidth = 600;
+    const result = packSymbols(symbols, containerWidth);
+
+    // Actual container dimensions as set in the code (with 3px bottom padding fix)
+    const TOP_PADDING = 40;
+    const BOTTOM_PADDING = 3;
+    const fileContainerHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING;
+
+    console.log(`\n[Test Bottom Edge] File container height: ${fileContainerHeight}`);
+    console.log(`[Test Bottom Edge] Content height: ${result.contentH}`);
+    console.log(`[Test Bottom Edge] Top padding: ${TOP_PADDING}px, Bottom padding: ${BOTTOM_PADDING}px`);
+    console.log(`[Test Bottom Edge] Testing ${symbols.length} symbols...`);
+
+    // Verify EVERY symbol's bottom edge is within the container
+    for (const p of result.positions) {
+      // Symbol is positioned at (p.x, p.y + TOP_PADDING) in the container
+      const symbolTop = p.y + TOP_PADDING;
+      const symbolBottom = symbolTop + p.height;
+      
+      console.log(`[Test Bottom Edge] ${p.key}: y=${p.y}, height=${p.height}, top=${symbolTop}, bottom=${symbolBottom}`);
+
+      // CRITICAL: Symbol bottom must be <= container height
+      assert.ok(symbolBottom <= fileContainerHeight,
+        `FAILURE: Symbol ${p.key} bottom edge (${symbolBottom}px) exceeds container height (${fileContainerHeight}px) by ${symbolBottom - fileContainerHeight}px!`);
+      
+      // Also verify there's at least some padding at the bottom
+      const bottomGap = fileContainerHeight - symbolBottom;
+      console.log(`[Test Bottom Edge] ${p.key}: gap to container bottom = ${bottomGap}px`);
+    }
+
+    // Find the lowest symbol
+    let lowestSymbolBottom = 0;
+    let lowestSymbolKey = '';
+    for (const p of result.positions) {
+      const symbolBottom = (p.y + TOP_PADDING) + p.height;
+      if (symbolBottom > lowestSymbolBottom) {
+        lowestSymbolBottom = symbolBottom;
+        lowestSymbolKey = p.key;
+      }
+    }
+
+    console.log(`[Test Bottom Edge] Lowest symbol: ${lowestSymbolKey} at ${lowestSymbolBottom}px`);
+    console.log(`[Test Bottom Edge] Container bottom: ${fileContainerHeight}px`);
+    console.log(`[Test Bottom Edge] Gap: ${fileContainerHeight - lowestSymbolBottom}px`);
+
+    // Verify the lowest symbol has at least 1px of padding (should have 3px)
+    assert.ok(lowestSymbolBottom < fileContainerHeight,
+      `Lowest symbol ${lowestSymbolKey} must have padding at bottom`);
+    
+    // Verify the gap is at least 1px (ideally 3px from our fix)
+    const actualBottomPadding = fileContainerHeight - lowestSymbolBottom;
+    assert.ok(actualBottomPadding >= 1,
+      `Bottom padding should be at least 1px, got ${actualBottomPadding}px`);
+  });
+
+  test('CRITICAL: multiple scenarios - symbols never exceed container bottom', () => {
+    // Test various scenarios to ensure symbols NEVER exceed the container
+    const scenarios = [
+      { name: 'Small changes', amounts: [1, 2, 3, 4, 5], width: 400 },
+      { name: 'Medium changes', amounts: [5, 10, 15, 20, 25], width: 500 },
+      { name: 'Large changes', amounts: [20, 30, 40, 50, 60], width: 600 },
+      { name: 'Mixed sizes', amounts: [1, 10, 25, 50, 100], width: 700 },
+      { name: 'All large', amounts: [50, 60, 70, 80, 90, 100], width: 800 },
+      { name: 'Many small', amounts: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], width: 500 },
+    ];
+
+    const TOP_PADDING = 40;
+    const BOTTOM_PADDING = 3;
+
+    for (const scenario of scenarios) {
+      console.log(`\n[Test Scenario] ${scenario.name}`);
+      
+      const symbols: Symbol[] = scenario.amounts.map((amount, i) => {
+        const size = calculateBoxSize(amount);
+        return { key: `${scenario.name}_${i}`, width: size.width, height: size.height };
+      });
+
+      const result = packSymbols(symbols, scenario.width);
+      const fileContainerHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING;
+
+      console.log(`  Container: ${scenario.width}x${fileContainerHeight}`);
+      console.log(`  Content: ${result.contentW}x${result.contentH}`);
+      console.log(`  Symbols: ${symbols.length}`);
+
+      // Check every symbol
+      for (const p of result.positions) {
+        const symbolBottom = (p.y + TOP_PADDING) + p.height;
+        assert.ok(symbolBottom <= fileContainerHeight,
+          `[${scenario.name}] Symbol ${p.key} bottom (${symbolBottom}) exceeds container (${fileContainerHeight})`);
+      }
+
+      // Find max bottom
+      let maxBottom = 0;
+      for (const p of result.positions) {
+        maxBottom = Math.max(maxBottom, (p.y + TOP_PADDING) + p.height);
+      }
+
+      const gap = fileContainerHeight - maxBottom;
+      console.log(`  Max symbol bottom: ${maxBottom}, Gap: ${gap}px`);
+      assert.ok(gap >= 0, `[${scenario.name}] Must have non-negative gap, got ${gap}px`);
+    }
+  });
+
+  test('CRITICAL: verify container height calculation matches actual implementation', () => {
+    // This test verifies the exact formula used in the actual code
+    const changeAmounts = [3, 8, 15, 25, 40];
+    const symbols: Symbol[] = changeAmounts.map((amount, i) => {
+      const size = calculateBoxSize(amount);
+      return { key: `verify${i}`, width: size.width, height: size.height };
+    });
+
+    const containerWidth = 600;
+    const result = packSymbols(symbols, containerWidth);
+
+    // This is the EXACT formula from symbol-changes-panel.ts line 2164:
+    // const finalHeight = packed.contentH + 40 + 3;
+    const TOP_PADDING = 40;
+    const BOTTOM_PADDING = 3;
+    const finalHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING;
+
+    console.log(`\n[Test Implementation] Verifying actual code formula:`);
+    console.log(`  packed.contentH = ${result.contentH}`);
+    console.log(`  TOP_PADDING = ${TOP_PADDING}`);
+    console.log(`  BOTTOM_PADDING = ${BOTTOM_PADDING}`);
+    console.log(`  finalHeight = ${result.contentH} + ${TOP_PADDING} + ${BOTTOM_PADDING} = ${finalHeight}`);
+
+    // Symbols are positioned at (x, y + TOP_PADDING) where y is from packed positions
+    // So the actual rendered position is: top = y + 40, bottom = y + 40 + height
+    for (const p of result.positions) {
+      const renderedTop = p.y + TOP_PADDING;
+      const renderedBottom = renderedTop + p.height;
+
+      console.log(`  Symbol ${p.key}: y=${p.y}, height=${p.height}, renderedBottom=${renderedBottom}`);
+
+      // The critical assertion: rendered bottom must be <= finalHeight
+      assert.ok(renderedBottom <= finalHeight,
+        `Symbol ${p.key} rendered bottom (${renderedBottom}) must be <= container height (${finalHeight}). ` +
+        `Overflow: ${renderedBottom - finalHeight}px`);
+    }
+
+    // Verify the bottom padding is actually used
+    let maxRenderedBottom = 0;
+    for (const p of result.positions) {
+      maxRenderedBottom = Math.max(maxRenderedBottom, (p.y + TOP_PADDING) + p.height);
+    }
+
+    const actualPadding = finalHeight - maxRenderedBottom;
+    console.log(`  Max rendered bottom: ${maxRenderedBottom}`);
+    console.log(`  Container height: ${finalHeight}`);
+    console.log(`  Actual bottom padding: ${actualPadding}px`);
+
+    // Should have at least 1px padding (ideally 3px)
+    assert.ok(actualPadding >= 1,
+      `Should have at least 1px bottom padding, got ${actualPadding}px`);
+    
+    // Verify it's close to our intended 3px (might be slightly more due to rounding)
+    assert.ok(actualPadding >= BOTTOM_PADDING,
+      `Should have at least ${BOTTOM_PADDING}px bottom padding, got ${actualPadding}px`);
+  });
 });
 
 

@@ -140,7 +140,7 @@ suite('CodeParser Test Suite', () => {
   suite('Language Detection', () => {
     test('should detect TypeScript', () => {
       assert.strictEqual(parser.getLanguage('test.ts'), 'typescript');
-      assert.strictEqual(parser.getLanguage('test.tsx'), 'typescript');
+      assert.strictEqual(parser.getLanguage('test.tsx'), 'tsx');  // TSX files use separate parser
     });
 
     test('should detect JavaScript', () => {

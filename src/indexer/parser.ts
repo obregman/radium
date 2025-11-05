@@ -6,6 +6,8 @@ import * as crypto from 'crypto';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const TypeScript = require('tree-sitter-typescript').typescript;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
+const TSX = require('tree-sitter-typescript').tsx;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const JavaScript = require('tree-sitter-javascript');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Python = require('tree-sitter-python');
@@ -50,7 +52,11 @@ export class CodeParser {
     tsParser.setLanguage(TypeScript);
     this.parsers.set('typescript', tsParser);
     this.parsers.set('ts', tsParser);
-    this.parsers.set('tsx', tsParser);
+
+    // TSX parser (separate from TypeScript for proper JSX support)
+    const tsxParser = new Parser();
+    tsxParser.setLanguage(TSX);
+    this.parsers.set('tsx', tsxParser);
 
     // JavaScript parser
     const jsParser = new Parser();
@@ -82,7 +88,7 @@ export class CodeParser {
 
     const langMap: Record<string, string> = {
       'ts': 'typescript',
-      'tsx': 'typescript',
+      'tsx': 'tsx',  // TSX files need the TSX parser for proper JSX support
       'js': 'javascript',
       'jsx': 'javascript',
       'py': 'python',
@@ -196,7 +202,7 @@ export class CodeParser {
       const calls: CallSite[] = [];
 
       try {
-        if (lang === 'typescript' || lang === 'javascript') {
+        if (lang === 'typescript' || lang === 'tsx' || lang === 'javascript') {
           this.extractTypeScriptSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
         } else if (lang === 'python') {
           this.extractPythonSymbols(tree.rootNode, code, symbols, imports, calls, filePath);
@@ -240,6 +246,16 @@ export class CodeParser {
           range: { start: node.startIndex, end: node.endIndex }
         });
       }
+    } else if (node.type === 'export_statement') {
+      // Handle exported declarations (common in TSX/TS files)
+      // The actual declaration is in the 'declaration' field
+      const declarationNode = node.childForFieldName('declaration');
+      if (declarationNode) {
+        // Process the exported declaration (function, class, interface, etc.)
+        this.extractTypeScriptSymbols(declarationNode, code, symbols, imports, calls, filePath, namespace);
+      }
+      // Don't recurse to all children since we handled the declaration
+      return;
     } else if (node.type === 'class_declaration') {
       const nameNode = node.childForFieldName('name');
       if (nameNode) {

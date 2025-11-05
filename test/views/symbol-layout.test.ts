@@ -859,17 +859,19 @@ suite('Symbol Layout Tests', () => {
     const containerWidth = 600;
     const result = packSymbols(symbols, containerWidth);
 
-    // This is the EXACT formula from symbol-changes-panel.ts line 2164:
-    // const finalHeight = packed.contentH + 40 + 3;
+    // This is the EXACT formula from symbol-changes-panel.ts line 2250:
+    // const finalHeight = packed.contentH + 40 + 3 + 4;
     const TOP_PADDING = 40;
     const BOTTOM_PADDING = 3;
-    const finalHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING;
+    const BORDER_HEIGHT = 4; // 2px top + 2px bottom border
+    const finalHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING + BORDER_HEIGHT;
 
     console.log(`\n[Test Implementation] Verifying actual code formula:`);
     console.log(`  packed.contentH = ${result.contentH}`);
     console.log(`  TOP_PADDING = ${TOP_PADDING}`);
     console.log(`  BOTTOM_PADDING = ${BOTTOM_PADDING}`);
-    console.log(`  finalHeight = ${result.contentH} + ${TOP_PADDING} + ${BOTTOM_PADDING} = ${finalHeight}`);
+    console.log(`  BORDER_HEIGHT = ${BORDER_HEIGHT}`);
+    console.log(`  finalHeight = ${result.contentH} + ${TOP_PADDING} + ${BOTTOM_PADDING} + ${BORDER_HEIGHT} = ${finalHeight}`);
 
     // Symbols are positioned at (x, y + TOP_PADDING) where y is from packed positions
     // So the actual rendered position is: top = y + 40, bottom = y + 40 + height

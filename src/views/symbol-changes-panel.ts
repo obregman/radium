@@ -614,8 +614,12 @@ export class SymbolChangesPanel {
     
     this.log(`Line to symbol mapping: ${Array.from(lineToMostSpecificSymbol.entries()).map(([line, sym]) => `${line} -> ${sym.name} (${sym.kind})`).join(', ')}`);
     
+    // Log all symbols detected by parser for debugging
+    this.log(`All symbols detected: ${currentSymbols.map(s => `${s.kind}:${s.name}`).join(', ')}`);
+    
     // Now process only symbols that are the most specific for at least one changed line
     const symbolsToProcess = new Set(lineToMostSpecificSymbol.values());
+    this.log(`Symbols to process (${symbolsToProcess.size}): ${Array.from(symbolsToProcess).map(s => `${s.kind}:${s.name}`).join(', ')}`);
     
     for (const symbol of symbolsToProcess) {
       const symbolStartLine = this.byteOffsetToLineNumber(fullPath, symbol.range.start);
@@ -2241,8 +2245,13 @@ export class SymbolChangesPanel {
           // and padding (40px top). The content area for symbols is the full width/height minus these.
           // Since symbols are positioned in the content area, we set container size to exactly match packed size.
           // Add 3px padding at the bottom to ensure the container fully wraps the symbols.
+          // IMPORTANT: With box-sizing: border-box, the total height must account for:
+          //   - 40px top padding (where label lives)
+          //   - packed.contentH (actual symbol content height)
+          //   - 3px bottom padding
+          //   - 4px borders (2px top + 2px bottom)
           const finalWidth = Math.max(packed.contentW, labelMinWidth);
-          const finalHeight = packed.contentH + 40 + 3; // 40px for label, 3px bottom padding
+          const finalHeight = packed.contentH + 40 + 3 + 4; // 40px label padding + 3px bottom padding + 4px borders
           
           console.log('[Layout] Final container size:', finalWidth, 'x', finalHeight, '(label min:', labelMinWidth, ', packed:', packed.contentW, 'x', packed.contentH, ')');
           group.fileContainer.style.width = finalWidth + 'px';

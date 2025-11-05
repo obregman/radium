@@ -402,6 +402,7 @@ export class FeaturesMapPanel {
       text-transform: uppercase;
       color: #999;
       margin-bottom: 8px;
+      text-align: center;
     }
     
     .flow-name {
@@ -454,6 +455,15 @@ export class FeaturesMapPanel {
     const vscode = acquireVsCodeApi();
     let currentData = null;
     let expandedFeature = null;
+    
+    // Icon URIs for flow types
+    const flowTypeIcons = {
+      user: '${userIconUri}',
+      ui: '${uiIconUri}',
+      logic: '${systemIconUri}',
+      inbound_api: '${inboundApiIconUri}',
+      outbound_api: '${outboundApiIconUri}'
+    };
     
     // Notify ready
     vscode.postMessage({ type: 'ready' });
@@ -531,7 +541,7 @@ export class FeaturesMapPanel {
                     \${flowItems.map((item, idx) => \`
                       \${idx > 0 ? '<div class="flow-arrow">→</div>' : ''}
                       <div class="flow-item \${item.flowType}" \${item.impl ? \`data-impl="\${item.impl}"\` : ''}>
-                        <div class="flow-type">&lt;&lt;\${item.flowType}&gt;&gt;</div>
+                        <div class="flow-type">\${item.flowType}</div>
                         <div class="flow-name">\${item.label}</div>
                         \${item.description ? \`<div class="flow-description">\${item.description}</div>\` : ''}
                       </div>

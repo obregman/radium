@@ -43,6 +43,7 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 - `Radium: Features Map` - Visualize features and their relationships
 - `Radium: Real-time File Changes` - Monitor file changes in real-time with visual diff display
 - `Radium: Real-time Symbol Visualization` - Visualize code changes as symbols (functions, classes) with call relationships
+- `Radium: Non-committed Git Changes` - Visualize all uncommitted git changes as symbols
 
 ### Real-time File Changes
 
@@ -94,6 +95,25 @@ Each symbol box displays the symbol type (FUNCTION, CLASS, etc.) at the top for 
 This mode makes complex changes easy to understand at a glance by showing the structural changes to your code rather than line-by-line diffs.
 
 To use: Run `Radium: Symbol Changes` from the command palette.
+
+### Non-committed Git Changes
+
+The Non-committed Git Changes view works exactly like Symbol Changes but shows all uncommitted changes in your git repository:
+
+**What it shows:**
+- All modified files (staged and unstaged)
+- New files that haven't been committed
+- Symbol-level changes compared to the last commit (HEAD)
+
+**How it works:**
+- Compares current working directory against git HEAD
+- Displays changes using the same symbol visualization as Symbol Changes
+- Shows functions, classes, methods, variables, and other symbols that were added or modified
+- Includes visual call relationships between symbols
+
+This is useful for reviewing all your work before committing, understanding the scope of changes across multiple files, or getting a high-level overview of your current work in progress.
+
+To use: Run `Radium: Non-committed Git Changes` from the command palette.
 
 #### Ignoring Files
 

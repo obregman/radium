@@ -285,6 +285,15 @@ function registerCommands(context: vscode.ExtensionContext) {
         return;
       }
       SymbolChangesPanel.createOrShow(context.extensionUri, workspaceFolders[0].uri.fsPath);
+    }),
+
+    vscode.commands.registerCommand('radium.gitChanges', () => {
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders) {
+        vscode.window.showWarningMessage('No workspace folder open. Radium requires a workspace.');
+        return;
+      }
+      SymbolChangesPanel.createOrShowGitChanges(context.extensionUri, workspaceFolders[0].uri.fsPath);
     })
 
   );

@@ -50,6 +50,11 @@
         "command": "radium.detailedCodeChanges",
         "title": "Radium: Detailed Code Changes",
         "icon": "$(symbol-class)"
+      },
+      {
+        "command": "radium.gitChanges",
+        "title": "Radium: Non-committed Git Changes",
+        "icon": "$(git-commit)"
       }
     ],
     "viewsContainers": {

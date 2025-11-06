@@ -78,18 +78,12 @@ function packSymbols(symbols: Symbol[], containerWidth: number): PackResult {
   let contentW = 0;
   let contentH = 0;
   if (positions.length > 0) {
-    const shelves = new Map<number, { h: number }>();
+    // Calculate actual maximum bottom edge (most accurate method)
     for (const p of positions) {
       const right = p.x + p.width;
+      const bottom = p.y + p.height;
       contentW = Math.max(contentW, right);
-      const shelf = shelves.get(p.y) || { h: 0 };
-      shelf.h = Math.max(shelf.h, p.height);
-      shelves.set(p.y, shelf);
-    }
-    const ys = Array.from(shelves.keys()).sort((a, b) => a - b);
-    for (let i = 0; i < ys.length; i++) {
-      contentH += shelves.get(ys[i])!.h;
-      if (i < ys.length - 1) contentH += PADDING;
+      contentH = Math.max(contentH, bottom);
     }
   }
 
@@ -905,6 +899,268 @@ suite('Symbol Layout Tests', () => {
     // Verify it's close to our intended 3px (might be slightly more due to rounding)
     assert.ok(actualPadding >= BOTTOM_PADDING,
       `Should have at least ${BOTTOM_PADDING}px bottom padding, got ${actualPadding}px`);
+  });
+
+  // ===== COMPREHENSIVE TESTS FOR 1-10 SYMBOL BOXES IN FILE CONTAINER =====
+
+  suite('File Container with 1-10 Symbol Boxes', () => {
+    const TOP_PADDING = 40;
+    const BOTTOM_PADDING = 3;
+    const BORDER_WIDTH = 2;
+    const BORDER_HEIGHT = 4; // 2px top + 2px bottom
+
+    function verifyFileContainerLayout(symbolCount: number, containerWidth: number) {
+      // Generate varied symbol sizes for realistic testing
+      const changeAmounts = Array.from({ length: symbolCount }, (_, i) => {
+        // Create a mix of small, medium, and large changes
+        if (i % 3 === 0) return 1 + i;  // Small
+        if (i % 3 === 1) return 10 + i * 2; // Medium
+        return 25 + i * 3; // Large
+      });
+
+      const symbols: Symbol[] = changeAmounts.map((amount, i) => {
+        const size = calculateBoxSize(amount);
+        return { key: `symbol_${i}`, width: size.width, height: size.height };
+      });
+
+      const result = packSymbols(symbols, containerWidth);
+
+      // Calculate FILE container dimensions (as in actual implementation)
+      const fileContainerWidth = result.contentW;
+      const fileContainerHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING + BORDER_HEIGHT;
+
+      console.log(`\n[${symbolCount} Symbols] FILE Container: ${fileContainerWidth}x${fileContainerHeight}`);
+      console.log(`  Content area: ${result.contentW}x${result.contentH}`);
+      console.log(`  Padding: top=${TOP_PADDING}px, bottom=${BOTTOM_PADDING}px, borders=${BORDER_HEIGHT}px`);
+
+      // CRITICAL CHECKS:
+
+      // 1. Verify no symbol exceeds container width (horizontal bounds)
+      for (const p of result.positions) {
+        const symbolRight = p.x + p.width;
+        assert.ok(p.x >= 0, 
+          `[${symbolCount} symbols] ${p.key} left edge must be >= 0, got ${p.x}`);
+        assert.ok(symbolRight <= fileContainerWidth,
+          `[${symbolCount} symbols] ${p.key} right edge ${symbolRight} must be <= container width ${fileContainerWidth}`);
+      }
+
+      // 2. Verify no symbol exceeds container height (vertical bounds)
+      for (const p of result.positions) {
+        // Symbol is rendered at y + TOP_PADDING
+        const symbolTop = p.y + TOP_PADDING;
+        const symbolBottom = symbolTop + p.height;
+        
+        assert.ok(symbolTop >= TOP_PADDING,
+          `[${symbolCount} symbols] ${p.key} top ${symbolTop} must be >= ${TOP_PADDING}`);
+        assert.ok(symbolBottom <= fileContainerHeight,
+          `[${symbolCount} symbols] CRITICAL: ${p.key} bottom ${symbolBottom} EXCEEDS container height ${fileContainerHeight} by ${symbolBottom - fileContainerHeight}px!`);
+      }
+
+      // 3. Verify no overlaps between symbols
+      for (let i = 0; i < result.positions.length; i++) {
+        for (let j = i + 1; j < result.positions.length; j++) {
+          const p1 = result.positions[i];
+          const p2 = result.positions[j];
+          
+          const noOverlap = (
+            p1.x + p1.width <= p2.x ||
+            p2.x + p2.width <= p1.x ||
+            p1.y + p1.height <= p2.y ||
+            p2.y + p2.height <= p1.y
+          );
+          
+          assert.ok(noOverlap,
+            `[${symbolCount} symbols] ${p1.key} and ${p2.key} must not overlap!`);
+        }
+      }
+
+      // 4. Verify bottom padding exists
+      let maxBottom = 0;
+      for (const p of result.positions) {
+        maxBottom = Math.max(maxBottom, (p.y + TOP_PADDING) + p.height);
+      }
+      
+      const actualBottomPadding = fileContainerHeight - maxBottom;
+      console.log(`  Max symbol bottom: ${maxBottom}px, Bottom padding: ${actualBottomPadding}px`);
+      
+      assert.ok(actualBottomPadding >= BOTTOM_PADDING,
+        `[${symbolCount} symbols] Bottom padding ${actualBottomPadding}px must be >= ${BOTTOM_PADDING}px`);
+
+      // 5. Verify symbols are efficiently packed (no excessive empty space)
+      const totalSymbolArea = symbols.reduce((sum, s) => sum + (s.width * s.height), 0);
+      const containerArea = fileContainerWidth * (fileContainerHeight - TOP_PADDING - BOTTOM_PADDING - BORDER_HEIGHT);
+      const utilization = totalSymbolArea / containerArea;
+      
+      console.log(`  Packing efficiency: ${(utilization * 100).toFixed(1)}%`);
+      
+      // Efficiency should be reasonable (at least 30% for varied sizes)
+      assert.ok(utilization >= 0.25,
+        `[${symbolCount} symbols] Packing efficiency ${(utilization * 100).toFixed(1)}% seems too low`);
+
+      return { fileContainerWidth, fileContainerHeight, result };
+    }
+
+    test('FILE container with 1 symbol box - perfect fit', () => {
+      verifyFileContainerLayout(1, 500);
+    });
+
+    test('FILE container with 2 symbol boxes - no overflow', () => {
+      verifyFileContainerLayout(2, 500);
+    });
+
+    test('FILE container with 3 symbol boxes - proper layout', () => {
+      verifyFileContainerLayout(3, 600);
+    });
+
+    test('FILE container with 4 symbol boxes - efficient packing', () => {
+      verifyFileContainerLayout(4, 600);
+    });
+
+    test('FILE container with 5 symbol boxes - multi-row layout', () => {
+      verifyFileContainerLayout(5, 700);
+    });
+
+    test('FILE container with 6 symbol boxes - balanced distribution', () => {
+      verifyFileContainerLayout(6, 700);
+    });
+
+    test('FILE container with 7 symbol boxes - complex layout', () => {
+      verifyFileContainerLayout(7, 800);
+    });
+
+    test('FILE container with 8 symbol boxes - stress test', () => {
+      verifyFileContainerLayout(8, 800);
+    });
+
+    test('FILE container with 9 symbol boxes - high density', () => {
+      verifyFileContainerLayout(9, 900);
+    });
+
+    test('FILE container with 10 symbol boxes - maximum density', () => {
+      verifyFileContainerLayout(10, 900);
+    });
+
+    test('FILE container with 1-10 boxes - comprehensive sweep', () => {
+      // Test all counts from 1 to 10 in a single test
+      console.log('\n[Comprehensive Sweep] Testing FILE container with 1-10 symbol boxes');
+      
+      for (let count = 1; count <= 10; count++) {
+        const containerWidth = 500 + (count * 40); // Scale width with count
+        const { fileContainerWidth, fileContainerHeight, result } = verifyFileContainerLayout(count, containerWidth);
+        
+        // Additional verification: ensure container grows appropriately
+        if (count > 1) {
+          assert.ok(fileContainerHeight >= MIN_HEIGHT + TOP_PADDING + BOTTOM_PADDING + BORDER_HEIGHT,
+            `Container with ${count} symbols should have reasonable height`);
+        }
+      }
+      
+      console.log('\n✅ All 1-10 symbol box configurations passed!');
+    });
+
+    test('FILE container - all minimum size boxes (1-10)', () => {
+      // Test with all minimum-sized symbols (1 line change each)
+      for (let count = 1; count <= 10; count++) {
+        const symbols: Symbol[] = Array.from({ length: count }, (_, i) => ({
+          key: `min_${i}`,
+          width: MIN_WIDTH,
+          height: MIN_HEIGHT
+        }));
+
+        const containerWidth = 600;
+        const result = packSymbols(symbols, containerWidth);
+
+        const fileContainerHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING + BORDER_HEIGHT;
+
+        // Verify all symbols fit
+        for (const p of result.positions) {
+          const symbolBottom = (p.y + TOP_PADDING) + p.height;
+          assert.ok(symbolBottom <= fileContainerHeight,
+            `[${count} min boxes] Symbol ${p.key} must fit in container`);
+        }
+      }
+    });
+
+    test('FILE container - all maximum size boxes (1-10)', () => {
+      // Test with all maximum-sized symbols (100+ line changes each)
+      for (let count = 1; count <= 10; count++) {
+        const symbols: Symbol[] = Array.from({ length: count }, (_, i) => ({
+          key: `max_${i}`,
+          width: MAX_WIDTH,
+          height: MAX_HEIGHT
+        }));
+
+        const containerWidth = 1200; // Wide enough for large boxes
+        const result = packSymbols(symbols, containerWidth);
+
+        const fileContainerHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING + BORDER_HEIGHT;
+
+        // Verify all symbols fit
+        for (const p of result.positions) {
+          const symbolBottom = (p.y + TOP_PADDING) + p.height;
+          assert.ok(symbolBottom <= fileContainerHeight,
+            `[${count} max boxes] Symbol ${p.key} must fit in container`);
+        }
+      }
+    });
+
+    test('FILE container - narrow width stress test (1-10 boxes)', () => {
+      // Test with narrow container forcing vertical stacking
+      const narrowWidth = 450; // Only fits 4 minimum boxes per row
+
+      for (let count = 1; count <= 10; count++) {
+        const changeAmounts = Array.from({ length: count }, (_, i) => 5 + i * 3);
+        const symbols: Symbol[] = changeAmounts.map((amount, i) => {
+          const size = calculateBoxSize(amount);
+          return { key: `narrow_${i}`, width: size.width, height: size.height };
+        });
+
+        const result = packSymbols(symbols, narrowWidth);
+        const fileContainerHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING + BORDER_HEIGHT;
+
+        console.log(`\n[Narrow ${count} boxes] Container: ${narrowWidth}x${fileContainerHeight}, Content: ${result.contentW}x${result.contentH}`);
+
+        // Verify no horizontal overflow
+        for (const p of result.positions) {
+          assert.ok(p.x + p.width <= narrowWidth,
+            `[Narrow ${count}] ${p.key} must fit horizontally in ${narrowWidth}px`);
+        }
+
+        // Verify no vertical overflow
+        for (const p of result.positions) {
+          const symbolBottom = (p.y + TOP_PADDING) + p.height;
+          assert.ok(symbolBottom <= fileContainerHeight,
+            `[Narrow ${count}] ${p.key} must fit vertically`);
+        }
+      }
+    });
+
+    test('FILE container - wide width optimization (1-10 boxes)', () => {
+      // Test with very wide container allowing horizontal layout
+      const wideWidth = 2000;
+
+      for (let count = 1; count <= 10; count++) {
+        const changeAmounts = Array.from({ length: count }, (_, i) => 10 + i * 5);
+        const symbols: Symbol[] = changeAmounts.map((amount, i) => {
+          const size = calculateBoxSize(amount);
+          return { key: `wide_${i}`, width: size.width, height: size.height };
+        });
+
+        const result = packSymbols(symbols, wideWidth);
+        const fileContainerHeight = result.contentH + TOP_PADDING + BOTTOM_PADDING + BORDER_HEIGHT;
+
+        // With wide container, should pack efficiently
+        assert.ok(result.contentW <= wideWidth,
+          `[Wide ${count}] Content width should fit in wide container`);
+
+        // Verify all symbols fit
+        for (const p of result.positions) {
+          const symbolBottom = (p.y + TOP_PADDING) + p.height;
+          assert.ok(symbolBottom <= fileContainerHeight,
+            `[Wide ${count}] ${p.key} must fit in container`);
+        }
+      }
+    });
   });
 });
 

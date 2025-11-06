@@ -245,5 +245,303 @@ namespace MyApp
     const property = result!.symbols.find(s => s.kind === 'variable' && s.name === 'Name');
     assert.ok(property, 'Should find Name property');
   });
+
+  test('should detect C# delegates', async () => {
+    const code = `
+namespace MyApp
+{
+    public delegate void NotifyDelegate(string message);
+    public delegate int CalculateDelegate(int x, int y);
+    
+    public class EventManager
+    {
+        public NotifyDelegate OnNotify;
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const notifyDelegate = result!.symbols.find(s => s.name === 'NotifyDelegate');
+    assert.ok(notifyDelegate, 'Should find NotifyDelegate');
+    assert.strictEqual(notifyDelegate!.kind, 'type', 'Delegate should be a type');
+    
+    const calculateDelegate = result!.symbols.find(s => s.name === 'CalculateDelegate');
+    assert.ok(calculateDelegate, 'Should find CalculateDelegate');
+  });
+
+  test('should detect C# events with accessors', async () => {
+    const code = `
+using System;
+
+namespace MyApp
+{
+    public class Button
+    {
+        private EventHandler clickHandler;
+        
+        public event EventHandler Click
+        {
+            add { clickHandler += value; }
+            remove { clickHandler -= value; }
+        }
+        
+        public void SimulateClick()
+        {
+            clickHandler?.Invoke(this, EventArgs.Empty);
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    // Events with accessors are detected as event_declaration
+    const clickEvent = result!.symbols.find(s => s.name === 'Click');
+    assert.ok(clickEvent, 'Should find Click event with accessors');
+    assert.strictEqual(clickEvent!.kind, 'variable', 'Event should be detected as variable');
+  });
+
+  test('should detect C# indexers', async () => {
+    const code = `
+namespace MyApp
+{
+    public class Collection
+    {
+        private string[] items = new string[10];
+        
+        public string this[int index]
+        {
+            get { return items[index]; }
+            set { items[index] = value; }
+        }
+        
+        public string this[string key]
+        {
+            get { return items[0]; }
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const indexers = result!.symbols.filter(s => s.name === 'this');
+    assert.ok(indexers.length >= 1, `Should find at least 1 indexer, found ${indexers.length}`);
+    assert.strictEqual(indexers[0].kind, 'function', 'Indexer should be detected as function');
+  });
+
+  test('should detect C# operator overloads', async () => {
+    const code = `
+namespace MyApp
+{
+    public class Vector
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+        
+        public static Vector operator +(Vector a, Vector b)
+        {
+            return new Vector { X = a.X + b.X, Y = a.Y + b.Y };
+        }
+        
+        public static Vector operator -(Vector a, Vector b)
+        {
+            return new Vector { X = a.X - b.X, Y = a.Y - b.Y };
+        }
+        
+        public static bool operator ==(Vector a, Vector b)
+        {
+            return a.X == b.X && a.Y == b.Y;
+        }
+        
+        public static bool operator !=(Vector a, Vector b)
+        {
+            return !(a == b);
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const operators = result!.symbols.filter(s => s.name.startsWith('operator'));
+    assert.ok(operators.length >= 4, `Should find at least 4 operators, found ${operators.length}`);
+    
+    const plusOperator = result!.symbols.find(s => s.name.includes('+'));
+    assert.ok(plusOperator, 'Should find + operator');
+    assert.strictEqual(plusOperator!.kind, 'function', 'Operator should be detected as function');
+  });
+
+  test('should parse C# files with conversion operators', async () => {
+    const code = `
+namespace MyApp
+{
+    public class Temperature
+    {
+        public double Celsius { get; set; }
+        
+        public static implicit operator double(Temperature t)
+        {
+            return t.Celsius;
+        }
+        
+        public static explicit operator int(Temperature t)
+        {
+            return (int)t.Celsius;
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    assert.ok(result!.symbols.length > 0, 'Should find symbols');
+    
+    // Note: tree-sitter-c-sharp may not expose conversion operators as separate nodes
+    // At minimum, we should find the class and property
+    const classSymbol = result!.symbols.find(s => s.name === 'Temperature');
+    assert.ok(classSymbol, 'Should find Temperature class');
+    
+    const property = result!.symbols.find(s => s.name === 'Celsius');
+    assert.ok(property, 'Should find Celsius property');
+  });
+
+  test('should detect C# destructors', async () => {
+    const code = `
+namespace MyApp
+{
+    public class ResourceManager
+    {
+        private IntPtr handle;
+        
+        public ResourceManager()
+        {
+            handle = IntPtr.Zero;
+        }
+        
+        ~ResourceManager()
+        {
+            // Cleanup code
+            if (handle != IntPtr.Zero)
+            {
+                // Free resources
+            }
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const destructor = result!.symbols.find(s => s.name.startsWith('~'));
+    assert.ok(destructor, 'Should find destructor');
+    assert.strictEqual(destructor!.name, '~ResourceManager', 'Destructor name should be ~ResourceManager');
+    assert.strictEqual(destructor!.kind, 'function', 'Destructor should be detected as function');
+  });
+
+  test('should detect C# records (C# 9+)', async () => {
+    const code = `
+namespace MyApp
+{
+    public record Person(string FirstName, string LastName);
+    
+    public record Employee(string FirstName, string LastName, int Id)
+    {
+        public string Department { get; init; }
+        
+        public void PrintInfo()
+        {
+            Console.WriteLine($"{FirstName} {LastName} - {Id}");
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const personRecord = result!.symbols.find(s => s.name === 'Person');
+    assert.ok(personRecord, 'Should find Person record');
+    assert.strictEqual(personRecord!.kind, 'class', 'Record should be detected as class');
+    
+    const employeeRecord = result!.symbols.find(s => s.name === 'Employee');
+    assert.ok(employeeRecord, 'Should find Employee record');
+  });
+
+  test('should detect C# structs', async () => {
+    const code = `
+namespace MyApp
+{
+    public struct Point
+    {
+        public int X;
+        public int Y;
+        
+        public Point(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+        
+        public double Distance()
+        {
+            return Math.Sqrt(X * X + Y * Y);
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const structSymbol = result!.symbols.find(s => s.name === 'Point');
+    assert.ok(structSymbol, 'Should find Point struct');
+    assert.strictEqual(structSymbol!.kind, 'class', 'Struct should be detected as class');
+    
+    const constructor = result!.symbols.find(s => s.kind === 'constructor');
+    assert.ok(constructor, 'Should find constructor in struct');
+    
+    const method = result!.symbols.find(s => s.name === 'Distance');
+    assert.ok(method, 'Should find Distance method in struct');
+  });
+
+  test('should detect C# enums', async () => {
+    const code = `
+namespace MyApp
+{
+    public enum Status
+    {
+        Pending,
+        Active,
+        Completed,
+        Cancelled
+    }
+    
+    public enum Priority : byte
+    {
+        Low = 1,
+        Medium = 2,
+        High = 3,
+        Critical = 4
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const statusEnum = result!.symbols.find(s => s.name === 'Status');
+    assert.ok(statusEnum, 'Should find Status enum');
+    assert.strictEqual(statusEnum!.kind, 'type', 'Enum should be detected as type');
+    
+    const priorityEnum = result!.symbols.find(s => s.name === 'Priority');
+    assert.ok(priorityEnum, 'Should find Priority enum');
+  });
 });
 

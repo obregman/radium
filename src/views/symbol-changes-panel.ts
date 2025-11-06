@@ -38,6 +38,7 @@ interface FileSymbolChanges {
 
 export class SymbolChangesPanel {
   public static currentPanel: SymbolChangesPanel | undefined;
+  public static gitChangesPanel: SymbolChangesPanel | undefined;
   private static outputChannel: vscode.OutputChannel;
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
@@ -52,16 +53,19 @@ export class SymbolChangesPanel {
   private parser: CodeParser;
   private readonly DEBOUNCE_DELAY = 300;
   private readonly CACHE_TTL = 2000;
+  private mode: 'realtime' | 'git';
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
-    workspaceRoot: string
+    workspaceRoot: string,
+    mode: 'realtime' | 'git' = 'realtime'
   ) {
     this.panel = panel;
     this.workspaceRoot = workspaceRoot;
     this.radiumIgnore = new RadiumIgnore(workspaceRoot);
     this.parser = new CodeParser();
+    this.mode = mode;
 
     this.panel.webview.html = this.getHtmlContent();
 
@@ -73,8 +77,13 @@ export class SymbolChangesPanel {
             this.lastKnownFileStates.clear();
             this.baselineFileStates.clear();
             this.log('Cleared session tracking and file states');
-            // Re-snapshot all files after clearing
-            await this.snapshotAllSourceFiles();
+            // Re-snapshot all files after clearing (realtime mode)
+            if (this.mode === 'realtime') {
+              await this.snapshotAllSourceFiles();
+            } else {
+              // Refresh git changes (git mode)
+              await this.analyzeGitChanges();
+            }
             break;
           case 'openFile':
             // Open the file at the specified line
@@ -104,33 +113,42 @@ export class SymbolChangesPanel {
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     
-    // Listen for when files are opened to store their initial state
-    vscode.workspace.onDidOpenTextDocument((document) => {
-      const filePath = document.uri.fsPath;
-      if (this.isSourceFile(filePath) && filePath.startsWith(this.workspaceRoot)) {
-        const relativePath = path.relative(this.workspaceRoot, filePath);
-        if (!this.radiumIgnore.shouldIgnore(relativePath)) {
-          try {
-            const content = document.getText();
-            // Store as baseline if we don't have one yet
-            if (!this.baselineFileStates.has(relativePath)) {
-              this.baselineFileStates.set(relativePath, content);
-              this.log(`Stored baseline state for: ${relativePath}`);
+    // Listen for when files are opened to store their initial state (only in realtime mode)
+    if (this.mode === 'realtime') {
+      vscode.workspace.onDidOpenTextDocument((document) => {
+        const filePath = document.uri.fsPath;
+        if (this.isSourceFile(filePath) && filePath.startsWith(this.workspaceRoot)) {
+          const relativePath = path.relative(this.workspaceRoot, filePath);
+          if (!this.radiumIgnore.shouldIgnore(relativePath)) {
+            try {
+              const content = document.getText();
+              // Store as baseline if we don't have one yet
+              if (!this.baselineFileStates.has(relativePath)) {
+                this.baselineFileStates.set(relativePath, content);
+                this.log(`Stored baseline state for: ${relativePath}`);
+              }
+              // Always update last known state
+              if (!this.lastKnownFileStates.has(relativePath)) {
+                this.lastKnownFileStates.set(relativePath, content);
+                this.log(`Stored initial state for newly opened file: ${relativePath}`);
+              }
+            } catch (error) {
+              this.log(`Failed to store initial state for ${relativePath}: ${error}`);
             }
-            // Always update last known state
-            if (!this.lastKnownFileStates.has(relativePath)) {
-              this.lastKnownFileStates.set(relativePath, content);
-              this.log(`Stored initial state for newly opened file: ${relativePath}`);
-            }
-          } catch (error) {
-            this.log(`Failed to store initial state for ${relativePath}: ${error}`);
           }
         }
-      }
-    }, null, this.disposables);
+      }, null, this.disposables);
+    }
     
-    this.log(`Initializing panel, workspace root: ${this.workspaceRoot}`);
-    this.startWatching();
+    this.log(`Initializing panel (${this.mode} mode), workspace root: ${this.workspaceRoot}`);
+    
+    if (this.mode === 'realtime') {
+      this.startWatching();
+    } else {
+      // Git mode: analyze git changes immediately
+      this.analyzeGitChanges();
+    }
+    
     this.log(`Panel initialization complete`);
   }
 
@@ -160,7 +178,36 @@ export class SymbolChangesPanel {
       }
     );
 
-    SymbolChangesPanel.currentPanel = new SymbolChangesPanel(panel, extensionUri, workspaceRoot);
+    SymbolChangesPanel.currentPanel = new SymbolChangesPanel(panel, extensionUri, workspaceRoot, 'realtime');
+  }
+
+  public static createOrShowGitChanges(extensionUri: vscode.Uri, workspaceRoot: string) {
+    // Initialize output channel if not already created
+    if (!SymbolChangesPanel.outputChannel) {
+      SymbolChangesPanel.outputChannel = vscode.window.createOutputChannel('Radium Symbol Visualization');
+    }
+    
+    const column = vscode.window.activeTextEditor
+      ? vscode.window.activeTextEditor.viewColumn
+      : undefined;
+
+    if (SymbolChangesPanel.gitChangesPanel) {
+      SymbolChangesPanel.gitChangesPanel.panel.reveal(column);
+      return;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      'gitChanges',
+      'Radium: Non-committed Git Changes',
+      column || vscode.ViewColumn.Two,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [extensionUri]
+      }
+    );
+
+    SymbolChangesPanel.gitChangesPanel = new SymbolChangesPanel(panel, extensionUri, workspaceRoot, 'git');
   }
 
   private log(message: string) {
@@ -295,6 +342,158 @@ export class SymbolChangesPanel {
     }
   }
 
+  private async analyzeGitChanges() {
+    this.log('Analyzing non-committed git changes...');
+    
+    try {
+      // Get git status
+      const { stdout: statusOutput } = await exec('git status --porcelain', {
+        cwd: this.workspaceRoot
+      });
+
+      if (!statusOutput.trim()) {
+        this.log('No git changes found');
+        this.panel.webview.postMessage({
+          type: 'info',
+          message: 'No uncommitted changes found'
+        });
+        return;
+      }
+
+      const lines = statusOutput.split('\n').filter(l => l.trim());
+      this.log(`Found ${lines.length} changed files in git`);
+
+      for (const line of lines) {
+        if (line.length < 4) continue;
+
+        const statusCode = line.substring(0, 2).trim();
+        let filePath = line.substring(3).trim();
+        
+        // Normalize path to use forward slashes
+        filePath = filePath.replace(/\\/g, '/');
+        
+        if (!this.isSourceFile(filePath)) {
+          this.log(`Skipping non-source file: ${filePath}`);
+          continue;
+        }
+
+        if (this.radiumIgnore.shouldIgnore(filePath)) {
+          this.log(`Ignoring file per radiumignore: ${filePath}`);
+          continue;
+        }
+
+        this.log(`Processing git change: ${filePath} (status: ${statusCode})`);
+
+        // Handle different status codes
+        if (statusCode === 'D') {
+          // File deleted
+          this.log(`File deleted: ${filePath}`);
+          continue;
+        }
+
+        // Get the diff for this file
+        let diffContent = '';
+        let oldContent = '';
+        let newContent = '';
+
+        const fullPath = path.join(this.workspaceRoot, filePath);
+
+        if (statusCode === 'A' || statusCode === '??') {
+          // New file
+          this.filesCreatedThisSession.add(filePath);
+          if (fs.existsSync(fullPath)) {
+            newContent = fs.readFileSync(fullPath, 'utf8');
+            oldContent = '';
+          }
+        } else {
+          // Modified file - get the committed version
+          try {
+            const { stdout: gitContent } = await exec(`git show HEAD:"${filePath}"`, {
+              cwd: this.workspaceRoot
+            });
+            oldContent = gitContent;
+          } catch (error) {
+            this.log(`Could not get git HEAD version of ${filePath}: ${error}`);
+            oldContent = '';
+          }
+
+          // Get current content
+          if (fs.existsSync(fullPath)) {
+            newContent = fs.readFileSync(fullPath, 'utf8');
+          }
+        }
+
+        // Store states
+        this.baselineFileStates.set(filePath, oldContent);
+        this.lastKnownFileStates.set(filePath, newContent);
+
+        // Process the change
+        await this.processGitFileChange(filePath, oldContent, newContent);
+      }
+
+      this.log('Git changes analysis complete');
+    } catch (error) {
+      this.log(`Error analyzing git changes: ${error}`);
+      vscode.window.showErrorMessage(`Failed to analyze git changes: ${error}`);
+    }
+  }
+
+  private async processGitFileChange(relativePath: string, oldContent: string, newContent: string) {
+    try {
+      // Generate a diff between old and new content
+      const patches = Diff.createPatch(relativePath, oldContent, newContent, '', '');
+      
+      const isNew = this.filesCreatedThisSession.has(relativePath);
+      
+      // Analyze the diff to extract symbol changes
+      const symbolChanges = await this.analyzeDiffForSymbols(relativePath, patches, isNew);
+      this.log(`Found ${symbolChanges.symbols.length} symbols in ${relativePath}`);
+
+      // If no symbols detected, send a fallback "file changed" box
+      if (symbolChanges.symbols.length === 0) {
+        this.log(`No symbols detected in ${relativePath}, sending file changed fallback`);
+        const fileName = path.basename(relativePath);
+        this.panel.webview.postMessage({
+          type: 'symbol:changed',
+          data: {
+            filePath: relativePath,
+            symbol: {
+              type: 'file',
+              name: fileName,
+              changeType: isNew ? 'added' : 'modified',
+              filePath: relativePath,
+              startLine: 1,
+              endLine: 1,
+              changeAmount: 1
+            },
+            calls: [],
+            timestamp: Date.now(),
+            isNew: isNew,
+            diff: patches
+          }
+        });
+      } else {
+        // Send each symbol change individually so they get their own boxes
+        for (const symbol of symbolChanges.symbols) {
+          this.log(`Sending symbol: ${symbol.name} (${symbol.type})`);
+          this.panel.webview.postMessage({
+            type: 'symbol:changed',
+            data: {
+              filePath: relativePath,
+              symbol: symbol,
+              calls: symbolChanges.calls.filter(c => c.from === symbol.name || c.to === symbol.name),
+              timestamp: Date.now(),
+              isNew: isNew,
+              diff: patches
+            }
+          });
+        }
+      }
+    } catch (error) {
+      this.log(`Error processing git file change for ${relativePath}: ${error}`);
+    }
+  }
+
   private async handleFileChange(absolutePath: string, isNewFile: boolean) {
     if (!this.isSourceFile(absolutePath)) {
       return;
@@ -420,16 +619,9 @@ export class SymbolChangesPanel {
       }
     }
     
-    // Store the current file state as the new baseline for future comparisons
-    try {
-      if (fs.existsSync(fullPath)) {
-        const currentContent = fs.readFileSync(fullPath, 'utf8');
-        this.lastKnownFileStates.set(relativePath, currentContent);
-        this.log(`Stored file state for ${relativePath}`);
-      }
-    } catch (error) {
-      this.log(`Failed to store file state for ${relativePath}: ${error}`);
-    }
+    // Note: We intentionally do NOT update lastKnownFileStates or baselineFileStates here.
+    // The baseline should remain the original state when the panel opened, so subsequent
+    // saves continue to show the cumulative changes from that baseline.
   }
 
   private isNoiseChange(addedLines: Map<number, string>, deletedLines: Map<number, string>): boolean {
@@ -1226,23 +1418,23 @@ export class SymbolChangesPanel {
       
       const fullPath = path.join(this.workspaceRoot, filePath);
       
-      // If we have a stored state for this file, diff against that instead of git
-      if (this.lastKnownFileStates.has(filePath)) {
-        this.log(`Using stored state for ${filePath}`);
-        const lastKnownContent = this.lastKnownFileStates.get(filePath)!;
+      // If we have a baseline state for this file, diff against the baseline (not lastKnown)
+      if (this.baselineFileStates.has(filePath)) {
+        this.log(`Using baseline state for ${filePath}`);
+        const baselineContent = this.baselineFileStates.get(filePath)!;
         
         if (fs.existsSync(fullPath)) {
           const currentContent = fs.readFileSync(fullPath, 'utf8');
           
-          // Check if content actually changed
-          if (lastKnownContent === currentContent) {
-            this.log(`No changes detected - content identical to stored state`);
+          // Check if content actually changed from baseline
+          if (baselineContent === currentContent) {
+            this.log(`No changes detected - content identical to baseline state`);
             return '';
           }
           
-          // Generate diff between last known state and current state
-          const diff = this.generateDiff(filePath, lastKnownContent, currentContent);
-          this.log(`Generated diff from stored state, length: ${diff.length}`);
+          // Generate diff between baseline state and current state
+          const diff = this.generateDiff(filePath, baselineContent, currentContent);
+          this.log(`Generated diff from baseline state, length: ${diff.length}`);
           
           this.diffCache.set(filePath, { diff, timestamp: Date.now() });
           return diff;
@@ -1374,6 +1566,9 @@ export class SymbolChangesPanel {
   }
 
   private getHtmlContent(): string {
+    const isRealtimeMode = this.mode === 'realtime';
+    const buttonLabel = isRealtimeMode ? '🗑️ Clear All' : '🔄 Refresh';
+    const buttonTitle = isRealtimeMode ? 'Clear all symbols' : 'Refresh git changes';
     return String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1646,7 +1841,7 @@ export class SymbolChangesPanel {
       top: 10px;
       left: 0;
       right: 0;
-      font-size: 13px;
+      font-size: 16px;
       font-weight: 600;
       font-family: var(--vscode-font-family);
       color: #FFFFFF;
@@ -1808,8 +2003,8 @@ export class SymbolChangesPanel {
     <button class="zoom-button" id="zoom-reset" title="Reset View">⟲</button>
   </div>
   
-  <button id="clear-button" title="Clear all symbols">
-    🗑️ Clear All
+  <button id="clear-button" title="${buttonTitle}">
+    ${buttonLabel}
   </button>
   
   <div id="container">
@@ -1985,22 +2180,14 @@ export class SymbolChangesPanel {
           // Compute packed content dimensions
           let contentW = 0;
           let contentH = 0;
-          // Determine max right edge and total height from shelves
-          // Re-run a lightweight pass over positions to compute content width/height
+          // Determine max right edge and actual maximum bottom edge
           if (positions.length > 0) {
-            let shelves = new Map(); // y -> {h, maxRight}
+            // Calculate actual maximum bottom edge (most accurate method)
             for (const p of positions) {
               const right = p.x + p.width;
+              const bottom = p.y + p.height;
               contentW = Math.max(contentW, right);
-              const shelf = shelves.get(p.y) || { h: 0 };
-              shelf.h = Math.max(shelf.h, p.height);
-              shelves.set(p.y, shelf);
-            }
-            // Sum shelf heights in order of y
-            const ys = Array.from(shelves.keys()).sort((a,b)=>a-b);
-            for (let i = 0; i < ys.length; i++) {
-              contentH += shelves.get(ys[i]).h;
-              if (i < ys.length - 1) contentH += PADDING;
+              contentH = Math.max(contentH, bottom);
             }
           }
           
@@ -2803,7 +2990,11 @@ export class SymbolChangesPanel {
   }
 
   private dispose() {
-    SymbolChangesPanel.currentPanel = undefined;
+    if (this.mode === 'realtime') {
+      SymbolChangesPanel.currentPanel = undefined;
+    } else {
+      SymbolChangesPanel.gitChangesPanel = undefined;
+    }
 
     for (const timeout of this.pendingChanges.values()) {
       clearTimeout(timeout);

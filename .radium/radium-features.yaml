@@ -243,7 +243,3 @@ spec:
         dependencies:
           - impact-analysis
 
-# Components should reference keys from radium-components.yaml
-# Dependencies should reference other feature keys
-# Areas group related features for better organization
-

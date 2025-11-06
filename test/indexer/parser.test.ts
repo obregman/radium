@@ -350,6 +350,260 @@ export class Counter extends React.Component {
     });
   });
 
+  suite('Go Parsing', () => {
+    test('should parse Go function', async () => {
+      const code = `package main
+
+func TestFunction() {
+  return
+}`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      assert.ok(result!.symbols.length > 0, 'Should find symbols');
+      
+      const funcSymbol = result!.symbols.find(s => s.kind === 'function' && s.name === 'TestFunction');
+      assert.ok(funcSymbol, 'Should find function symbol');
+      assert.strictEqual(funcSymbol!.name, 'TestFunction', 'Function name should be TestFunction');
+    });
+
+    test('should parse Go struct', async () => {
+      const code = `package main
+
+type User struct {
+  ID   string
+  Name string
+}`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      
+      const structSymbol = result!.symbols.find(s => s.kind === 'class' && s.name === 'User');
+      assert.ok(structSymbol, 'Should find struct symbol');
+      assert.strictEqual(structSymbol!.name, 'User', 'Struct name should be User');
+    });
+
+    test('should parse Go interface', async () => {
+      const code = `package main
+
+type Reader interface {
+  Read(p []byte) (n int, err error)
+}`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      
+      const interfaceSymbol = result!.symbols.find(s => s.kind === 'interface' && s.name === 'Reader');
+      assert.ok(interfaceSymbol, 'Should find interface symbol');
+      assert.strictEqual(interfaceSymbol!.name, 'Reader', 'Interface name should be Reader');
+    });
+
+    test('should parse Go method', async () => {
+      const code = `package main
+
+type User struct {
+  Name string
+}
+
+func (u *User) GetName() string {
+  return u.Name
+}`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      
+      const methodSymbol = result!.symbols.find(s => s.kind === 'function' && s.name === 'GetName');
+      assert.ok(methodSymbol, 'Should find method symbol');
+      assert.strictEqual(methodSymbol!.name, 'GetName', 'Method name should be GetName');
+      assert.ok(methodSymbol!.fqname.includes('User'), 'Method FQN should include receiver type');
+    });
+
+    test('should parse Go const', async () => {
+      const code = `package main
+
+const (
+  MaxRetries = 3
+  Timeout = 5000
+)`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      
+      const maxRetries = result!.symbols.find(s => s.name === 'MaxRetries');
+      assert.ok(maxRetries, 'Should find MaxRetries constant');
+      assert.strictEqual(maxRetries!.kind, 'variable', 'MaxRetries should be a variable');
+      
+      const timeout = result!.symbols.find(s => s.name === 'Timeout');
+      assert.ok(timeout, 'Should find Timeout constant');
+    });
+
+    test('should parse Go var', async () => {
+      const code = `package main
+
+var (
+  counter int
+  isActive bool
+)`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      
+      const counter = result!.symbols.find(s => s.name === 'counter');
+      assert.ok(counter, 'Should find counter variable');
+      assert.strictEqual(counter!.kind, 'variable', 'counter should be a variable');
+      
+      const isActive = result!.symbols.find(s => s.name === 'isActive');
+      assert.ok(isActive, 'Should find isActive variable');
+    });
+
+    test('should parse Go short variable declaration', async () => {
+      const code = `package main
+
+func main() {
+  x := 42
+  name := "test"
+}`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      
+      const x = result!.symbols.find(s => s.name === 'x');
+      assert.ok(x, 'Should find x variable');
+      
+      const name = result!.symbols.find(s => s.name === 'name');
+      assert.ok(name, 'Should find name variable');
+    });
+
+    test('should parse Go imports', async () => {
+      const code = `package main
+
+import (
+  "fmt"
+  "net/http"
+  customname "github.com/user/package"
+)`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      assert.ok(result!.imports.length >= 3, 'Should find at least 3 imports');
+      
+      const fmtImport = result!.imports.find(i => i.source === 'fmt');
+      assert.ok(fmtImport, 'Should find fmt import');
+      
+      const httpImport = result!.imports.find(i => i.source === 'net/http');
+      assert.ok(httpImport, 'Should find net/http import');
+      
+      const customImport = result!.imports.find(i => i.source === 'github.com/user/package');
+      assert.ok(customImport, 'Should find custom import');
+      assert.ok(customImport!.names.includes('customname'), 'Should capture custom alias');
+    });
+
+    test('should parse Go type alias', async () => {
+      const code = `package main
+
+type UserID string
+type Count int`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      
+      const userID = result!.symbols.find(s => s.name === 'UserID');
+      assert.ok(userID, 'Should find UserID type');
+      assert.strictEqual(userID!.kind, 'type', 'UserID should be a type');
+      
+      const count = result!.symbols.find(s => s.name === 'Count');
+      assert.ok(count, 'Should find Count type');
+    });
+
+    test('should parse Go file with mixed symbols', async () => {
+      const code = `package api
+
+import (
+  "fmt"
+  "net/http"
+)
+
+const APIVersion = "v1"
+
+type Server struct {
+  Port int
+}
+
+type Handler interface {
+  ServeHTTP(w http.ResponseWriter, r *http.Request)
+}
+
+func (s *Server) Start() error {
+  return nil
+}
+
+func NewServer(port int) *Server {
+  return &Server{Port: port}
+}`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      assert.ok(result!.symbols.length >= 5, 'Should find at least 5 symbols');
+      
+      const apiVersion = result!.symbols.find(s => s.name === 'APIVersion');
+      assert.ok(apiVersion, 'Should find APIVersion constant');
+      
+      const server = result!.symbols.find(s => s.name === 'Server' && s.kind === 'class');
+      assert.ok(server, 'Should find Server struct');
+      
+      const handler = result!.symbols.find(s => s.name === 'Handler' && s.kind === 'interface');
+      assert.ok(handler, 'Should find Handler interface');
+      
+      const start = result!.symbols.find(s => s.name === 'Start');
+      assert.ok(start, 'Should find Start method');
+      
+      const newServer = result!.symbols.find(s => s.name === 'NewServer');
+      assert.ok(newServer, 'Should find NewServer function');
+    });
+
+    test('should handle empty Go file', async () => {
+      const code = 'package main';
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      // Package declaration doesn't create a symbol
+      assert.ok(result!.symbols.length === 0, 'Empty package should have no symbols');
+    });
+
+    test('should parse Go multiple methods on same receiver', async () => {
+      const code = `package main
+
+type Calculator struct {
+  value int
+}
+
+func (c *Calculator) Add(n int) {
+  c.value += n
+}
+
+func (c *Calculator) Subtract(n int) {
+  c.value -= n
+}
+
+func (c Calculator) GetValue() int {
+  return c.value
+}`;
+      const result = await parser.parseFile('test.go', code);
+      
+      assert.ok(result, 'Result should not be null');
+      
+      const add = result!.symbols.find(s => s.name === 'Add');
+      assert.ok(add, 'Should find Add method');
+      assert.ok(add!.fqname.includes('Calculator'), 'Add should have Calculator in FQN');
+      
+      const subtract = result!.symbols.find(s => s.name === 'Subtract');
+      assert.ok(subtract, 'Should find Subtract method');
+      
+      const getValue = result!.symbols.find(s => s.name === 'GetValue');
+      assert.ok(getValue, 'Should find GetValue method');
+    });
+  });
+
   suite('Language Detection', () => {
     test('should detect TypeScript', () => {
       assert.strictEqual(parser.getLanguage('test.ts'), 'typescript');
@@ -367,6 +621,10 @@ export class Counter extends React.Component {
 
     test('should detect C#', () => {
       assert.strictEqual(parser.getLanguage('test.cs'), 'csharp');
+    });
+
+    test('should detect Go', () => {
+      assert.strictEqual(parser.getLanguage('test.go'), 'go');
     });
 
     test('should return undefined for unsupported files', () => {

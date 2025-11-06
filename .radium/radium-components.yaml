@@ -1,0 +1,99 @@
+spec:
+  components:
+    - views:
+        name: Views & Visualization
+        description: Interactive visualization panels including component map, features map, real-time file changes, symbol changes visualization, and git changes view. Provides D3.js-based graph rendering with pan/zoom capabilities, animated change indicators, and diff displays.
+        files:
+          - src/views/map-panel.ts
+          - src/views/features-map-panel.ts
+          - src/views/realtime-changes-panel.ts
+          - src/views/symbol-changes-panel.ts
+        external:
+          - type: Library
+            name: D3.js
+            description: Graph visualization and force-directed layouts
+            usedBy:
+              - src/views/map-panel.ts
+              - src/views/features-map-panel.ts
+          - type: Library
+            name: Chokidar
+            description: File system watcher for real-time change detection
+            usedBy:
+              - src/views/realtime-changes-panel.ts
+              - src/views/symbol-changes-panel.ts
+    
+    - store:
+        name: Data Store
+        description: SQLite-based database for storing code graph, analysis data, and relationships. Manages schema migrations and provides SQL adapter for querying indexed codebase structure.
+        files:
+          - src/store/schema.ts
+          - src/store/sql-adapter.ts
+        external:
+          - type: SQLite
+            name: GraphDB
+            description: Stores code graph and analysis data
+            usedBy:
+              - src/store/sql-adapter.ts
+              - src/store/schema.ts
+    
+    - indexer:
+        name: Code Indexer & Parser
+        description: Parses and indexes source code files using Tree-sitter. Supports TypeScript, JavaScript, Python, and C# (including XAML). Extracts symbols (functions, classes, interfaces, variables), imports, and call relationships. Handles TSX files with proper JSX parsing.
+        files:
+          - src/indexer/indexer.ts
+          - src/indexer/parser.ts
+        external:
+          - type: Library
+            name: Tree-sitter
+            description: Parser generator for extracting code symbols and structure
+            usedBy:
+              - src/indexer/parser.ts
+    
+    - git:
+        name: Git Integration
+        description: Tracks git changes, diffs, and uncommitted modifications. Provides git diff analysis for both staged and unstaged changes, comparing against HEAD to identify symbol-level modifications.
+        files:
+          - src/git/git-tracker.ts
+          - src/git/git-diff-tracker.ts
+        external:
+          - type: CLI
+            name: Git
+            description: Version control system for tracking changes
+            usedBy:
+              - src/git/git-tracker.ts
+              - src/git/git-diff-tracker.ts
+    
+    - analysis:
+        name: Impact Analysis
+        description: Analyzes code impact and dependencies across the codebase. Identifies affected files and components when changes are made, helping understand the ripple effects of modifications.
+        files:
+          - src/analysis/impact-analyzer.ts
+        external:
+    
+    - orchestrator:
+        name: LLM Orchestrator
+        description: Coordinates LLM interactions and plan execution. Manages communication with AI services for code analysis and intelligent suggestions.
+        files:
+          - src/orchestrator/llm-orchestrator.ts
+        external:
+          - type: API
+            name: OpenAI API
+            description: LLM service for code analysis and intelligent suggestions
+            usedBy:
+              - src/orchestrator/llm-orchestrator.ts
+    
+    - config:
+        name: Configuration Management
+        description: Loads and manages Radium configuration files including radium-components.yaml, radium-features.yaml, and radiumignore. Handles YAML parsing, file pattern matching, and ignore rules for filtering files from visualization and tracking.
+        files:
+          - src/config/radium-config.ts
+          - src/config/features-config.ts
+          - src/config/radium-ignore.ts
+        external:
+          - type: Library
+            name: js-yaml
+            description: YAML parser for configuration files
+            usedBy:
+              - src/config/radium-config.ts
+              - src/config/features-config.ts
+

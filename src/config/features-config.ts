@@ -38,11 +38,15 @@ export class FeaturesConfigLoader {
   load(): FeaturesConfig | null {
     const configPath = path.join(this.workspaceRoot, '.radium', 'radium-features.yaml');
     
-    console.log(`[Features Config] Looking for config at: ${configPath}`);
+    console.log(`[Features Config] ========================================`);
+    console.log(`[Features Config] Loading radium-features.yaml`);
     console.log(`[Features Config] Workspace root: ${this.workspaceRoot}`);
+    console.log(`[Features Config] Looking for config at: ${configPath}`);
+    console.log(`[Features Config] File exists: ${fs.existsSync(configPath)}`);
+    console.log(`[Features Config] ========================================`);
     
     if (!fs.existsSync(configPath)) {
-      console.log('[Features Config] No radium-features.yaml found in .radium directory');
+      console.log('[Features Config] ❌ No radium-features.yaml found in .radium directory');
       
       // Check if .radium directory exists
       const radiumDir = path.join(this.workspaceRoot, '.radium');

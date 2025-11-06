@@ -6,6 +6,3 @@ out
 *.log
 .DS_Store
 
-# Radium config files (user-specific, not the examples)
-.radium/radium-components.yaml
-.radium/radium-features.yaml

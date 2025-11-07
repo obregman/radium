@@ -1,9 +1,10 @@
 -- not started        >> in progress         $$ completed
 
 
+-- variable changes inside functions are still drawn as "variable" boxes. they should be categorized and function changes
 
-$$ change the symbol visualization layout. instead of vertical stacking, the layout should be more dynamic. use small ellipses for added variables, rounded rectangles for functions
+-- some changes inside functions are not categorized correctly and the FILE box is displayed instead of a function box
 
--- when the symbol vis view open or cleaned, read the project files (source files only),
-and keep a snapshot of each source file. once a change to a file is detected compare it
-with the existing snapshot to find the changes.
+-- when detecting a change, extract the comments and display them in large fonts above the changed file for 3 seconds
+
+-- the label in a symbol box (e.g. "myFunction() ~") should use larger font size as the box size increases  - make sure the label still fits in the box

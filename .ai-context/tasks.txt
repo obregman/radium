@@ -7,4 +7,9 @@
 
 -- when detecting a change, extract the comments and display them in large fonts above the changed file for 3 seconds
 
+-- symbol vis view tooltip should display in fonts convinient for reading regardless of zoom level
+
+-- in the symbol vis view, render a grid with think gray lines in the background
+
 -- the label in a symbol box (e.g. "myFunction() ~") should use larger font size as the box size increases  - make sure the label still fits in the box
+

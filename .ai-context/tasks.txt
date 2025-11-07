@@ -3,10 +3,4 @@
 
 Symbol visualization view tasks:
 
--- in cs files, variable changes inside functions are still drawn as "variable" boxes. they should be categorized and function changes
-
-
--- on code change, make the comment text green on translucent white, make the font a bit smaller and place the box under the file box so it doesn't obscure it
-only display comment from the newly added or changed code not the entire file. also preserve newlines
-
-
+$$ there's still problem with symbol boxes layout. they are sometimes overlap or extend from the file box border

@@ -735,8 +735,8 @@ export class SymbolChangesPanel {
     }
 
     // Extract comments from diff
-    const comments = this.extractCommentsFromDiff(addedLines, filePath);
-    this.log(`Extracted ${comments.length} comments from diff`);
+    const comments = this.extractCommentsFromDiff(addedLines, deletedLines, filePath);
+    this.log(`Extracted ${comments.length} new comments from diff`);
     
     // Extract variables from diff (only for things tree-sitter doesn't catch well)
     const variables = this.extractVariablesFromDiff(currentContent, addedLines, deletedLines, changedLineNumbers);
@@ -1068,13 +1068,13 @@ export class SymbolChangesPanel {
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
-  private extractCommentsFromDiff(addedLines: Map<number, string>, filePath: string): string[] {
-    const comments: string[] = [];
+  private extractCommentsFromDiff(addedLines: Map<number, string>, deletedLines: Map<number, string>, filePath: string): string[] {
+    const newComments: string[] = [];
+    const oldComments = new Set<string>();
     const ext = filePath.split('.').pop()?.toLowerCase();
     
-    for (const [lineNum, lineContent] of addedLines) {
-      const trimmed = lineContent.trim();
-      
+    // Helper function to extract comment text from a line
+    const extractCommentText = (trimmed: string): string | null => {
       // JavaScript/TypeScript/C-style comments
       if (ext === 'js' || ext === 'ts' || ext === 'jsx' || ext === 'tsx' || 
           ext === 'c' || ext === 'cpp' || ext === 'java' || ext === 'cs' ||
@@ -1083,13 +1083,13 @@ export class SymbolChangesPanel {
         if (trimmed.startsWith('//')) {
           const comment = trimmed.substring(2).trim();
           if (comment.length > 0) {
-            comments.push(comment);
+            return comment;
           }
         }
         // Multi-line comments
         const multiLineMatch = trimmed.match(/\/\*\s*(.+?)\s*\*\//);
         if (multiLineMatch) {
-          comments.push(multiLineMatch[1].trim());
+          return multiLineMatch[1].trim();
         }
       }
       
@@ -1098,7 +1098,7 @@ export class SymbolChangesPanel {
         if (trimmed.startsWith('#')) {
           const comment = trimmed.substring(1).trim();
           if (comment.length > 0 && !comment.startsWith('!')) { // Skip shebangs
-            comments.push(comment);
+            return comment;
           }
         }
       }
@@ -1107,12 +1107,32 @@ export class SymbolChangesPanel {
       if (ext === 'html' || ext === 'xml' || ext === 'svg') {
         const htmlCommentMatch = trimmed.match(/<!--\s*(.+?)\s*-->/);
         if (htmlCommentMatch) {
-          comments.push(htmlCommentMatch[1].trim());
+          return htmlCommentMatch[1].trim();
         }
+      }
+      
+      return null;
+    };
+    
+    // First, collect all comments from deleted lines
+    for (const [lineNum, lineContent] of deletedLines) {
+      const trimmed = lineContent.trim();
+      const comment = extractCommentText(trimmed);
+      if (comment) {
+        oldComments.add(comment);
       }
     }
     
-    return comments;
+    // Then, collect only NEW comments from added lines (not in deleted lines)
+    for (const [lineNum, lineContent] of addedLines) {
+      const trimmed = lineContent.trim();
+      const comment = extractCommentText(trimmed);
+      if (comment && !oldComments.has(comment)) {
+        newComments.push(comment);
+      }
+    }
+    
+    return newComments;
   }
 
   private extractVariablesFromDiff(
@@ -1291,6 +1311,52 @@ export class SymbolChangesPanel {
           });
         }
       }
+
+      // C# variable declarations (e.g., int x = 5; string name = "test";)
+      const csharpVarMatch = trimmed.match(/\b(int|string|bool|double|float|decimal|long|short|byte|char|object|var|[A-Z][a-zA-Z0-9_<>,\[\]]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+?)(?:;|$)/);
+      if (csharpVarMatch) {
+        const varType = csharpVarMatch[1];
+        const varName = csharpVarMatch[2];
+        const varValue = csharpVarMatch[3].trim();
+        
+        // Skip if this looks like a method call or lambda
+        if (varValue.includes('=>') || varValue.match(/^\w+\s*\(/)) {
+          continue;
+        }
+        
+        // Check if variable is inside a function (skip if it is)
+        const context = this.detectVariableContext(content, lineNum);
+        if (context === null) {
+          // Inside a function - skip this variable
+          continue;
+        }
+        
+        // Only add if it's truly new (not in deleted lines)
+        if (!seenVariables.has(varName) && !existingVariables.has(varName)) {
+          seenVariables.add(varName);
+          const varKind = varType === 'const' ? 'constant' : 'variable';
+          let description = '';
+          
+          if (context === 'file-level') {
+            description = `${this.capitalize(varKind)} added`;
+          } else if (context && typeof context === 'object') {
+            description = `${this.capitalize(varKind)} added to ${context.type.toLowerCase()}`;
+          } else {
+            description = `${this.capitalize(varKind)} added`;
+          }
+          
+          variables.push({
+            type: varKind,
+            name: varName,
+            changeType: 'added',
+            filePath: '',
+            startLine: lineNum,
+            endLine: lineNum,
+            details: description,
+            changeAmount: 1
+          });
+        }
+      }
     }
 
     // Check for value changes (variable exists in both added and deleted)
@@ -1403,6 +1469,13 @@ export class SymbolChangesPanel {
         if (arrowMatch) {
           foundFunction = true;
           break; // Variable is inside an arrow function
+        }
+        
+        // C# method definitions with return types (e.g., public void MethodName() { or private int GetValue(string x) {)
+        const csharpMethodMatch = line.match(/\b(public|private|protected|internal|static|virtual|override|async|sealed|abstract)?\s*(void|int|string|bool|double|float|decimal|long|short|byte|char|object|var|[A-Z][a-zA-Z0-9_<>,\[\]]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)\s*\{?/);
+        if (csharpMethodMatch) {
+          foundFunction = true;
+          break; // Variable is inside a C# method
         }
         
         // Method definitions (e.g., methodName() { or methodName(params) {)
@@ -1886,7 +1959,7 @@ export class SymbolChangesPanel {
       border: 2px solid var(--vscode-panel-border);
       border-radius: 0;
       background-color: #4c4d4c;
-      padding: 40px 0 0 0;
+      padding: 40px 2px 2px 2px;
       box-sizing: border-box; /* Width/height includes border and padding */
       /* Make this the positioning context for child symbol boxes */
       /* Child elements with position:absolute will be relative to this container */
@@ -2047,29 +2120,29 @@ export class SymbolChangesPanel {
     }
 
     .comment-overlay {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background-color: rgba(0, 0, 0, 0.9);
-      color: #FFFFFF;
-      padding: 30px 40px;
-      border-radius: 8px;
-      font-size: 24px;
-      font-weight: 500;
-      max-width: 80%;
-      text-align: center;
-      z-index: 2000;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      position: absolute;
+      background-color: rgba(255, 255, 255, 0.85);
+      color: #22863a;
+      padding: 12px 16px;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: 400;
+      max-width: 400px;
+      text-align: left;
+      z-index: 15;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
       animation: fadeInOut 3s ease-in-out forwards;
       pointer-events: none;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      line-height: 1.4;
     }
 
     @keyframes fadeInOut {
-      0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
-      10% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-      90% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-      100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+      0% { opacity: 0; transform: translateY(-5px); }
+      10% { opacity: 1; transform: translateY(0); }
+      90% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-5px); }
     }
   </style>
 </head>
@@ -2237,11 +2310,12 @@ export class SymbolChangesPanel {
           let currentX = 0;
           let currentY = 0;
           let rowHeight = 0;
-          const PADDING = 0; // No padding - symbols touch each other
+          const PADDING = 2; // Small padding between symbols to prevent overlap
           
           for (const symbol of symbolsArray) {
             // Check if we need to wrap to next row
-            if (currentX + symbol.width > containerWidth && currentX > 0) {
+            // Add small margin to ensure we don't exceed container width
+            if (currentX + symbol.width > containerWidth - 2 && currentX > 0) {
               currentX = 0;
               currentY += rowHeight + PADDING;
               rowHeight = 0;
@@ -2441,6 +2515,17 @@ export class SymbolChangesPanel {
               const measured = group.fileLabel.scrollWidth || 0;
               const estimate = (group.fileLabel.textContent || '').length * 8 + 20;
               labelMinWidth = Math.max(300, measured || estimate);
+              
+              // Scale font size for empty container too
+              const minFontSize = 14;
+              const maxFontSize = 24;
+              const minWidth = 300;
+              const maxWidth = 900;
+              
+              const fontScale = Math.max(0, Math.min(1, (labelMinWidth - minWidth) / (maxWidth - minWidth)));
+              const fontSize = minFontSize + (maxFontSize - minFontSize) * fontScale;
+              
+              group.fileLabel.style.fontSize = Math.round(fontSize) + 'px';
             }
             group.fileContainer.style.width = labelMinWidth + 'px';
             group.fileContainer.style.height = '100px';
@@ -2462,8 +2547,8 @@ export class SymbolChangesPanel {
           for (const pos of packed.positions) {
             const box = pos.element;
             
-            // Position relative to file container (accounting for 40px top padding)
-            box.style.left = pos.x + 'px';
+            // Position relative to file container (accounting for 40px top padding and 2px left padding)
+            box.style.left = (pos.x + 2) + 'px'; // Add 2px for left padding
             box.style.top = (pos.y + 40) + 'px'; // Add 40px for label space
             
             // Ensure the box has the correct size
@@ -2533,18 +2618,45 @@ export class SymbolChangesPanel {
           // Container has box-sizing: border-box, so width/height includes border (2px each side = 4px total)
           // and padding (40px top). The content area for symbols is the full width/height minus these.
           // Since symbols are positioned in the content area, we set container size to exactly match packed size.
-          // Add 3px padding at the bottom to ensure the container fully wraps the symbols.
+          // Add extra padding to ensure symbols don't touch borders or overflow
           // IMPORTANT: With box-sizing: border-box, the total height must account for:
           //   - 40px top padding (where label lives)
           //   - packed.contentH (actual symbol content height)
-          //   - 3px bottom padding
+          //   - 8px bottom padding (increased for safety)
           //   - 4px borders (2px top + 2px bottom)
-          const finalWidth = Math.max(packed.contentW, labelMinWidth);
-          const finalHeight = packed.contentH + 40 + 3 + 4; // 40px label padding + 3px bottom padding + 4px borders
+          const finalWidth = Math.max(packed.contentW + 4, labelMinWidth); // Add 4px horizontal padding
+          const finalHeight = packed.contentH + 40 + 8 + 4; // 40px label padding + 8px bottom padding + 4px borders
           
           console.log('[Layout] Final container size:', finalWidth, 'x', finalHeight, '(label min:', labelMinWidth, ', packed:', packed.contentW, 'x', packed.contentH, ')');
           group.fileContainer.style.width = finalWidth + 'px';
           group.fileContainer.style.height = finalHeight + 'px';
+          
+          // Scale file label font size based on container width
+          // Base font size is 16px for 300px width
+          // Scale up to 24px for 900px+ width
+          if (group.fileLabel) {
+            const minFontSize = 14;
+            const maxFontSize = 24;
+            const minWidth = 300;
+            const maxWidth = 900;
+            
+            const fontScale = Math.max(0, Math.min(1, (finalWidth - minWidth) / (maxWidth - minWidth)));
+            const fontSize = minFontSize + (maxFontSize - minFontSize) * fontScale;
+            
+            group.fileLabel.style.fontSize = Math.round(fontSize) + 'px';
+            
+            // Ensure text fits by checking if it overflows
+            // If it overflows, reduce font size slightly
+            setTimeout(() => {
+              if (group.fileLabel.scrollWidth > group.fileLabel.clientWidth) {
+                let adjustedSize = fontSize;
+                while (group.fileLabel.scrollWidth > group.fileLabel.clientWidth && adjustedSize > minFontSize) {
+                  adjustedSize -= 0.5;
+                  group.fileLabel.style.fontSize = adjustedSize + 'px';
+                }
+              }
+            }, 0);
+          }
           
           // Update group width for file spacing calculations
           group.width = finalWidth;
@@ -3057,11 +3169,33 @@ export class SymbolChangesPanel {
               
               // Display comments if present
               if (message.data.comments && message.data.comments.length > 0) {
-                const commentText = message.data.comments.join(' • ');
+                // Preserve newlines by joining with newline character
+                const commentText = message.data.comments.join('\n');
                 const overlay = document.createElement('div');
                 overlay.className = 'comment-overlay';
                 overlay.textContent = commentText;
-                document.body.appendChild(overlay);
+                
+                // Position under the file box
+                const filePath = message.data.filePath;
+                const group = fileGroups.get(filePath);
+                if (group && group.fileContainer) {
+                  // Append to canvas so it moves with pan/zoom
+                  canvas.appendChild(overlay);
+                  
+                  // Position below the file container
+                  const containerRect = group.fileContainer.getBoundingClientRect();
+                  const canvasRect = canvas.getBoundingClientRect();
+                  
+                  // Calculate position relative to canvas
+                  const left = group.x;
+                  const top = group.y + parseInt(group.fileContainer.style.height || '100');
+                  
+                  overlay.style.left = left + 'px';
+                  overlay.style.top = (top + 25) + 'px'; // 25px gap below file box
+                } else {
+                  // Fallback: append to body if file container not found
+                  document.body.appendChild(overlay);
+                }
                 
                 // Remove after animation completes (3 seconds)
                 setTimeout(() => {

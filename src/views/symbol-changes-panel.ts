@@ -34,6 +34,7 @@ interface FileSymbolChanges {
   timestamp: number;
   isNew: boolean;
   diff?: string; // Full diff for the file
+  comments?: string[]; // Extracted comments from the diff
 }
 
 export class SymbolChangesPanel {
@@ -484,7 +485,8 @@ export class SymbolChangesPanel {
               calls: symbolChanges.calls.filter(c => c.from === symbol.name || c.to === symbol.name),
               timestamp: Date.now(),
               isNew: isNew,
-              diff: patches
+              diff: patches,
+              comments: symbolChanges.comments || []
             }
           });
         }
@@ -613,7 +615,8 @@ export class SymbolChangesPanel {
             calls: symbolChanges.calls.filter(c => c.from === symbol.name || c.to === symbol.name),
             timestamp: Date.now(),
             isNew: isNew,
-            diff: diff
+            diff: diff,
+            comments: symbolChanges.comments || []
           }
         });
       }
@@ -731,6 +734,10 @@ export class SymbolChangesPanel {
       };
     }
 
+    // Extract comments from diff
+    const comments = this.extractCommentsFromDiff(addedLines, filePath);
+    this.log(`Extracted ${comments.length} comments from diff`);
+    
     // Extract variables from diff (only for things tree-sitter doesn't catch well)
     const variables = this.extractVariablesFromDiff(currentContent, addedLines, deletedLines, changedLineNumbers);
     
@@ -1005,7 +1012,8 @@ export class SymbolChangesPanel {
       calls,
       timestamp: Date.now(),
       isNew: isNewFile,
-      diff: diff
+      diff: diff,
+      comments: comments
     };
   }
 
@@ -1058,6 +1066,53 @@ export class SymbolChangesPanel {
 
   private capitalize(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  private extractCommentsFromDiff(addedLines: Map<number, string>, filePath: string): string[] {
+    const comments: string[] = [];
+    const ext = filePath.split('.').pop()?.toLowerCase();
+    
+    for (const [lineNum, lineContent] of addedLines) {
+      const trimmed = lineContent.trim();
+      
+      // JavaScript/TypeScript/C-style comments
+      if (ext === 'js' || ext === 'ts' || ext === 'jsx' || ext === 'tsx' || 
+          ext === 'c' || ext === 'cpp' || ext === 'java' || ext === 'cs' ||
+          ext === 'go' || ext === 'rs' || ext === 'swift') {
+        // Single-line comments
+        if (trimmed.startsWith('//')) {
+          const comment = trimmed.substring(2).trim();
+          if (comment.length > 0) {
+            comments.push(comment);
+          }
+        }
+        // Multi-line comments
+        const multiLineMatch = trimmed.match(/\/\*\s*(.+?)\s*\*\//);
+        if (multiLineMatch) {
+          comments.push(multiLineMatch[1].trim());
+        }
+      }
+      
+      // Python/Ruby/Shell comments
+      if (ext === 'py' || ext === 'rb' || ext === 'sh' || ext === 'bash') {
+        if (trimmed.startsWith('#')) {
+          const comment = trimmed.substring(1).trim();
+          if (comment.length > 0 && !comment.startsWith('!')) { // Skip shebangs
+            comments.push(comment);
+          }
+        }
+      }
+      
+      // HTML/XML comments
+      if (ext === 'html' || ext === 'xml' || ext === 'svg') {
+        const htmlCommentMatch = trimmed.match(/<!--\s*(.+?)\s*-->/);
+        if (htmlCommentMatch) {
+          comments.push(htmlCommentMatch[1].trim());
+        }
+      }
+    }
+    
+    return comments;
   }
 
   private extractVariablesFromDiff(
@@ -1773,7 +1828,7 @@ export class SymbolChangesPanel {
     }
 
     .diff-tooltip {
-      position: absolute;
+      position: fixed;
       background-color: var(--vscode-editor-background);
       border: 1px solid var(--vscode-panel-border);
       border-radius: 4px;
@@ -1784,12 +1839,13 @@ export class SymbolChangesPanel {
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
       z-index: 1000;
       font-family: var(--vscode-editor-font-family);
-      font-size: 11px;
+      font-size: 13px;
       white-space: pre-wrap;
       word-wrap: break-word;
       opacity: 0;
       transition: opacity 0.2s ease;
       pointer-events: none;
+      transform: scale(1);
     }
 
     .diff-tooltip.visible {
@@ -1988,6 +2044,32 @@ export class SymbolChangesPanel {
     #clear-button:hover {
       opacity: 1;
       border-color: var(--vscode-foreground);
+    }
+
+    .comment-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(0, 0, 0, 0.9);
+      color: #FFFFFF;
+      padding: 30px 40px;
+      border-radius: 8px;
+      font-size: 24px;
+      font-weight: 500;
+      max-width: 80%;
+      text-align: center;
+      z-index: 2000;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      animation: fadeInOut 3s ease-in-out forwards;
+      pointer-events: none;
+    }
+
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+      10% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      90% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
     }
   </style>
 </head>
@@ -2388,6 +2470,26 @@ export class SymbolChangesPanel {
             box.style.width = pos.width + 'px';
             box.style.height = pos.height + 'px';
             
+            // Scale font size based on box size
+            // Base font size is 11px for MIN_WIDTH (100px)
+            // Scale up to 18px for MAX_WIDTH (400px)
+            const minFontSize = 11;
+            const maxFontSize = 18;
+            const fontScale = (pos.width - 100) / (400 - 100); // 0 to 1
+            const fontSize = minFontSize + (maxFontSize - minFontSize) * Math.max(0, Math.min(1, fontScale));
+            
+            // Apply font size to symbol name
+            const symbolName = box.querySelector('.symbol-name');
+            if (symbolName) {
+              symbolName.style.fontSize = Math.round(fontSize) + 'px';
+            }
+            
+            // Scale change symbol proportionally
+            const changeSymbol = box.querySelector('.change-symbol');
+            if (changeSymbol) {
+              changeSymbol.style.fontSize = Math.round(fontSize + 1) + 'px';
+            }
+            
             // Update size label to show dimensions
             const sizeLabel = box.querySelector('.symbol-size-label');
             if (sizeLabel) {
@@ -2621,19 +2723,21 @@ export class SymbolChangesPanel {
           hoverTimeout = setTimeout(() => {
             if (diff) {
               tooltip = createDiffTooltip(symbol, diff, box);
-              canvas.appendChild(tooltip);
+              document.body.appendChild(tooltip);
               
-              // Position tooltip near the cursor
-              const canvasRect = canvas.getBoundingClientRect();
-              const containerRect = container.getBoundingClientRect();
+              // Position tooltip near the cursor using fixed positioning
+              // This ensures the tooltip stays at a consistent size regardless of zoom
+              tooltip.style.left = (lastMouseX + 15) + 'px';
+              tooltip.style.top = (lastMouseY + 15) + 'px';
               
-              // Convert mouse position to canvas coordinates (accounting for zoom and pan)
-              const canvasX = (lastMouseX - canvasRect.left) / scale;
-              const canvasY = (lastMouseY - canvasRect.top) / scale;
-              
-              // Position tooltip slightly offset from cursor
-              tooltip.style.left = (canvasX + 15) + 'px';
-              tooltip.style.top = (canvasY + 15) + 'px';
+              // Ensure tooltip doesn't go off-screen
+              const tooltipRect = tooltip.getBoundingClientRect();
+              if (tooltipRect.right > window.innerWidth) {
+                tooltip.style.left = (window.innerWidth - tooltipRect.width - 10) + 'px';
+              }
+              if (tooltipRect.bottom > window.innerHeight) {
+                tooltip.style.top = (window.innerHeight - tooltipRect.height - 10) + 'px';
+              }
               
               // Show tooltip
               setTimeout(() => tooltip.classList.add('visible'), 10);
@@ -2950,6 +3054,21 @@ export class SymbolChangesPanel {
           switch (message.type) {
             case 'symbol:changed':
               console.log('[Symbol Changes] Processing symbol:changed message', message.data);
+              
+              // Display comments if present
+              if (message.data.comments && message.data.comments.length > 0) {
+                const commentText = message.data.comments.join(' • ');
+                const overlay = document.createElement('div');
+                overlay.className = 'comment-overlay';
+                overlay.textContent = commentText;
+                document.body.appendChild(overlay);
+                
+                // Remove after animation completes (3 seconds)
+                setTimeout(() => {
+                  overlay.remove();
+                }, 3000);
+              }
+              
               handleSingleSymbolChange(message.data);
               break;
             case 'file:reverted':

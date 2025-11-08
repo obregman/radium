@@ -2181,14 +2181,14 @@ export class SymbolChangesPanel {
       color: #3C3C3C;
       padding: 12px 16px;
       border-radius: 4px;
-      font-size: 16px;
+      font-size: 20px;
       font-weight: 400;
       font-style: italic;
       max-width: 400px;
       text-align: left;
       z-index: 15;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      animation: fadeInOut 3s ease-in-out forwards;
+      animation: fadeInOut 4s ease-in-out forwards;
       pointer-events: none;
       white-space: pre-wrap;
       word-wrap: break-word;
@@ -3322,10 +3322,10 @@ export class SymbolChangesPanel {
                   document.body.appendChild(overlay);
                 }
                 
-                // Remove after animation completes (3 seconds)
+                // Remove after animation completes (4 seconds)
                 setTimeout(() => {
                   overlay.remove();
-                }, 3000);
+                }, 4000);
               }
               break;
             case 'file:remove-fallback':

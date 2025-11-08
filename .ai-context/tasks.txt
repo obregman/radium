@@ -3,4 +3,10 @@
 
 Symbol visualization view tasks:
 
-$$ there's still problem with symbol boxes layout. they are sometimes overlap or extend from the file box border
+$$ unidentified symbols ("FILE" labels) extend from the file box border bottom
+
+$$ functions in *.xaml.cs files are not identified
+
+$$ add a 2 pixel padding inside symbol boxes to the text labels don't touch the border
+
+$$ make sure that previous code change is not added to a new code change - each code change made should be isolated

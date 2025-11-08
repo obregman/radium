@@ -170,7 +170,7 @@ export async function activate(context: vscode.ExtensionContext) {
     startIndexing();
 
     // Show welcome message
-    showWelcome();
+    // showWelcome();
     
     console.log('Radium activation complete');
   } catch (error) {

@@ -153,6 +153,7 @@ namespace MyApp
   test('should parse .xaml.cs files (compound extension)', async () => {
     const code = `
 using System;
+using System.Threading.Tasks;
 
 namespace MyApp
 {
@@ -172,6 +173,16 @@ namespace MyApp
         {
             // Update UI logic
         }
+        
+        public async Task LoadDataAsync()
+        {
+            await Task.Delay(100);
+        }
+        
+        private async void OnRefreshClicked(object sender, EventArgs e)
+        {
+            await LoadDataAsync();
+        }
     }
 }`;
     
@@ -186,15 +197,23 @@ namespace MyApp
     assert.ok(constructor, 'Should find constructor in .xaml.cs file');
     assert.strictEqual(constructor!.name, 'MainPage', 'Constructor name should be MainPage');
     
-    // Find the methods
+    // Find the methods (both sync and async)
     const methods = result!.symbols.filter(s => s.kind === 'function');
-    assert.ok(methods.length >= 2, `Should find at least 2 methods, found ${methods.length}`);
+    assert.ok(methods.length >= 4, `Should find at least 4 methods (2 sync + 2 async), found ${methods.length}`);
     
+    // Verify sync methods
     const onButtonClicked = methods.find(m => m.name === 'OnButtonClicked');
-    assert.ok(onButtonClicked, 'Should find OnButtonClicked method');
+    assert.ok(onButtonClicked, 'Should find sync method OnButtonClicked');
     
     const updateUI = methods.find(m => m.name === 'UpdateUI');
-    assert.ok(updateUI, 'Should find UpdateUI method');
+    assert.ok(updateUI, 'Should find sync method UpdateUI');
+    
+    // Verify async methods
+    const loadDataAsync = methods.find(m => m.name === 'LoadDataAsync');
+    assert.ok(loadDataAsync, 'Should find async method LoadDataAsync');
+    
+    const onRefreshClicked = methods.find(m => m.name === 'OnRefreshClicked');
+    assert.ok(onRefreshClicked, 'Should find async void method OnRefreshClicked');
     
     // Find the class
     const classSymbol = result!.symbols.find(s => s.kind === 'class');

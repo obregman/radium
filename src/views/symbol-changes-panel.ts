@@ -562,14 +562,9 @@ export class SymbolChangesPanel {
     this.log(`Processing ${relativePath}, hasChanges: ${hasChanges}, diffLength: ${diff?.length || 0}`);
     
     if (!hasChanges) {
-      this.log(`No changes detected for ${relativePath}`);
-      this.panel.webview.postMessage({
-        type: 'file:reverted',
-        data: {
-          filePath: relativePath,
-          timestamp: Date.now()
-        }
-      });
+      this.log(`No changes detected for ${relativePath} - file saved without modifications, keeping existing symbols`);
+      // Don't send file:reverted - just skip processing since there are no new changes
+      // This keeps the existing symbol boxes visible
       return;
     }
 
@@ -604,6 +599,14 @@ export class SymbolChangesPanel {
         }
       });
     } else {
+      // Remove any FILE fallback boxes for this file since we now have actual symbols
+      this.panel.webview.postMessage({
+        type: 'file:remove-fallback',
+        data: {
+          filePath: relativePath
+        }
+      });
+      
       // Send each symbol change individually so they get their own boxes
       for (const symbol of symbolChanges.symbols) {
         this.log(`Sending symbol: ${symbol.name} (${symbol.type})`);
@@ -622,9 +625,18 @@ export class SymbolChangesPanel {
       }
     }
     
-    // Note: We intentionally do NOT update lastKnownFileStates or baselineFileStates here.
-    // The baseline should remain the original state when the panel opened, so subsequent
-    // saves continue to show the cumulative changes from that baseline.
+    // Update the baseline to the current state so the next change shows only incremental changes
+    // This ensures each change is isolated and not cumulative
+    try {
+      if (fs.existsSync(fullPath)) {
+        const currentContent = fs.readFileSync(fullPath, 'utf8');
+        this.baselineFileStates.set(relativePath, currentContent);
+        this.lastKnownFileStates.set(relativePath, currentContent);
+        this.log(`Updated baseline for ${relativePath} to current state`);
+      }
+    } catch (error) {
+      this.log(`Failed to update baseline for ${relativePath}: ${error}`);
+    }
   }
 
   private isNoiseChange(addedLines: Map<number, string>, deletedLines: Map<number, string>): boolean {
@@ -738,21 +750,19 @@ export class SymbolChangesPanel {
     const comments = this.extractCommentsFromDiff(addedLines, deletedLines, filePath);
     this.log(`Extracted ${comments.length} new comments from diff`);
     
-    // Extract variables from diff (only for things tree-sitter doesn't catch well)
-    const variables = this.extractVariablesFromDiff(currentContent, addedLines, deletedLines, changedLineNumbers);
-    
-    // Filter out variables that are already detected by tree-sitter as symbols
-    const treeSymbolNames = new Set(currentSymbols.map(s => s.name));
-    const filteredVariables = variables.filter(v => !treeSymbolNames.has(v.name));
-    
-    this.log(`Extracted ${variables.length} variables from diff, ${filteredVariables.length} after filtering duplicates with tree-sitter`);
-    symbols.push(...filteredVariables);
+    // Variable detection disabled - not displaying variable boxes
+    // const variables = this.extractVariablesFromDiff(currentContent, addedLines, deletedLines, changedLineNumbers);
+    // const treeSymbolNames = new Set(currentSymbols.map(s => s.name));
+    // const filteredVariables = variables.filter(v => !treeSymbolNames.has(v.name));
+    // this.log(`Extracted ${variables.length} variables from diff, ${filteredVariables.length} after filtering duplicates with tree-sitter`);
+    // symbols.push(...filteredVariables);
 
     // Track symbols we've already added to avoid duplicates
     const addedSymbolKeys = new Set<string>();
-    for (const v of filteredVariables) {
-      addedSymbolKeys.add(`${v.type}:${v.name}:${v.startLine}`);
-    }
+    // Variable tracking disabled
+    // for (const v of filteredVariables) {
+    //   addedSymbolKeys.add(`${v.type}:${v.name}:${v.startLine}`);
+    // }
 
     // Find parent symbols for context
     const symbolParents = new Map<any, any>();
@@ -922,16 +932,19 @@ export class SymbolChangesPanel {
           }
         }
         
-        symbols.push({
-          type: symbol.kind as any,
-          name: symbol.name,
-          changeType,
-          filePath,
-          startLine: symbolStartLine,
-          endLine: symbolEndLine,
-          details,
-          changeAmount: Math.max(1, changeAmount) // Ensure at least 1
-        });
+        // Skip variables and constants - only show functions, classes, interfaces, etc.
+        if (symbol.kind !== 'variable' && symbol.kind !== 'constant') {
+          symbols.push({
+            type: symbol.kind as any,
+            name: symbol.name,
+            changeType,
+            filePath,
+            startLine: symbolStartLine,
+            endLine: symbolEndLine,
+            details,
+            changeAmount: Math.max(1, changeAmount) // Ensure at least 1
+          });
+        }
       }
     }
 
@@ -1746,7 +1759,7 @@ export class SymbolChangesPanel {
 
     .symbol-box {
       position: absolute;
-      padding: 24px 12px 12px 12px;
+      padding: 26px 14px 14px 14px;
       background-color: transparent;
       border: 1.5px solid var(--vscode-panel-border);
       border-radius: 0;
@@ -1959,7 +1972,7 @@ export class SymbolChangesPanel {
       border: 2px solid var(--vscode-panel-border);
       border-radius: 0;
       background-color: #4c4d4c;
-      padding: 40px 2px 2px 2px;
+      padding: 40px 2px 10px 2px;
       box-sizing: border-box; /* Width/height includes border and padding */
       /* Make this the positioning context for child symbol boxes */
       /* Child elements with position:absolute will be relative to this container */
@@ -2121,16 +2134,17 @@ export class SymbolChangesPanel {
 
     .comment-overlay {
       position: absolute;
-      background-color: rgba(255, 255, 255, 0.85);
-      color: #22863a;
+      background-color: rgba(173, 216, 230, 0.95);
+      color: #3C3C3C;
       padding: 12px 16px;
       border-radius: 4px;
       font-size: 16px;
       font-weight: 400;
+      font-style: italic;
       max-width: 400px;
       text-align: left;
       z-index: 15;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       animation: fadeInOut 3s ease-in-out forwards;
       pointer-events: none;
       white-space: pre-wrap;
@@ -2616,16 +2630,16 @@ export class SymbolChangesPanel {
           
           // Resize container to fit all symbols AND the label
           // Container has box-sizing: border-box, so width/height includes border (2px each side = 4px total)
-          // and padding (40px top). The content area for symbols is the full width/height minus these.
+          // and padding (40px top, 10px bottom). The content area for symbols is the full width/height minus these.
           // Since symbols are positioned in the content area, we set container size to exactly match packed size.
           // Add extra padding to ensure symbols don't touch borders or overflow
           // IMPORTANT: With box-sizing: border-box, the total height must account for:
           //   - 40px top padding (where label lives)
           //   - packed.contentH (actual symbol content height)
-          //   - 8px bottom padding (increased for safety)
+          //   - 10px bottom padding
           //   - 4px borders (2px top + 2px bottom)
           const finalWidth = Math.max(packed.contentW + 4, labelMinWidth); // Add 4px horizontal padding
-          const finalHeight = packed.contentH + 40 + 8 + 4; // 40px label padding + 8px bottom padding + 4px borders
+          const finalHeight = packed.contentH + 40 + 10 + 4; // 40px label padding + 10px bottom padding + 4px borders
           
           console.log('[Layout] Final container size:', finalWidth, 'x', finalHeight, '(label min:', labelMinWidth, ', packed:', packed.contentW, 'x', packed.contentH, ')');
           group.fileContainer.style.width = finalWidth + 'px';
@@ -3204,6 +3218,28 @@ export class SymbolChangesPanel {
               }
               
               handleSingleSymbolChange(message.data);
+              break;
+            case 'file:remove-fallback':
+              console.log('[Symbol Changes] Removing FILE fallback box for', message.data.filePath);
+              const fallbackGroup = fileGroups.get(message.data.filePath);
+              if (fallbackGroup && fallbackGroup.symbols) {
+                // Remove FILE type symbols from this file's group
+                // The key format is 'type:name', so for file it's 'file:filename'
+                const fileName = getFileName(message.data.filePath);
+                const fileSymbolKey = 'file:' + fileName;
+                if (fallbackGroup.symbols.has(fileSymbolKey)) {
+                  const elements = fallbackGroup.symbols.get(fileSymbolKey);
+                  if (elements) {
+                    elements.forEach(el => el.remove());
+                  }
+                  fallbackGroup.symbols.delete(fileSymbolKey);
+                  console.log('[Symbol Changes] Removed FILE fallback box:', fileSymbolKey);
+                  
+                  // Reposition remaining symbols in the file container
+                  repositionFileSymbols(fallbackGroup);
+                  repositionAllFiles();
+                }
+              }
               break;
             case 'file:reverted':
             case 'file:deleted':

@@ -9,3 +9,4 @@ Symbol visualization view tasks:
 
 -- make the comment popup light purple with italic black letters. remove any / symbol from the beginning of each comment line
 
+-- a change to a function in a xaml.cs file - the function name was not detected. the class is: public sealed partial class GameWindow : Window

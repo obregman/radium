@@ -3181,7 +3181,10 @@ export class SymbolChangesPanel {
             case 'symbol:changed':
               console.log('[Symbol Changes] Processing symbol:changed message', message.data);
               
-              // Display comments if present
+              // Handle the symbol change first to ensure file container exists
+              handleSingleSymbolChange(message.data);
+              
+              // Display comments AFTER file container is created
               if (message.data.comments && message.data.comments.length > 0) {
                 // Preserve newlines by joining with newline character
                 const commentText = message.data.comments.join('\n');
@@ -3208,6 +3211,7 @@ export class SymbolChangesPanel {
                   overlay.style.top = (top + 25) + 'px'; // 25px gap below file box
                 } else {
                   // Fallback: append to body if file container not found
+                  console.warn('[Symbol Changes] File container not found for comments, filePath:', filePath);
                   document.body.appendChild(overlay);
                 }
                 
@@ -3216,8 +3220,6 @@ export class SymbolChangesPanel {
                   overlay.remove();
                 }, 3000);
               }
-              
-              handleSingleSymbolChange(message.data);
               break;
             case 'file:remove-fallback':
               console.log('[Symbol Changes] Removing FILE fallback box for', message.data.filePath);

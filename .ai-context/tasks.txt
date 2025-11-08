@@ -3,10 +3,9 @@
 
 Symbol visualization view tasks:
 
-$$ unidentified symbols ("FILE" labels) extend from the file box border bottom
+-- the comment pop ups should remain between 4 and 8 seconds depending on the length of the text
 
-$$ functions in *.xaml.cs files are not identified
+-- if the user hovers over the comment pop up, it should remain open and not dissapear
 
-$$ add a 2 pixel padding inside symbol boxes to the text labels don't touch the border
+-- make the comment popup light purple with italic black letters. remove any / symbol from the beginning of each comment line
 
-$$ make sure that previous code change is not added to a new code change - each code change made should be isolated

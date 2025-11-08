@@ -1825,7 +1825,7 @@ export class SymbolChangesPanel {
 
     .symbol-box.class {
       border-color: #141414;
-      background: #FFC0CB;
+      background: #ADD8E6;
     }
 
     .symbol-box.method {
@@ -2132,6 +2132,49 @@ export class SymbolChangesPanel {
       border-color: var(--vscode-foreground);
     }
 
+    #auto-focus-toggle {
+      position: fixed;
+      bottom: 50px;
+      left: 16px;
+      padding: 6px 10px;
+      background-color: transparent;
+      color: var(--vscode-foreground);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 400;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.15s ease;
+      opacity: 0.6;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #auto-focus-toggle:hover {
+      opacity: 1;
+      border-color: var(--vscode-foreground);
+    }
+
+    #auto-focus-toggle.active {
+      background-color: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border-color: var(--vscode-button-background);
+      opacity: 1;
+    }
+
+    .toggle-checkbox {
+      width: 12px;
+      height: 12px;
+      border: 1px solid currentColor;
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+    }
+
     .comment-overlay {
       position: absolute;
       background-color: rgba(173, 216, 230, 0.95);
@@ -2174,6 +2217,11 @@ export class SymbolChangesPanel {
   
   <button id="clear-button" title="${buttonTitle}">
     ${buttonLabel}
+  </button>
+  
+  <button id="auto-focus-toggle" title="Auto focus on changes">
+    <span class="toggle-checkbox"></span>
+    <span>Auto Focus</span>
   </button>
   
   <div id="container">
@@ -2236,10 +2284,42 @@ export class SymbolChangesPanel {
         const SYMBOL_WIDTH = 150; // Approximate symbol width (for estimates)
         let lastGlowingBox = null; // Track the currently glowing box
         let repositionTimeout = null; // Debounce repositioning
+        let autoFocusEnabled = true; // Auto focus on changes by default
 
         function updateTransform() {
           canvas.style.transform = 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')';
           zoomLevelEl.textContent = Math.round(scale * 100) + '%';
+        }
+
+        // Auto-focus on an element (center it in the view)
+        function focusOnElement(element) {
+          if (!autoFocusEnabled || !element) return;
+          
+          // Set comfortable zoom level (not too close)
+          const targetScale = 0.8; // 80% zoom - comfortable viewing distance
+          
+          // Get element position in canvas coordinates (before zoom change)
+          const rect = element.getBoundingClientRect();
+          const canvasRect = canvas.getBoundingClientRect();
+          
+          // Calculate element center in original canvas coordinates
+          const elementCenterX = (rect.left + rect.width / 2 - canvasRect.left) / scale;
+          const elementCenterY = (rect.top + rect.height / 2 - canvasRect.top) / scale;
+          
+          // Calculate viewport center
+          const viewportCenterX = container.clientWidth / 2;
+          const viewportCenterY = container.clientHeight / 2;
+          
+          // Update scale
+          scale = targetScale;
+          
+          // Calculate required translation to center the element at new scale
+          translateX = viewportCenterX - elementCenterX * scale;
+          translateY = viewportCenterY - elementCenterY * scale;
+          
+          // Smooth transition
+          canvas.classList.remove('no-transition');
+          updateTransform();
         }
 
         // Helper function to calculate symbol weight (importance)
@@ -2818,6 +2898,11 @@ export class SymbolChangesPanel {
           box.classList.remove('highlight');
         }, 3000);
         
+        // Auto-focus on the new symbol after a brief delay to allow repositioning
+        setTimeout(() => {
+          focusOnElement(box);
+        }, 100);
+        
         // Add click handler to open file at symbol line
         box.addEventListener('click', (e) => {
           e.stopPropagation(); // Prevent pan/zoom from interfering
@@ -3049,7 +3134,7 @@ export class SymbolChangesPanel {
         console.log('[Symbol Changes] Registering pan handlers...');
         container.addEventListener('mousedown', (e) => {
           console.log('[Symbol Changes] Mousedown event');
-          if (e.target.closest('.zoom-button') || e.target.closest('#clear-button')) {
+          if (e.target.closest('.zoom-button') || e.target.closest('#clear-button') || e.target.closest('#auto-focus-toggle')) {
             console.log('[Symbol Changes] Mousedown on button, ignoring');
             return;
           }
@@ -3170,6 +3255,28 @@ export class SymbolChangesPanel {
           vscode.postMessage({ type: 'clearAll' });
 
           console.log('[Symbol Changes] Cleared all symbols');
+        });
+
+        // Auto-focus toggle
+        const autoFocusToggle = document.getElementById('auto-focus-toggle');
+        const toggleCheckbox = autoFocusToggle.querySelector('.toggle-checkbox');
+        
+        // Initialize toggle state (enabled by default)
+        autoFocusToggle.classList.add('active');
+        toggleCheckbox.textContent = '✓';
+        
+        autoFocusToggle.addEventListener('click', () => {
+          autoFocusEnabled = !autoFocusEnabled;
+          
+          if (autoFocusEnabled) {
+            autoFocusToggle.classList.add('active');
+            toggleCheckbox.textContent = '✓';
+          } else {
+            autoFocusToggle.classList.remove('active');
+            toggleCheckbox.textContent = '';
+          }
+          
+          console.log('[Symbol Changes] Auto-focus', autoFocusEnabled ? 'enabled' : 'disabled');
         });
 
         // Listen for messages

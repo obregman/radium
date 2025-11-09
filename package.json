@@ -23,7 +23,7 @@
     "commands": [
       {
         "command": "radium.openMap",
-        "title": "Radium: Component View",
+        "title": "Radium: Codebase Map",
         "icon": "$(graph)"
       },
       {

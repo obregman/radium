@@ -287,6 +287,7 @@ export class FeaturesMapPanel {
       color: #d4d4d4;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       overflow-y: auto;
+      scroll-behavior: smooth;
     }
     
     #container {
@@ -446,15 +447,78 @@ export class FeaturesMapPanel {
       color: #f44336;
       margin-top: 0;
     }
+    
+    #auto-focus-toggle {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      padding: 8px 12px;
+      background-color: transparent;
+      color: var(--vscode-foreground);
+      border: 1px solid #444;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 400;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.15s ease;
+      opacity: 0.6;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    #auto-focus-toggle:hover {
+      opacity: 1;
+      border-color: #4a9eff;
+    }
+    
+    #auto-focus-toggle.active {
+      background-color: #4a9eff;
+      color: #1e1e1e;
+      border-color: #4a9eff;
+      opacity: 1;
+    }
+    
+    .toggle-checkbox {
+      width: 12px;
+      height: 12px;
+      border: 1px solid currentColor;
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+    }
+    
+    @keyframes highlightPulse {
+      0%, 100% {
+        box-shadow: 0 0 0 0 rgba(74, 158, 255, 0.7);
+      }
+      50% {
+        box-shadow: 0 0 0 8px rgba(74, 158, 255, 0);
+      }
+    }
+    
+    .feature-box.auto-focus-highlight {
+      animation: highlightPulse 2s ease-out;
+      border-color: #4a9eff;
+    }
   </style>
 </head>
 <body>
   <div id="container"></div>
   
+  <button id="auto-focus-toggle" title="Auto-focus on changes">
+    <span class="toggle-checkbox">✓</span>
+    <span>Auto-focus on changes</span>
+  </button>
+  
   <script>
     const vscode = acquireVsCodeApi();
     let currentData = null;
     let expandedFeature = null;
+    let autoFocusEnabled = true;
     
     // Icon URIs for flow types
     const flowTypeIcons = {
@@ -464,6 +528,24 @@ export class FeaturesMapPanel {
       inbound_api: '${inboundApiIconUri}',
       outbound_api: '${outboundApiIconUri}'
     };
+    
+    // Auto-focus toggle handler
+    const autoFocusToggle = document.getElementById('auto-focus-toggle');
+    const toggleCheckbox = autoFocusToggle.querySelector('.toggle-checkbox');
+    
+    autoFocusToggle.addEventListener('click', () => {
+      autoFocusEnabled = !autoFocusEnabled;
+      
+      if (autoFocusEnabled) {
+        autoFocusToggle.classList.add('active');
+        toggleCheckbox.textContent = '✓';
+      } else {
+        autoFocusToggle.classList.remove('active');
+        toggleCheckbox.textContent = '';
+      }
+      
+      console.log('[Features Map] Auto-focus', autoFocusEnabled ? 'enabled' : 'disabled');
+    });
     
     // Notify ready
     vscode.postMessage({ type: 'ready' });
@@ -586,12 +668,36 @@ export class FeaturesMapPanel {
           // Collapse all boxes
           document.querySelectorAll('.feature-box').forEach(b => {
             b.classList.remove('expanded');
+            b.classList.remove('auto-focus-highlight');
           });
           
           // Expand clicked box if it wasn't expanded
           if (!wasExpanded) {
             box.classList.add('expanded');
             expandedFeature = featureKey;
+            
+            // Auto-focus on the expanded feature
+            if (autoFocusEnabled) {
+              // Add highlight animation
+              box.classList.add('auto-focus-highlight');
+              
+              // Scroll to the feature with smooth animation
+              setTimeout(() => {
+                const rect = box.getBoundingClientRect();
+                const absoluteTop = window.pageYOffset + rect.top;
+                const middle = absoluteTop - (window.innerHeight / 2) + (rect.height / 2);
+                
+                window.scrollTo({
+                  top: middle,
+                  behavior: 'smooth'
+                });
+              }, 100);
+              
+              // Remove highlight after animation completes
+              setTimeout(() => {
+                box.classList.remove('auto-focus-highlight');
+              }, 2100);
+            }
           } else {
             expandedFeature = null;
           }

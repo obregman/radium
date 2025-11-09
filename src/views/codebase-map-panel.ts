@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { GraphStore, Node, Edge } from '../store/schema';
 import { RadiumConfigLoader } from '../config/radium-config';
 import { GitDiffTracker } from '../git/git-diff-tracker';
+import * as path from 'path';
 
 export class MapPanel {
   public static currentPanel: MapPanel | undefined;
@@ -11,6 +12,7 @@ export class MapPanel {
   private changeCheckTimer?: NodeJS.Timeout;
   private readonly CHANGE_CHECK_INTERVAL = 60000; // 1 minute in milliseconds
   private newFilePaths: Set<string> = new Set(); // Track new files to display in "New Files" component
+  private fileWatcher?: vscode.FileSystemWatcher;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -55,6 +57,8 @@ export class MapPanel {
     
     // Start automatic change checking
     this.startChangeChecking();
+    
+    // File watching will be started when auto-focus is enabled
   }
 
   public static createOrShow(extensionUri: vscode.Uri, store: GraphStore, configLoader: RadiumConfigLoader, gitDiffTracker?: GitDiffTracker) {
@@ -86,7 +90,7 @@ export class MapPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'vibeMap',
-      'Radium: Component View',
+      'Radium: Codebase Map',
       column || vscode.ViewColumn.Two,
       {
         enableScripts: true,
@@ -123,11 +127,23 @@ export class MapPanel {
         console.log('[Radium] Handling request:recent-changes');
         await this.handleShowRecentChanges();
         break;
+      case 'autoFocus:toggle':
+        this.handleAutoFocusToggle(message.enabled);
+        break;
       case 'ready':
         this.updateGraph();
         break;
       default:
         console.log('[Radium] Unknown message type:', message.type);
+    }
+  }
+
+  private handleAutoFocusToggle(enabled: boolean) {
+    MapPanel.outputChannel.appendLine(`Auto-focus ${enabled ? 'enabled' : 'disabled'}`);
+    if (enabled) {
+      this.startFileWatching();
+    } else {
+      this.stopFileWatching();
     }
   }
 
@@ -1327,6 +1343,54 @@ export class MapPanel {
     }
   }
 
+  private startFileWatching() {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      MapPanel.outputChannel.appendLine('File watching disabled: no workspace folder');
+      return;
+    }
+
+    MapPanel.outputChannel.appendLine('Starting file watching for real-time updates');
+    
+    // Watch for changes in source files
+    const pattern = new vscode.RelativePattern(
+      workspaceFolders[0],
+      '**/*.{ts,tsx,js,jsx,py,go,cs}'
+    );
+    
+    this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+    
+    // Handle file changes
+    this.fileWatcher.onDidChange(uri => {
+      MapPanel.outputChannel.appendLine(`File changed: ${uri.fsPath}`);
+      this.checkForChanges();
+    });
+    
+    // Handle file creation
+    this.fileWatcher.onDidCreate(uri => {
+      MapPanel.outputChannel.appendLine(`File created: ${uri.fsPath}`);
+      const relativePath = path.relative(workspaceFolders[0].uri.fsPath, uri.fsPath);
+      this.newFilePaths.add(relativePath);
+      this.checkForChanges();
+    });
+    
+    // Handle file deletion
+    this.fileWatcher.onDidDelete(uri => {
+      MapPanel.outputChannel.appendLine(`File deleted: ${uri.fsPath}`);
+      this.checkForChanges();
+    });
+    
+    this.disposables.push(this.fileWatcher);
+  }
+
+  private stopFileWatching() {
+    if (this.fileWatcher) {
+      MapPanel.outputChannel.appendLine('Stopping file watching');
+      this.fileWatcher.dispose();
+      this.fileWatcher = undefined;
+    }
+  }
+
   private async checkForChanges() {
     if (!this.gitDiffTracker) {
       return;
@@ -1352,6 +1416,20 @@ export class MapPanel {
       
       // Update overlay to show changes
       this.updateOverlay(sessionId, false);
+      
+      // Send message to webview to focus on changed files (if auto-focus is enabled)
+      const allFiles = this.store.getAllFiles();
+      const changedFilePaths = changes.map(c => {
+        const file = allFiles.find(f => f.id === c.file_id);
+        return file?.path;
+      }).filter(path => path !== undefined);
+      
+      if (changedFilePaths.length > 0) {
+        this.panel.webview.postMessage({
+          type: 'files:changed',
+          filePaths: changedFilePaths
+        });
+      }
     } catch (error) {
       MapPanel.outputChannel.appendLine(`Error checking for changes: ${error}`);
     }
@@ -1362,6 +1440,9 @@ export class MapPanel {
 
     // Stop change checking
     this.stopChangeChecking();
+    
+    // Stop file watching
+    this.stopFileWatching();
 
     this.panel.dispose();
 
@@ -1392,7 +1473,7 @@ export class MapPanel {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}' https://d3js.org; connect-src 'none';">
-  <title>Radium: Component View</title>
+  <title>Radium: Codebase Map</title>
   <style>
     body { 
       margin: 0; 
@@ -1611,6 +1692,46 @@ export class MapPanel {
       height: 16px !important;
       background: rgba(60, 60, 60, 0.7) !important;
     }
+    #auto-focus-toggle {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      padding: 8px 12px;
+      background-color: transparent;
+      color: var(--vscode-foreground);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 400;
+      cursor: pointer;
+      z-index: 1000;
+      transition: all 0.15s ease;
+      opacity: 0.6;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
+    }
+    #auto-focus-toggle:hover {
+      opacity: 1;
+      border-color: var(--vscode-focusBorder);
+    }
+    #auto-focus-toggle.active {
+      background-color: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border-color: var(--vscode-button-background);
+      opacity: 1;
+    }
+    .toggle-checkbox {
+      width: 12px;
+      height: 12px;
+      border: 1px solid currentColor;
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+    }
   </style>
 </head>
 <body>
@@ -1625,6 +1746,10 @@ export class MapPanel {
     <button class="control-button" id="show-all-btn" style="display: none;">Show All Files</button>
     <button class="control-button" id="changes-btn">Changes</button>
   </div>
+  <button id="auto-focus-toggle" title="Auto-focus on changes">
+    <span class="toggle-checkbox"></span>
+    <span>Auto-focus on changes</span>
+  </button>
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script nonce="${nonce}">
@@ -1645,6 +1770,8 @@ export class MapPanel {
     let searchQuery = '';
     let filteredNodeIds = new Set();
     const ZOOM_THRESHOLD = 0.3; // Below this zoom level, show only components
+    let autoFocusEnabled = false; // Auto-focus disabled by default
+    let transform = { k: 1, x: 0, y: 0 }; // Pan/zoom transform state
 
     const colorMap = {
       'component': '#00BCD4',
@@ -1744,7 +1871,7 @@ export class MapPanel {
         .lower(); // Ensure it's behind everything
 
       // Manual pan/zoom implementation (more reliable in VS Code webviews)
-      let transform = { k: 1, x: 0, y: 0 };
+      // transform is now at top-level scope for access by focusOnChangedFiles
       let isPanning = false;
       let startPoint = { x: 0, y: 0 };
       
@@ -2368,6 +2495,22 @@ export class MapPanel {
           // Only handle click if it wasn't a drag
           if (event.defaultPrevented) return;
           event.stopPropagation();
+          
+          // Auto-focus on the clicked component
+          if (autoFocusEnabled && d._boxX !== undefined && d._boxY !== undefined) {
+            const centerX = d._boxX + d._boxWidth / 2;
+            const centerY = d._boxY + d._boxHeight / 2;
+            
+            // Calculate the transform needed to center this component
+            const targetX = width / 2 - centerX * transform.k;
+            const targetY = height / 2 - centerY * transform.k;
+            
+            // Smoothly transition to the new position
+            svg.transition()
+              .duration(750)
+              .call(zoom.transform, d3.zoomIdentity.translate(targetX, targetY).scale(transform.k));
+          }
+          
           vscode.postMessage({
             type: 'node:selected',
             nodeId: d.originalId || d.id
@@ -2424,6 +2567,19 @@ export class MapPanel {
           if (event.defaultPrevented) return;
           event.stopPropagation();
           console.log('[Radium Map] File box clicked:', d.path);
+          
+          // Auto-focus on the clicked file
+          if (autoFocusEnabled && d.x !== undefined && d.y !== undefined) {
+            // Calculate the transform needed to center this file
+            const targetX = width / 2 - d.x * transform.k;
+            const targetY = height / 2 - d.y * transform.k;
+            
+            // Smoothly transition to the new position
+            svg.transition()
+              .duration(750)
+              .call(zoom.transform, d3.zoomIdentity.translate(targetX, targetY).scale(transform.k));
+          }
+          
           vscode.postMessage({
             type: 'file:open',
             filePath: d.path
@@ -2692,6 +2848,19 @@ export class MapPanel {
           if (d.usedBy && d.usedBy.length > 0) {
             event.stopPropagation();
             console.log('[Radium Map] External box clicked:', d.name, 'files:', d.usedBy);
+            
+            // Auto-focus on the clicked external source
+            if (autoFocusEnabled && d.x !== undefined && d.y !== undefined) {
+              // Calculate the transform needed to center this external source
+              const targetX = width / 2 - d.x * transform.k;
+              const targetY = height / 2 - d.y * transform.k;
+              
+              // Smoothly transition to the new position
+              svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity.translate(targetX, targetY).scale(transform.k));
+            }
+            
             vscode.postMessage({
               type: 'external:focus',
               filePaths: d.usedBy
@@ -3301,6 +3470,57 @@ export class MapPanel {
         });
     }
 
+    // Function to focus on changed files
+    function focusOnChangedFiles(filePaths) {
+      if (!graphData || !graphData.nodes || filePaths.length === 0 || !svg || !g) {
+        console.log('[Radium Map] Cannot focus - missing data or SVG not initialized');
+        return;
+      }
+      
+      // Find the first changed file node
+      const changedFileNode = graphData.nodes.find(node => 
+        node.type === 'file' && filePaths.some(fp => node.path && node.path.includes(fp))
+      );
+      
+      if (!changedFileNode || changedFileNode.x === undefined || changedFileNode.y === undefined) {
+        console.log('[Radium Map] Could not find changed file node to focus on');
+        return;
+      }
+      
+      console.log('[Radium Map] Focusing on file:', changedFileNode.path, 'at position:', changedFileNode.x, changedFileNode.y);
+      
+      // Calculate the target transform to center this file
+      const targetX = width / 2 - changedFileNode.x * transform.k;
+      const targetY = height / 2 - changedFileNode.y * transform.k;
+      
+      console.log('[Radium Map] Animating to:', targetX, targetY, 'scale:', transform.k);
+      
+      // Animate the transform
+      const startX = transform.x;
+      const startY = transform.y;
+      const duration = 750;
+      const startTime = Date.now();
+      
+      function animate() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Easing function (ease-out)
+        const eased = 1 - Math.pow(1 - progress, 3);
+        
+        transform.x = startX + (targetX - startX) * eased;
+        transform.y = startY + (targetY - startY) * eased;
+        
+        g.attr('transform', \`translate(\${transform.x},\${transform.y}) scale(\${transform.k})\`);
+        
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        }
+      }
+      
+      animate();
+    }
+
     // Listen for messages from extension
     window.addEventListener('message', event => {
       const message = event.data;
@@ -3320,6 +3540,13 @@ export class MapPanel {
           clearOverlays();
           if (fullGraphData) {
             updateGraph(fullGraphData, false);
+          }
+          break;
+        case 'files:changed':
+          // Auto-focus on changed files if enabled
+          if (autoFocusEnabled && message.filePaths && message.filePaths.length > 0) {
+            console.log('[Radium Map] Auto-focusing on changed files:', message.filePaths);
+            focusOnChangedFiles(message.filePaths);
           }
           break;
         case 'path:result':
@@ -3425,6 +3652,30 @@ export class MapPanel {
     document.getElementById('changes-btn')?.addEventListener('click', () => {
       console.log('[Radium Map] Changes button clicked');
       toggleLayer('changes');
+    });
+
+    // Auto-focus toggle
+    const autoFocusToggle = document.getElementById('auto-focus-toggle');
+    const toggleCheckbox = autoFocusToggle?.querySelector('.toggle-checkbox');
+    
+    autoFocusToggle?.addEventListener('click', () => {
+      autoFocusEnabled = !autoFocusEnabled;
+      
+      if (autoFocusEnabled) {
+        autoFocusToggle.classList.add('active');
+        if (toggleCheckbox) toggleCheckbox.textContent = '✓';
+      } else {
+        autoFocusToggle.classList.remove('active');
+        if (toggleCheckbox) toggleCheckbox.textContent = '';
+      }
+      
+      console.log('[Radium Map] Auto-focus', autoFocusEnabled ? 'enabled' : 'disabled');
+      
+      // Notify the extension about the toggle state
+      vscode.postMessage({
+        type: 'autoFocus:toggle',
+        enabled: autoFocusEnabled
+      });
     });
     
     // Add event listeners for search

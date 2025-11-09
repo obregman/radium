@@ -1132,8 +1132,8 @@ export class SymbolChangesPanel {
         }
       }
       
-      // HTML/XML comments
-      if (ext === 'html' || ext === 'xml' || ext === 'svg') {
+      // HTML/XML/XAML comments
+      if (ext === 'html' || ext === 'xml' || ext === 'svg' || ext === 'xaml') {
         const htmlCommentMatch = trimmed.match(/<!--\s*(.+?)\s*-->/);
         if (htmlCommentMatch) {
           return htmlCommentMatch[1].trim();
@@ -2237,9 +2237,9 @@ export class SymbolChangesPanel {
     ${buttonLabel}
   </button>
   
-  <button id="auto-focus-toggle" title="Auto focus on changes">
+  <button id="auto-focus-toggle" title="Auto-focus on changes">
     <span class="toggle-checkbox"></span>
-    <span>Auto Focus</span>
+    <span>Auto-focus on changes</span>
   </button>
   
   <div id="container">

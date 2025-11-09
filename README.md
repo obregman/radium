@@ -12,7 +12,7 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 - Component-based architecture view (defined in `.radium/radium-components.yaml`)
 - Track and manage LLM-generated changes
 - Real-time file change monitoring with visual diff display
-- Automatic change detection every 1 minute when component view is open
+- Automatic change detection every 1 minute when codebase map is open
 - Impact analysis for code modifications
 - Support for TypeScript, JavaScript, Python, C# (including `.xaml.cs` files), and Go
 - Cross-platform support (macOS, Linux, Windows)
@@ -39,7 +39,7 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 
 ### Available Commands
 
-- `Radium: Component View` - Show the codebase graph
+- `Radium: Codebase Map` - Show the codebase graph
 - `Radium: Features Map` - Visualize features and their relationships
 - `Radium: Real-time File Changes` - Monitor file changes in real-time with visual diff display
 - `Radium: Real-time Symbol Visualization` - Visualize code changes as symbols (functions, classes) with call relationships

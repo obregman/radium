@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { GraphStore } from './store/schema';
 import { Indexer } from './indexer/indexer';
 import { LLMOrchestrator, LLMPlan } from './orchestrator/llm-orchestrator';
-import { MapPanel } from './views/map-panel';
+import { MapPanel } from './views/codebase-map-panel';
 import { FeaturesMapPanel } from './views/features-map-panel';
 import { RealtimeChangesPanel } from './views/realtime-changes-panel';
 import { SymbolChangesPanel } from './views/symbol-changes-panel';

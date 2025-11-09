@@ -69,7 +69,7 @@ The orchestrator manages this entire flow atomically with rollback support.
 - Records sessions and changes with hunk-level tracking
 - Rollback support (partial implementation - see line 196)
 
-**Map Panel (`src/views/map-panel.ts`)**
+**Codebase Map Panel (`src/views/codebase-map-panel.ts`)**
 - D3.js force-directed graph visualization
 - Interactive node selection and path finding
 - Change overlay support

@@ -687,6 +687,13 @@ export class SymbolChangesPanel {
     let currentCalls: any[] = [];
     let currentContent = '';
 
+    // Special logging for .xaml.cs files
+    const isXamlCs = filePath.endsWith('.xaml.cs');
+    if (isXamlCs) {
+      this.log(`[XAML.CS] Processing file: ${filePath}`);
+      this.log(`[XAML.CS] Diff length: ${diff.length}`);
+    }
+
     try {
       if (fs.existsSync(fullPath)) {
         currentContent = fs.readFileSync(fullPath, 'utf8');
@@ -696,6 +703,13 @@ export class SymbolChangesPanel {
         const ext = filePath.split('.').pop();
         this.log(`File extension: ${ext}`);
         
+        // Check for lambda expressions in C# files
+        if (ext === 'cs' && currentContent.includes('=>')) {
+          this.log(`[C#] File contains lambda expressions (=>)`);
+          const lambdaCount = (currentContent.match(/=>/g) || []).length;
+          this.log(`[C#] Lambda count: ${lambdaCount}`);
+        }
+        
         this.log(`Calling parser.parseFile for ${fullPath}`);
         const parseResult = await this.parser.parseFile(fullPath, currentContent);
         this.log(`Parser returned: ${parseResult ? 'result object' : 'null'}`);
@@ -704,6 +718,11 @@ export class SymbolChangesPanel {
           this.log(`Parse result: ${parseResult.symbols.length} symbols, ${parseResult.calls.length} calls`);
           if (parseResult.symbols.length > 0) {
             this.log(`First few symbols: ${parseResult.symbols.slice(0, 3).map(s => `${s.kind}:${s.name}`).join(', ')}`);
+            
+            // Extra logging for C# files with lambdas
+            if (ext === 'cs' && currentContent.includes('=>')) {
+              this.log(`[C#] All symbols detected: ${parseResult.symbols.map(s => `${s.kind}:${s.name} (lines ${this.byteOffsetToLineNumber(fullPath, s.range.start)}-${this.byteOffsetToLineNumber(fullPath, s.range.end)})`).join(', ')}`);
+            }
           } else {
             this.log(`No symbols found - checking why...`);
             this.log(`Parse result hash: ${parseResult.hash}`);
@@ -815,6 +834,12 @@ export class SymbolChangesPanel {
     // Build a map of changed lines to the most specific symbol containing them
     const lineToMostSpecificSymbol = new Map<number, any>();
     
+    // Extra logging for C# files with lambdas
+    const ext = filePath.split('.').pop();
+    if (ext === 'cs' && currentContent.includes('=>')) {
+      this.log(`[C#] Changed line numbers: ${Array.from(changedLineNumbers).sort((a, b) => a - b).join(', ')}`);
+    }
+    
     for (const line of changedLineNumbers) {
       let mostSpecificSymbol = null;
       let smallestRange = Infinity;
@@ -834,6 +859,16 @@ export class SymbolChangesPanel {
       
       if (mostSpecificSymbol) {
         lineToMostSpecificSymbol.set(line, mostSpecificSymbol);
+        
+        // Extra logging for C# files with lambdas
+        if (ext === 'cs' && currentContent.includes('=>')) {
+          this.log(`[C#] Line ${line} matched to symbol: ${mostSpecificSymbol.name} (${mostSpecificSymbol.kind})`);
+        }
+      } else {
+        // Log when a changed line doesn't match any symbol
+        if (ext === 'cs' && currentContent.includes('=>')) {
+          this.log(`[C#] WARNING: Line ${line} did not match any symbol!`);
+        }
       }
     }
     

@@ -142,6 +142,22 @@ Patterns supported:
 - **Comments**: Lines starting with `#` are ignored
 - **Glob patterns**: Supports wildcards like `**/*.test.ts`
 
+## Troubleshooting
+
+### Symbol Changes Not Detected
+
+If changes in your code are not being detected in the Symbol Changes view:
+
+1. **Check the Output Panel**: View → Output → Select "Radium Symbol Changes" to see detailed logs
+2. **For C# files with lambdas**: Look for logs prefixed with `[C#]` or `[XAML.CS]` that show:
+   - Whether symbols are being detected
+   - Which lines are marked as changed
+   - Whether changed lines match to symbols
+3. **Try refreshing**: Close and reopen the Symbol Changes panel to clear caches
+4. **Check radiumignore**: Make sure your file isn't being ignored by patterns in `.radium/radiumignore`
+
+See [docs/lambda-detection-investigation.md](docs/lambda-detection-investigation.md) for detailed information about lambda expression detection in C#.
+
 ## Configuration
 
 Available settings:

@@ -88,6 +88,64 @@ namespace MyApp
     assert.ok(constructors.every(c => c.name === 'Person'), 'All constructors should be named Person');
   });
 
+  test('should detect methods containing lambda expressions', async () => {
+    const code = `
+using System;
+using System.Windows.Threading;
+
+public sealed partial class GameWindow : Window
+{
+    public void InitializeGame()
+    {
+        Dispatcher.InvokeAsync(async () =>
+        {
+            await Task.Delay(50);
+            RenderMap();
+            UpdateUI();
+            _engine.InitializeAI();
+            UpdatePausePlayButton();
+        }, System.Windows.Threading.DispatcherPriority.Background);
+    }
+    
+    private void RenderMap()
+    {
+        // Render logic
+    }
+    
+    private void UpdateUI()
+    {
+        // UI update logic
+    }
+}`;
+    
+    const result = await parser.parseFile('GameWindow.xaml.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    // Debug: log all symbols found
+    console.log('All symbols found:', result!.symbols.map(s => `${s.kind}:${s.name}`));
+    
+    // Find the class
+    const classSymbol = result!.symbols.find(s => s.kind === 'class' && s.name === 'GameWindow');
+    assert.ok(classSymbol, 'Should find GameWindow class');
+    
+    // Find the InitializeGame method
+    const initMethod = result!.symbols.find(s => s.kind === 'function' && s.name === 'InitializeGame');
+    assert.ok(initMethod, 'Should find InitializeGame method');
+    
+    // Find the RenderMap method
+    const renderMethod = result!.symbols.find(s => s.kind === 'function' && s.name === 'RenderMap');
+    assert.ok(renderMethod, 'Should find RenderMap method');
+    
+    // Find the UpdateUI method
+    const updateMethod = result!.symbols.find(s => s.kind === 'function' && s.name === 'UpdateUI');
+    assert.ok(updateMethod, 'Should find UpdateUI method');
+    
+    // Verify we found all expected methods
+    const methods = result!.symbols.filter(s => s.kind === 'function');
+    assert.ok(methods.length >= 3, `Should find at least 3 methods, found ${methods.length}`);
+  });
+
   test('should detect static constructors', async () => {
     const code = `
 namespace MyApp

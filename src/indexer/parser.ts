@@ -505,6 +505,7 @@ export class CodeParser {
         if (bodyNode) {
           this.extractCSharpSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
         }
+        return; // Don't recurse to children again
       }
     }
     // Interface declarations
@@ -512,12 +513,19 @@ export class CodeParser {
       const nameNode = node.childForFieldName('name');
       if (nameNode) {
         const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        const fqname = namespace ? `${namespace}.${name}` : name;
         symbols.push({
           kind: 'interface',
           name,
-          fqname: namespace ? `${namespace}.${name}` : name,
+          fqname,
           range: { start: node.startIndex, end: node.endIndex }
         });
+        // Recurse into interface body with new namespace
+        const bodyNode = node.childForFieldName('body');
+        if (bodyNode) {
+          this.extractCSharpSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
+        }
+        return; // Don't recurse to children again
       }
     }
     // Struct declarations
@@ -525,12 +533,19 @@ export class CodeParser {
       const nameNode = node.childForFieldName('name');
       if (nameNode) {
         const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        const fqname = namespace ? `${namespace}.${name}` : name;
         symbols.push({
           kind: 'class',
           name,
-          fqname: namespace ? `${namespace}.${name}` : name,
+          fqname,
           range: { start: node.startIndex, end: node.endIndex }
         });
+        // Recurse into struct body with new namespace
+        const bodyNode = node.childForFieldName('body');
+        if (bodyNode) {
+          this.extractCSharpSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
+        }
+        return; // Don't recurse to children again
       }
     }
     // Enum declarations
@@ -719,6 +734,7 @@ export class CodeParser {
         if (bodyNode) {
           this.extractCSharpSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
         }
+        return; // Don't recurse to children again
       }
     }
     // Using directives (imports)

@@ -48,6 +48,7 @@ export class SymbolChangesPanel {
   private pendingChanges = new Map<string, NodeJS.Timeout>();
   private diffCache = new Map<string, { diff: string; timestamp: number }>();
   private filesCreatedThisSession = new Set<string>();
+  private filesWithSymbols = new Set<string>(); // Track files that have had symbols detected
   private lastKnownFileStates = new Map<string, string>(); // filePath -> content snapshot
   private baselineFileStates = new Map<string, string>(); // filePath -> original baseline content
   private radiumIgnore: RadiumIgnore;
@@ -75,6 +76,7 @@ export class SymbolChangesPanel {
         switch (message.type) {
           case 'clearAll':
             this.filesCreatedThisSession.clear();
+            this.filesWithSymbols.clear();
             this.lastKnownFileStates.clear();
             this.baselineFileStates.clear();
             this.log('Cleared session tracking and file states');
@@ -450,30 +452,37 @@ export class SymbolChangesPanel {
       const symbolChanges = await this.analyzeDiffForSymbols(relativePath, patches, isNew);
       this.log(`Found ${symbolChanges.symbols.length} symbols in ${relativePath}`);
 
-      // If no symbols detected, send a fallback "file changed" box
+      // If no symbols detected, send a fallback "file changed" box ONLY if this file has never had symbols
       if (symbolChanges.symbols.length === 0) {
-        this.log(`No symbols detected in ${relativePath}, sending file changed fallback`);
-        const fileName = path.basename(relativePath);
-        this.panel.webview.postMessage({
-          type: 'symbol:changed',
-          data: {
-            filePath: relativePath,
-            symbol: {
-              type: 'file',
-              name: fileName,
-              changeType: isNew ? 'added' : 'modified',
+        if (!this.filesWithSymbols.has(relativePath)) {
+          this.log(`No symbols detected in ${relativePath}, sending file changed fallback`);
+          const fileName = path.basename(relativePath);
+          this.panel.webview.postMessage({
+            type: 'symbol:changed',
+            data: {
               filePath: relativePath,
-              startLine: 1,
-              endLine: 1,
-              changeAmount: 1
-            },
-            calls: [],
-            timestamp: Date.now(),
-            isNew: isNew,
-            diff: patches
-          }
-        });
+              symbol: {
+                type: 'file',
+                name: fileName,
+                changeType: isNew ? 'added' : 'modified',
+                filePath: relativePath,
+                startLine: 1,
+                endLine: 1,
+                changeAmount: 1
+              },
+              calls: [],
+              timestamp: Date.now(),
+              isNew: isNew,
+              diff: patches
+            }
+          });
+        } else {
+          this.log(`No symbols in current change for ${relativePath}, but file has symbols from previous changes - skipping FILE fallback`);
+        }
       } else {
+        // Mark this file as having symbols
+        this.filesWithSymbols.add(relativePath);
+        
         // Send each symbol change individually so they get their own boxes
         for (const symbol of symbolChanges.symbols) {
           this.log(`Sending symbol: ${symbol.name} (${symbol.type})`);
@@ -575,30 +584,37 @@ export class SymbolChangesPanel {
     const symbolChanges = await this.analyzeDiffForSymbols(relativePath, diff, isNew);
     this.log(`Found ${symbolChanges.symbols.length} symbols in ${relativePath}`);
 
-    // If no symbols detected, send a fallback "file changed" box
+    // If no symbols detected, send a fallback "file changed" box ONLY if this file has never had symbols
     if (symbolChanges.symbols.length === 0) {
-      this.log(`No symbols detected in ${relativePath}, sending file changed fallback`);
-      const fileName = path.basename(relativePath);
-      this.panel.webview.postMessage({
-        type: 'symbol:changed',
-        data: {
-          filePath: relativePath,
-          symbol: {
-            type: 'file',
-            name: fileName,
-            changeType: isNew ? 'added' : 'modified',
+      if (!this.filesWithSymbols.has(relativePath)) {
+        this.log(`No symbols detected in ${relativePath}, sending file changed fallback`);
+        const fileName = path.basename(relativePath);
+        this.panel.webview.postMessage({
+          type: 'symbol:changed',
+          data: {
             filePath: relativePath,
-            startLine: 1,
-            endLine: 1,
-            changeAmount: 1
-          },
-          calls: [],
-          timestamp: Date.now(),
-          isNew: isNew,
-          diff: diff
-        }
-      });
+            symbol: {
+              type: 'file',
+              name: fileName,
+              changeType: isNew ? 'added' : 'modified',
+              filePath: relativePath,
+              startLine: 1,
+              endLine: 1,
+              changeAmount: 1
+            },
+            calls: [],
+            timestamp: Date.now(),
+            isNew: isNew,
+            diff: diff
+          }
+        });
+      } else {
+        this.log(`No symbols in current change for ${relativePath}, but file has symbols from previous changes - skipping FILE fallback`);
+      }
     } else {
+      // Mark this file as having symbols
+      this.filesWithSymbols.add(relativePath);
+      
       // Remove any FILE fallback boxes for this file since we now have actual symbols
       this.panel.webview.postMessage({
         type: 'file:remove-fallback',
@@ -2177,8 +2193,8 @@ export class SymbolChangesPanel {
 
     .comment-overlay {
       position: absolute;
-      background-color: rgba(173, 216, 230, 0.95);
-      color: #3C3C3C;
+      background-color: rgba(216, 191, 216, 0.95);
+      color: #000000;
       padding: 12px 16px;
       border-radius: 4px;
       font-size: 20px;
@@ -2188,17 +2204,19 @@ export class SymbolChangesPanel {
       text-align: left;
       z-index: 15;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      animation: fadeInOut 4s ease-in-out forwards;
-      pointer-events: none;
+      pointer-events: auto;
       white-space: pre-wrap;
       word-wrap: break-word;
       line-height: 1.4;
+      transition: opacity 0.3s ease;
     }
 
-    @keyframes fadeInOut {
-      0% { opacity: 0; transform: translateY(-5px); }
-      10% { opacity: 1; transform: translateY(0); }
-      90% { opacity: 1; transform: translateY(0); }
+    .comment-overlay.fading {
+      animation: fadeOut 0.5s ease-in-out forwards;
+    }
+
+    @keyframes fadeOut {
+      0% { opacity: 1; transform: translateY(0); }
       100% { opacity: 0; transform: translateY(-5px); }
     }
   </style>
@@ -3291,41 +3309,80 @@ export class SymbolChangesPanel {
               // Handle the symbol change first to ensure file container exists
               handleSingleSymbolChange(message.data);
               
-              // Display comments AFTER file container is created
+              // Display comments AFTER repositioning is complete (wait for layout to settle)
               if (message.data.comments && message.data.comments.length > 0) {
-                // Preserve newlines by joining with newline character
-                const commentText = message.data.comments.join('\n');
-                const overlay = document.createElement('div');
-                overlay.className = 'comment-overlay';
-                overlay.textContent = commentText;
-                
-                // Position under the file box
-                const filePath = message.data.filePath;
-                const group = fileGroups.get(filePath);
-                if (group && group.fileContainer) {
-                  // Append to canvas so it moves with pan/zoom
-                  canvas.appendChild(overlay);
-                  
-                  // Position below the file container
-                  const containerRect = group.fileContainer.getBoundingClientRect();
-                  const canvasRect = canvas.getBoundingClientRect();
-                  
-                  // Calculate position relative to canvas
-                  const left = group.x;
-                  const top = group.y + parseInt(group.fileContainer.style.height || '100');
-                  
-                  overlay.style.left = left + 'px';
-                  overlay.style.top = (top + 25) + 'px'; // 25px gap below file box
-                } else {
-                  // Fallback: append to body if file container not found
-                  console.warn('[Symbol Changes] File container not found for comments, filePath:', filePath);
-                  document.body.appendChild(overlay);
-                }
-                
-                // Remove after animation completes (4 seconds)
+                // Wait for repositioning to complete (50ms debounce + 10ms buffer)
                 setTimeout(() => {
-                  overlay.remove();
-                }, 4000);
+                  // Remove leading slashes and join with newline character
+                  const cleanedComments = message.data.comments.map(comment => {
+                    // Remove leading // or / or /* or * characters
+                    return comment.replace(/^[\s]*[\/\*]+[\s]*/, '');
+                  });
+                  const commentText = cleanedComments.join('\n');
+                  
+                  const overlay = document.createElement('div');
+                  overlay.className = 'comment-overlay';
+                  overlay.textContent = commentText;
+                  
+                  // Calculate duration based on text length (4-8 seconds)
+                  // Roughly 150 chars = 4 seconds, 600+ chars = 8 seconds
+                  const charCount = commentText.length;
+                  const duration = Math.min(8000, Math.max(4000, 4000 + (charCount / 150) * 1000));
+                  
+                  // Track hover state
+                  let isHovering = false;
+                  let hideTimeout = null;
+                  
+                  // Hover handlers to keep popup open
+                  overlay.addEventListener('mouseenter', () => {
+                    isHovering = true;
+                    if (hideTimeout) {
+                      clearTimeout(hideTimeout);
+                      hideTimeout = null;
+                    }
+                    overlay.classList.remove('fading');
+                  });
+                  
+                  overlay.addEventListener('mouseleave', () => {
+                    isHovering = false;
+                    // Start fade out when mouse leaves
+                    overlay.classList.add('fading');
+                    setTimeout(() => {
+                      overlay.remove();
+                    }, 500); // Match fadeOut animation duration
+                  });
+                  
+                  // Position below the file container (gray box containing all symbols)
+                  const filePath = message.data.filePath;
+                  const group = fileGroups.get(filePath);
+                  
+                  if (group && group.fileContainer) {
+                    // Append to canvas so it moves with pan/zoom
+                    canvas.appendChild(overlay);
+                    
+                    // Position below the file container using updated layout
+                    const containerHeight = parseInt(group.fileContainer.style.height || '100');
+                    const left = group.x;
+                    const top = group.y + containerHeight;
+                    
+                    overlay.style.left = left + 'px';
+                    overlay.style.top = (top + 20) + 'px'; // 20px gap below file container
+                  } else {
+                    // Fallback: append to body if file container not found
+                    console.warn('[Symbol Changes] File container not found for comments, filePath:', filePath);
+                    document.body.appendChild(overlay);
+                  }
+                  
+                  // Auto-hide after calculated duration (if not hovering)
+                  hideTimeout = setTimeout(() => {
+                    if (!isHovering) {
+                      overlay.classList.add('fading');
+                      setTimeout(() => {
+                        overlay.remove();
+                      }, 500); // Match fadeOut animation duration
+                    }
+                  }, duration);
+                }, 60); // Wait for repositioning (50ms) + small buffer
               }
               break;
             case 'file:remove-fallback':

@@ -265,6 +265,69 @@ namespace MyApp
     assert.ok(property, 'Should find Name property');
   });
 
+  test('should detect methods in sealed partial classes (GameWindow scenario)', async () => {
+    const code = `
+using System;
+using System.Windows;
+
+namespace MyGame
+{
+    public sealed partial class GameWindow : Window
+    {
+        public GameWindow()
+        {
+            InitializeComponent();
+        }
+        
+        private void OnStartButtonClick(object sender, RoutedEventArgs e)
+        {
+            StartGame();
+        }
+        
+        private void StartGame()
+        {
+            Console.WriteLine("Game started!");
+        }
+        
+        public void UpdateScore(int score)
+        {
+            ScoreLabel.Content = score.ToString();
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('GameWindow.xaml.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    assert.ok(result!.symbols.length > 0, 'Should find symbols in sealed partial class');
+    
+    // Check for class
+    const classSymbol = result!.symbols.find(s => s.kind === 'class' && s.name === 'GameWindow');
+    assert.ok(classSymbol, 'Should find GameWindow class');
+    
+    // Check for constructor
+    const constructor = result!.symbols.find(s => s.kind === 'constructor' && s.name === 'GameWindow');
+    assert.ok(constructor, 'Should find GameWindow constructor');
+    
+    // Check for methods
+    const startGame = result!.symbols.find(s => s.kind === 'function' && s.name === 'StartGame');
+    assert.ok(startGame, 'Should find StartGame method');
+    
+    const updateScore = result!.symbols.find(s => s.kind === 'function' && s.name === 'UpdateScore');
+    assert.ok(updateScore, 'Should find UpdateScore method');
+    
+    const onStartButtonClick = result!.symbols.find(s => s.kind === 'function' && s.name === 'OnStartButtonClick');
+    assert.ok(onStartButtonClick, 'Should find OnStartButtonClick event handler');
+    
+    // Verify all methods have proper FQN
+    const methods = result!.symbols.filter(s => s.kind === 'function');
+    assert.ok(methods.length >= 3, `Should find at least 3 methods, found ${methods.length}`);
+    
+    for (const method of methods) {
+      assert.ok(method.fqname.includes('GameWindow'), `Method ${method.name} should have GameWindow in FQN: ${method.fqname}`);
+    }
+  });
+
   test('should detect C# delegates', async () => {
     const code = `
 namespace MyApp

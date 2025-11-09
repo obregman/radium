@@ -5,6 +5,25 @@ All notable changes to the Radium extension will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **FILE Fallback Box Logic**: Improved fallback behavior for files with no symbols detected in current change
+  - FILE fallback boxes are now only shown if the file has **never** had symbols detected
+  - If a file previously had symbols but the current change doesn't affect any symbols, no FILE box is shown
+  - Prevents redundant FILE boxes appearing alongside actual symbol boxes
+  - Tracks file symbol history using `filesWithSymbols` set, cleared on "Clear All"
+- **C# Parser Duplicate Symbol Detection**: Fixed issue where methods in classes, interfaces, structs, and records were being extracted twice
+  - Methods were appearing with both correct FQN (e.g., `MyGame.GameWindow.OnStartButtonClick`) and incorrect FQN (e.g., `MyGame.OnStartButtonClick`)
+  - Added `return` statements after processing class/interface/struct/record bodies to prevent double recursion
+  - Fixes issue where changes to functions in `sealed partial class` (like `GameWindow.xaml.cs`) were not properly detected
+  - All C# container types now properly scope their child symbols
+  - Added comprehensive test for sealed partial classes with event handlers
+- **Comment Popup Improvements**: Enhanced comment overlays in Symbol Changes view
+  - Duration now scales dynamically from 4-8 seconds based on text length
+  - Popup remains open when user hovers over it (prevents premature disappearing)
+  - Changed background color to light purple (rgba(216, 191, 216, 0.95))
+  - Text color changed to black for better contrast
+  - Leading forward slashes (`//`, `/`, `/*`, `*`) are now automatically removed from comment lines
+  - **Positioning**: Comment popups appear below the file container with 20px gap
+  - **Timing fix**: Popup display is delayed until after layout repositioning completes (60ms) to use accurate container dimensions
 - **C# Constructor Detection**: Added support for detecting C# constructors in the parser
   - Constructor declarations are now properly recognized as `constructor` symbols
   - Fixes issue where changes to C# constructors were categorized as FILE changes instead of symbol-level changes

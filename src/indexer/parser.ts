@@ -462,11 +462,17 @@ export class CodeParser {
     filePath: string,
     namespace: string = ''
   ) {
+    // Debug logging for .xaml.cs files
+    const isXamlCs = filePath.includes('.xaml.cs');
+    
     // Method declarations
     if (node.type === 'method_declaration' || node.type === 'local_function_statement') {
       const nameNode = node.childForFieldName('name');
       if (nameNode) {
         const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+        if (isXamlCs) {
+          console.log(`[C# Parser] Found method: ${name} in namespace: ${namespace}, byte range: ${node.startIndex}-${node.endIndex}`);
+        }
         symbols.push({
           kind: 'function',
           name,
@@ -494,6 +500,9 @@ export class CodeParser {
       if (nameNode) {
         const name = code.slice(nameNode.startIndex, nameNode.endIndex);
         const fqname = namespace ? `${namespace}.${name}` : name;
+        if (isXamlCs) {
+          console.log(`[C# Parser] Found class: ${name}, byte range: ${node.startIndex}-${node.endIndex}`);
+        }
         symbols.push({
           kind: 'class',
           name,
@@ -503,6 +512,9 @@ export class CodeParser {
         // Recurse into class body with new namespace
         const bodyNode = node.childForFieldName('body');
         if (bodyNode) {
+          if (isXamlCs) {
+            console.log(`[C# Parser] Recursing into class body for: ${name}, body has ${bodyNode.childCount} children`);
+          }
           this.extractCSharpSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
         }
         return; // Don't recurse to children again
@@ -777,6 +789,9 @@ export class CodeParser {
 
     // Recurse to children
     for (const child of node.children) {
+      if (isXamlCs && node.type === 'declaration_list') {
+        console.log(`[C# Parser] Processing child node type: ${child.type} in declaration_list`);
+      }
       this.extractCSharpSymbols(child, code, symbols, imports, calls, filePath, namespace);
     }
   }

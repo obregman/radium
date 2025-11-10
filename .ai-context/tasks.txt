@@ -3,10 +3,4 @@
 
 Symbol visualization view tasks:
 
--- the comment pop ups should remain between 4 and 8 seconds depending on the length of the text
-
--- if the user hovers over the comment pop up, it should remain open and not dissapear
-
--- make the comment popup light purple with italic black letters. remove any / symbol from the beginning of each comment line
-
--- a change to a function in a xaml.cs file - the function name was not detected. the class is: public sealed partial class GameWindow : Window
+-- 

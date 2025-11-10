@@ -52,8 +52,8 @@ export class MapPanel {
       this.disposables
     );
 
-    // Send initial data
-    this.updateGraph();
+    // Note: Initial data will be sent when webview sends 'ready' message
+    // See handleMessage case 'ready'
     
     // Start automatic change checking
     this.startChangeChecking();
@@ -1363,7 +1363,8 @@ export class MapPanel {
     // Handle file changes
     this.fileWatcher.onDidChange(uri => {
       MapPanel.outputChannel.appendLine(`File changed: ${uri.fsPath}`);
-      this.checkForChanges();
+      const relativePath = path.relative(workspaceFolders[0].uri.fsPath, uri.fsPath);
+      this.checkForChanges(relativePath);
     });
     
     // Handle file creation
@@ -1391,7 +1392,8 @@ export class MapPanel {
     }
   }
 
-  private async checkForChanges() {
+
+  private async checkForChanges(specificFilePath?: string) {
     if (!this.gitDiffTracker) {
       return;
     }
@@ -1427,7 +1429,8 @@ export class MapPanel {
       if (changedFilePaths.length > 0) {
         this.panel.webview.postMessage({
           type: 'files:changed',
-          filePaths: changedFilePaths
+          filePaths: changedFilePaths,
+          specificFile: specificFilePath
         });
       }
     } catch (error) {
@@ -1473,7 +1476,7 @@ export class MapPanel {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}' https://d3js.org; connect-src 'none';">
-  <title>Radium: Codebase Map</title>
+  <title>Radium: Codebase Map v2</title>
   <style>
     body { 
       margin: 0; 
@@ -1753,6 +1756,7 @@ export class MapPanel {
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script nonce="${nonce}">
+    // Version: 2024-11-10-v3
     const vscode = acquireVsCodeApi();
     
     let graphData = { nodes: [], edges: [] };
@@ -1772,6 +1776,7 @@ export class MapPanel {
     const ZOOM_THRESHOLD = 0.3; // Below this zoom level, show only components
     let autoFocusEnabled = false; // Auto-focus disabled by default
     let transform = { k: 1, x: 0, y: 0 }; // Pan/zoom transform state
+    let lastFocusedFilePath = null; // Track the last file that was auto-focused
 
     const colorMap = {
       'component': '#00BCD4',
@@ -1876,7 +1881,7 @@ export class MapPanel {
       let startPoint = { x: 0, y: 0 };
       
       function updateTransform() {
-        g.attr('transform', \`translate(\${transform.x},\${transform.y}) scale(\${transform.k})\`);
+        g.attr('transform', 'translate(' + transform.x + ',' + transform.y + ') scale(' + transform.k + ')');
         currentZoomLevel = transform.k;
         updateVisibilityByZoom();
       }
@@ -3471,21 +3476,45 @@ export class MapPanel {
     }
 
     // Function to focus on changed files
-    function focusOnChangedFiles(filePaths) {
+    function focusOnChangedFiles(filePaths, specificFile) {
       if (!graphData || !graphData.nodes || filePaths.length === 0 || !svg || !g) {
         console.log('[Radium Map] Cannot focus - missing data or SVG not initialized');
         return;
       }
       
-      // Find the first changed file node
-      const changedFileNode = graphData.nodes.find(node => 
-        node.type === 'file' && filePaths.some(fp => node.path && node.path.includes(fp))
-      );
+      let changedFileNode = null;
+      
+      // If a specific file was provided, try to focus on it
+      if (specificFile) {
+        changedFileNode = graphData.nodes.find(node => 
+          node.kind === 'file' && 
+          node.path && 
+          (node.path === specificFile || node.path.includes(specificFile))
+        );
+        
+        // Only focus if it's different from the last focused file
+        if (changedFileNode && changedFileNode.path === lastFocusedFilePath) {
+          console.log('[Radium Map] Skipping focus - same file as last focus:', changedFileNode.path);
+          return;
+        }
+      }
+      
+      // If no specific file or not found, find any changed file different from last focused
+      if (!changedFileNode) {
+        changedFileNode = graphData.nodes.find(node => 
+          node.kind === 'file' && 
+          filePaths.some(fp => node.path && node.path.includes(fp)) &&
+          node.path !== lastFocusedFilePath
+        );
+      }
       
       if (!changedFileNode || changedFileNode.x === undefined || changedFileNode.y === undefined) {
-        console.log('[Radium Map] Could not find changed file node to focus on');
+        console.log('[Radium Map] Could not find new changed file node to focus on');
         return;
       }
+      
+      // Update the last focused file
+      lastFocusedFilePath = changedFileNode.path;
       
       console.log('[Radium Map] Focusing on file:', changedFileNode.path, 'at position:', changedFileNode.x, changedFileNode.y);
       
@@ -3511,7 +3540,7 @@ export class MapPanel {
         transform.x = startX + (targetX - startX) * eased;
         transform.y = startY + (targetY - startY) * eased;
         
-        g.attr('transform', \`translate(\${transform.x},\${transform.y}) scale(\${transform.k})\`);
+        g.attr('transform', 'translate(' + transform.x + ',' + transform.y + ') scale(' + transform.k + ')');
         
         if (progress < 1) {
           requestAnimationFrame(animate);
@@ -3538,6 +3567,7 @@ export class MapPanel {
         case 'overlay:clear':
           activeOverlay = null;
           clearOverlays();
+          lastFocusedFilePath = null; // Reset last focused file when overlay is cleared
           if (fullGraphData) {
             updateGraph(fullGraphData, false);
           }
@@ -3545,8 +3575,8 @@ export class MapPanel {
         case 'files:changed':
           // Auto-focus on changed files if enabled
           if (autoFocusEnabled && message.filePaths && message.filePaths.length > 0) {
-            console.log('[Radium Map] Auto-focusing on changed files:', message.filePaths);
-            focusOnChangedFiles(message.filePaths);
+            console.log('[Radium Map] Auto-focusing on changed files:', message.filePaths, 'specific:', message.specificFile);
+            focusOnChangedFiles(message.filePaths, message.specificFile);
           }
           break;
         case 'path:result':
@@ -3637,7 +3667,7 @@ export class MapPanel {
       // Update results text
       const resultsText = matchCount === 0 ? 'No matches' : 
                          matchCount === 1 ? '1 match' : 
-                         \`\${matchCount} matches\`;
+                         matchCount + ' matches';
       document.getElementById('search-results').textContent = resultsText;
     }
     

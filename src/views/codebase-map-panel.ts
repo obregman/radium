@@ -1392,6 +1392,174 @@ export class MapPanel {
     }
   }
 
+  private getCommentOverlayStyles(): string {
+    return `
+    .comment-overlay {
+      position: fixed;
+      background-color: rgba(216, 191, 216, 0.95);
+      color: #000000;
+      padding: 12px 16px;
+      border-radius: 4px;
+      font-size: 20px;
+      font-weight: 400;
+      font-style: italic;
+      max-width: 400px;
+      text-align: left;
+      z-index: 10000;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      pointer-events: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      line-height: 1.4;
+      transition: opacity 0.3s ease;
+    }
+    .comment-overlay.fading {
+      animation: commentFadeOut 0.5s ease-in-out forwards;
+    }
+    @keyframes commentFadeOut {
+      0% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-5px); }
+    }
+    .file-box-changed {
+      animation: orangeBlink 3s ease-in-out;
+    }
+    @keyframes orangeBlink {
+      0%, 100% { stroke: var(--vscode-editor-foreground); stroke-width: 2px; }
+      10%, 30%, 50%, 70%, 90% { stroke: #FFA500; stroke-width: 4px; }
+      20%, 40%, 60%, 80% { stroke: var(--vscode-editor-foreground); stroke-width: 2px; }
+    }
+    `;
+  }
+
+  private getDisplayCommentsFunction(): string {
+    return `
+    function displayComments(fileNode, comments) {
+      var cleanedComments = comments.map(function(comment) {
+        return comment.replace(/^[\\s]*[\\/\\*]+[\\s]*/, '');
+      });
+      var commentText = cleanedComments.join('\\n');
+      
+      var overlay = document.createElement('div');
+      overlay.className = 'comment-overlay';
+      overlay.textContent = commentText;
+      
+      var charCount = commentText.length;
+      var duration = Math.min(8000, Math.max(4000, 4000 + (charCount / 150) * 1000));
+      
+      var isHovering = false;
+      var hideTimeout = null;
+      
+      overlay.addEventListener('mouseenter', function() {
+        isHovering = true;
+        if (hideTimeout) {
+          clearTimeout(hideTimeout);
+          hideTimeout = null;
+        }
+        overlay.classList.remove('fading');
+      });
+      
+      overlay.addEventListener('mouseleave', function() {
+        isHovering = false;
+        overlay.classList.add('fading');
+        setTimeout(function() {
+          overlay.remove();
+        }, 500);
+      });
+      
+      var screenX = fileNode.x * transform.k + transform.x;
+      var screenY = fileNode.y * transform.k + transform.y;
+      
+      overlay.style.left = screenX + 'px';
+      overlay.style.top = (screenY + 60) + 'px';
+      
+      document.body.appendChild(overlay);
+      
+      console.log('[Radium Map] Displaying comments at:', screenX, screenY + 60);
+      
+      hideTimeout = setTimeout(function() {
+        if (!isHovering) {
+          overlay.classList.add('fading');
+          setTimeout(function() {
+            overlay.remove();
+          }, 500);
+        }
+      }, duration);
+    }
+    `;
+  }
+
+  private extractCommentsFromDiff(diff: string, filePath: string): string[] {
+    const newComments: string[] = [];
+    const oldComments = new Set<string>();
+    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+    
+    const lines = diff.split('\n');
+    const addedLines = new Map<number, string>();
+    const deletedLines = new Map<number, string>();
+    let currentLineNumber = 0;
+    
+    // Parse diff to extract added and deleted lines
+    for (const line of lines) {
+      if (line.startsWith('@@')) {
+        const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (match) {
+          currentLineNumber = parseInt(match[1], 10);
+        }
+      } else if (line.startsWith('+') && !line.startsWith('+++')) {
+        addedLines.set(currentLineNumber, line.substring(1));
+        currentLineNumber++;
+      } else if (line.startsWith('-') && !line.startsWith('---')) {
+        deletedLines.set(currentLineNumber, line.substring(1));
+      } else if (!line.startsWith('\\')) {
+        currentLineNumber++;
+      }
+    }
+    
+    // Helper function to extract comment text from a line
+    const extractCommentText = (trimmed: string): string | null => {
+      // JavaScript/TypeScript/C-style comments
+      if (['js', 'ts', 'jsx', 'tsx', 'c', 'cpp', 'java', 'cs', 'go', 'rs', 'swift'].includes(ext)) {
+        if (trimmed.startsWith('//')) {
+          const comment = trimmed.substring(2).trim();
+          if (comment.length > 0) return comment;
+        }
+        const multiLineMatch = trimmed.match(/\/\*\s*(.+?)\s*\*\//);
+        if (multiLineMatch) return multiLineMatch[1].trim();
+      }
+      
+      // Python/Ruby/Shell comments
+      if (['py', 'rb', 'sh', 'bash'].includes(ext)) {
+        if (trimmed.startsWith('#')) {
+          const comment = trimmed.substring(1).trim();
+          if (comment.length > 0 && !comment.startsWith('!')) return comment;
+        }
+      }
+      
+      // HTML/XML comments
+      if (['html', 'xml', 'svg', 'xaml'].includes(ext)) {
+        const htmlCommentMatch = trimmed.match(/<!--\s*(.+?)\s*-->/);
+        if (htmlCommentMatch) return htmlCommentMatch[1].trim();
+      }
+      
+      return null;
+    };
+    
+    // Collect comments from deleted lines
+    for (const [, lineContent] of deletedLines) {
+      const comment = extractCommentText(lineContent.trim());
+      if (comment) oldComments.add(comment);
+    }
+    
+    // Collect only NEW comments from added lines
+    for (const [, lineContent] of addedLines) {
+      const comment = extractCommentText(lineContent.trim());
+      if (comment && !oldComments.has(comment)) {
+        newComments.push(comment);
+      }
+    }
+    
+    return newComments;
+  }
 
   private async checkForChanges(specificFilePath?: string) {
     if (!this.gitDiffTracker) {
@@ -1426,11 +1594,28 @@ export class MapPanel {
         return file?.path;
       }).filter(path => path !== undefined);
       
+      // Extract comments from the specific file if provided
+      let comments: string[] = [];
+      if (specificFilePath && changedFilePaths.includes(specificFilePath)) {
+        // Get the diff from git for the specific file
+        try {
+          const gitChanges = await this.gitDiffTracker.getCurrentBranchChanges();
+          const gitChange = gitChanges.find(gc => gc.filePath === specificFilePath);
+          if (gitChange?.diff) {
+            comments = this.extractCommentsFromDiff(gitChange.diff, specificFilePath);
+            MapPanel.outputChannel.appendLine(`Extracted ${comments.length} comments from ${specificFilePath}`);
+          }
+        } catch (error) {
+          MapPanel.outputChannel.appendLine(`Error extracting comments: ${error}`);
+        }
+      }
+      
       if (changedFilePaths.length > 0) {
         this.panel.webview.postMessage({
           type: 'files:changed',
           filePaths: changedFilePaths,
-          specificFile: specificFilePath
+          specificFile: specificFilePath,
+          comments: comments.length > 0 ? comments : undefined
         });
       }
     } catch (error) {
@@ -1725,6 +1910,7 @@ export class MapPanel {
       border-color: var(--vscode-button-background);
       opacity: 1;
     }
+    ${this.getCommentOverlayStyles()}
     .toggle-checkbox {
       width: 12px;
       height: 12px;
@@ -3475,8 +3661,10 @@ export class MapPanel {
         });
     }
 
+    ${this.getDisplayCommentsFunction()}
+
     // Function to focus on changed files
-    function focusOnChangedFiles(filePaths, specificFile) {
+    function focusOnChangedFiles(filePaths, specificFile, comments) {
       if (!graphData || !graphData.nodes || filePaths.length === 0 || !svg || !g) {
         console.log('[Radium Map] Cannot focus - missing data or SVG not initialized');
         return;
@@ -3491,20 +3679,13 @@ export class MapPanel {
           node.path && 
           (node.path === specificFile || node.path.includes(specificFile))
         );
-        
-        // Only focus if it's different from the last focused file
-        if (changedFileNode && changedFileNode.path === lastFocusedFilePath) {
-          console.log('[Radium Map] Skipping focus - same file as last focus:', changedFileNode.path);
-          return;
-        }
       }
       
-      // If no specific file or not found, find any changed file different from last focused
+      // If no specific file or not found, find any changed file
       if (!changedFileNode) {
         changedFileNode = graphData.nodes.find(node => 
           node.kind === 'file' && 
-          filePaths.some(fp => node.path && node.path.includes(fp)) &&
-          node.path !== lastFocusedFilePath
+          filePaths.some(fp => node.path && node.path.includes(fp))
         );
       }
       
@@ -3517,6 +3698,21 @@ export class MapPanel {
       lastFocusedFilePath = changedFileNode.path;
       
       console.log('[Radium Map] Focusing on file:', changedFileNode.path, 'at position:', changedFileNode.x, changedFileNode.y);
+      
+      // Add blinking yellow border animation
+      var fileBoxes = svg.selectAll('.file-box');
+      fileBoxes.each(function(d) {
+        if (d === changedFileNode) {
+          var box = d3.select(this);
+          box.classed('file-box-changed', false);
+          setTimeout(function() {
+            box.classed('file-box-changed', true);
+          }, 10);
+          setTimeout(function() {
+            box.classed('file-box-changed', false);
+          }, 3000);
+        }
+      });
       
       // Calculate the target transform to center this file
       const targetX = width / 2 - changedFileNode.x * transform.k;
@@ -3544,6 +3740,9 @@ export class MapPanel {
         
         if (progress < 1) {
           requestAnimationFrame(animate);
+        } else if (comments && comments.length > 0) {
+          // After animation completes, display comments
+          displayComments(changedFileNode, comments);
         }
       }
       
@@ -3575,8 +3774,8 @@ export class MapPanel {
         case 'files:changed':
           // Auto-focus on changed files if enabled
           if (autoFocusEnabled && message.filePaths && message.filePaths.length > 0) {
-            console.log('[Radium Map] Auto-focusing on changed files:', message.filePaths, 'specific:', message.specificFile);
-            focusOnChangedFiles(message.filePaths, message.specificFile);
+            console.log('[Radium Map] Auto-focusing on changed files:', message.filePaths, 'specific:', message.specificFile, 'comments:', message.comments);
+            focusOnChangedFiles(message.filePaths, message.specificFile, message.comments);
           }
           break;
         case 'path:result':

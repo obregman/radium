@@ -683,5 +683,486 @@ namespace MyApp
     const priorityEnum = result!.symbols.find(s => s.name === 'Priority');
     assert.ok(priorityEnum, 'Should find Priority enum');
   });
+
+  test('should detect function name for changes in .xaml.cs event handlers', async () => {
+    const originalCode = `
+using System;
+using System.Windows;
+
+namespace MyApp
+{
+    public partial class MainWindow : Window
+    {
+        public MainWindow()
+        {
+            InitializeComponent();
+        }
+        
+        private void OnButtonClick(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show("Hello");
+        }
+        
+        private void OnLoadClick(object sender, RoutedEventArgs e)
+        {
+            LoadData();
+        }
+        
+        private void LoadData()
+        {
+            // Load data
+        }
+    }
+}`;
+
+    const modifiedCode = `
+using System;
+using System.Windows;
+
+namespace MyApp
+{
+    public partial class MainWindow : Window
+    {
+        public MainWindow()
+        {
+            InitializeComponent();
+        }
+        
+        private void OnButtonClick(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show("Hello World");
+            Console.WriteLine("Button clicked");
+        }
+        
+        private void OnLoadClick(object sender, RoutedEventArgs e)
+        {
+            LoadData();
+        }
+        
+        private void LoadData()
+        {
+            // Load data
+        }
+    }
+}`;
+
+    const originalResult = await parser.parseFile('MainWindow.xaml.cs', originalCode);
+    const modifiedResult = await parser.parseFile('MainWindow.xaml.cs', modifiedCode);
+    
+    assert.ok(originalResult, 'Should parse original .xaml.cs file');
+    assert.ok(modifiedResult, 'Should parse modified .xaml.cs file');
+    
+    // Find OnButtonClick in both versions
+    const originalMethod = originalResult!.symbols.find(s => s.name === 'OnButtonClick');
+    const modifiedMethod = modifiedResult!.symbols.find(s => s.name === 'OnButtonClick');
+    
+    assert.ok(originalMethod, 'Should find OnButtonClick in original');
+    assert.ok(modifiedMethod, 'Should find OnButtonClick in modified');
+    assert.strictEqual(originalMethod!.kind, 'function', 'OnButtonClick should be a function');
+    assert.strictEqual(modifiedMethod!.kind, 'function', 'OnButtonClick should be a function');
+    
+    // Verify the range changed
+    assert.notStrictEqual(
+      originalMethod!.range.end,
+      modifiedMethod!.range.end,
+      'OnButtonClick range should change when code is added'
+    );
+    
+    // Verify FQN includes class name
+    assert.ok(
+      originalMethod!.fqname.includes('MainWindow'),
+      `FQN should include MainWindow: ${originalMethod!.fqname}`
+    );
+  });
+
+  test('should detect function name for changes in .xaml.cs async methods', async () => {
+    const originalCode = `
+using System;
+using System.Threading.Tasks;
+using System.Windows;
+
+namespace MyApp
+{
+    public partial class DataWindow : Window
+    {
+        private async void OnRefreshClick(object sender, RoutedEventArgs e)
+        {
+            await LoadDataAsync();
+        }
+        
+        private async Task LoadDataAsync()
+        {
+            await Task.Delay(100);
+            UpdateUI();
+        }
+        
+        private void UpdateUI()
+        {
+            // Update UI
+        }
+    }
+}`;
+
+    const modifiedCode = `
+using System;
+using System.Threading.Tasks;
+using System.Windows;
+
+namespace MyApp
+{
+    public partial class DataWindow : Window
+    {
+        private async void OnRefreshClick(object sender, RoutedEventArgs e)
+        {
+            await LoadDataAsync();
+        }
+        
+        private async Task LoadDataAsync()
+        {
+            await Task.Delay(100);
+            await Task.Delay(50);
+            UpdateUI();
+            Console.WriteLine("Data loaded");
+        }
+        
+        private void UpdateUI()
+        {
+            // Update UI
+        }
+    }
+}`;
+
+    const originalResult = await parser.parseFile('DataWindow.xaml.cs', originalCode);
+    const modifiedResult = await parser.parseFile('DataWindow.xaml.cs', modifiedCode);
+    
+    assert.ok(originalResult, 'Should parse original .xaml.cs file');
+    assert.ok(modifiedResult, 'Should parse modified .xaml.cs file');
+    
+    // Find LoadDataAsync in both versions
+    const originalMethod = originalResult!.symbols.find(s => s.name === 'LoadDataAsync');
+    const modifiedMethod = modifiedResult!.symbols.find(s => s.name === 'LoadDataAsync');
+    
+    assert.ok(originalMethod, 'Should find LoadDataAsync in original');
+    assert.ok(modifiedMethod, 'Should find LoadDataAsync in modified');
+    assert.strictEqual(originalMethod!.name, 'LoadDataAsync', 'Method name should be LoadDataAsync');
+    assert.strictEqual(modifiedMethod!.name, 'LoadDataAsync', 'Method name should be LoadDataAsync');
+    
+    // Verify the range changed
+    assert.notStrictEqual(
+      originalMethod!.range.end,
+      modifiedMethod!.range.end,
+      'LoadDataAsync range should change when code is added'
+    );
+    
+    // Verify FQN
+    assert.ok(
+      modifiedMethod!.fqname.includes('DataWindow'),
+      `FQN should include DataWindow: ${modifiedMethod!.fqname}`
+    );
+  });
+
+  test('should detect function name for changes in .xaml.cs with nested lambdas', async () => {
+    const originalCode = `
+using System;
+using System.Windows;
+using System.Windows.Threading;
+
+namespace MyGame
+{
+    public sealed partial class GameWindow : Window
+    {
+        private void InitializeGame()
+        {
+            Dispatcher.InvokeAsync(() =>
+            {
+                RenderMap();
+                UpdateUI();
+            });
+        }
+        
+        private void RenderMap()
+        {
+            // Render
+        }
+        
+        private void UpdateUI()
+        {
+            // Update
+        }
+    }
+}`;
+
+    const modifiedCode = `
+using System;
+using System.Windows;
+using System.Windows.Threading;
+
+namespace MyGame
+{
+    public sealed partial class GameWindow : Window
+    {
+        private void InitializeGame()
+        {
+            Dispatcher.InvokeAsync(() =>
+            {
+                RenderMap();
+                UpdateUI();
+                Console.WriteLine("Game initialized");
+            });
+        }
+        
+        private void RenderMap()
+        {
+            // Render
+        }
+        
+        private void UpdateUI()
+        {
+            // Update
+        }
+    }
+}`;
+
+    const originalResult = await parser.parseFile('GameWindow.xaml.cs', originalCode);
+    const modifiedResult = await parser.parseFile('GameWindow.xaml.cs', modifiedCode);
+    
+    assert.ok(originalResult, 'Should parse original .xaml.cs file');
+    assert.ok(modifiedResult, 'Should parse modified .xaml.cs file');
+    
+    // Find InitializeGame in both versions
+    const originalMethod = originalResult!.symbols.find(s => s.name === 'InitializeGame');
+    const modifiedMethod = modifiedResult!.symbols.find(s => s.name === 'InitializeGame');
+    
+    assert.ok(originalMethod, 'Should find InitializeGame in original');
+    assert.ok(modifiedMethod, 'Should find InitializeGame in modified');
+    assert.strictEqual(originalMethod!.name, 'InitializeGame', 'Method name should be InitializeGame');
+    assert.strictEqual(modifiedMethod!.name, 'InitializeGame', 'Method name should be InitializeGame');
+    
+    // Verify the range changed (lambda content changed)
+    assert.notStrictEqual(
+      originalMethod!.range.end,
+      modifiedMethod!.range.end,
+      'InitializeGame range should change when lambda content is modified'
+    );
+    
+    // Verify FQN includes class name
+    assert.ok(
+      modifiedMethod!.fqname.includes('GameWindow'),
+      `FQN should include GameWindow: ${modifiedMethod!.fqname}`
+    );
+  });
+
+  test('should detect function name for changes in .xaml.cs property setters', async () => {
+    const originalCode = `
+using System;
+using System.Windows;
+
+namespace MyApp
+{
+    public partial class SettingsWindow : Window
+    {
+        private string _theme;
+        
+        public string Theme
+        {
+            get { return _theme; }
+            set
+            {
+                _theme = value;
+                ApplyTheme();
+            }
+        }
+        
+        private void ApplyTheme()
+        {
+            // Apply theme
+        }
+    }
+}`;
+
+    const modifiedCode = `
+using System;
+using System.Windows;
+
+namespace MyApp
+{
+    public partial class SettingsWindow : Window
+    {
+        private string _theme;
+        
+        public string Theme
+        {
+            get { return _theme; }
+            set
+            {
+                _theme = value;
+                ApplyTheme();
+                Console.WriteLine($"Theme changed to {value}");
+            }
+        }
+        
+        private void ApplyTheme()
+        {
+            // Apply theme
+        }
+    }
+}`;
+
+    const originalResult = await parser.parseFile('SettingsWindow.xaml.cs', originalCode);
+    const modifiedResult = await parser.parseFile('SettingsWindow.xaml.cs', modifiedCode);
+    
+    assert.ok(originalResult, 'Should parse original .xaml.cs file');
+    assert.ok(modifiedResult, 'Should parse modified .xaml.cs file');
+    
+    // Find Theme property in both versions
+    const originalProperty = originalResult!.symbols.find(s => s.name === 'Theme');
+    const modifiedProperty = modifiedResult!.symbols.find(s => s.name === 'Theme');
+    
+    assert.ok(originalProperty, 'Should find Theme property in original');
+    assert.ok(modifiedProperty, 'Should find Theme property in modified');
+    assert.strictEqual(originalProperty!.kind, 'variable', 'Theme should be detected as variable (property)');
+    
+    // Verify the range changed
+    assert.notStrictEqual(
+      originalProperty!.range.end,
+      modifiedProperty!.range.end,
+      'Theme property range should change when setter is modified'
+    );
+    
+    // Find ApplyTheme method
+    const applyThemeMethod = modifiedResult!.symbols.find(s => s.name === 'ApplyTheme');
+    assert.ok(applyThemeMethod, 'Should find ApplyTheme method');
+    assert.strictEqual(applyThemeMethod!.name, 'ApplyTheme', 'Method name should be ApplyTheme');
+  });
+
+  test('should handle Windows paths with backslashes for .xaml.cs files', async () => {
+    const code = `
+using System;
+using System.Windows;
+
+namespace MyApp
+{
+    public partial class TestWindow : Window
+    {
+        public TestWindow()
+        {
+            InitializeComponent();
+        }
+        
+        private void OnTestClick(object sender, RoutedEventArgs e)
+        {
+            Console.WriteLine("Test");
+        }
+    }
+}`;
+
+    // Test with Windows-style path with backslashes
+    const result = await parser.parseFile('C:\\Users\\Project\\Views\\TestWindow.xaml.cs', code);
+    
+    assert.ok(result, 'Should parse Windows path with backslashes');
+    assert.ok(result!.symbols.length > 0, 'Should find symbols in Windows path');
+    
+    const testWindow = result!.symbols.find(s => s.name === 'TestWindow' && s.kind === 'class');
+    assert.ok(testWindow, 'Should find TestWindow class');
+    
+    const constructor = result!.symbols.find(s => s.name === 'TestWindow' && s.kind === 'constructor');
+    assert.ok(constructor, 'Should find constructor');
+    
+    const method = result!.symbols.find(s => s.name === 'OnTestClick');
+    assert.ok(method, 'Should find OnTestClick method');
+    assert.strictEqual(method!.kind, 'function', 'OnTestClick should be a function');
+  });
+
+  test('should detect all function names in complex .xaml.cs file with multiple changes', async () => {
+    const code = `
+using System;
+using System.Windows;
+using System.Threading.Tasks;
+
+namespace MyApp
+{
+    public sealed partial class ComplexWindow : Window
+    {
+        public ComplexWindow()
+        {
+            InitializeComponent();
+        }
+        
+        private async void OnLoadClick(object sender, RoutedEventArgs e)
+        {
+            await LoadDataAsync();
+        }
+        
+        private async Task LoadDataAsync()
+        {
+            await Task.Delay(100);
+            ProcessData();
+        }
+        
+        private void ProcessData()
+        {
+            ValidateData();
+            SaveData();
+        }
+        
+        private void ValidateData()
+        {
+            // Validation logic
+        }
+        
+        private void SaveData()
+        {
+            // Save logic
+        }
+        
+        private void OnSaveClick(object sender, RoutedEventArgs e)
+        {
+            SaveData();
+        }
+        
+        public void UpdateStatus(string status)
+        {
+            StatusLabel.Content = status;
+        }
+    }
+}`;
+
+    const result = await parser.parseFile('ComplexWindow.xaml.cs', code);
+    
+    assert.ok(result, 'Should parse complex .xaml.cs file');
+    assert.ok(result!.symbols.length > 0, 'Should find symbols');
+    
+    // Verify all method names are detected
+    const expectedMethods = [
+      'ComplexWindow',  // constructor
+      'OnLoadClick',
+      'LoadDataAsync',
+      'ProcessData',
+      'ValidateData',
+      'SaveData',
+      'OnSaveClick',
+      'UpdateStatus'
+    ];
+    
+    for (const methodName of expectedMethods) {
+      const method = result!.symbols.find(s => s.name === methodName);
+      assert.ok(method, `Should find method: ${methodName}`);
+      
+      // Verify FQN includes class name for all methods
+      if (methodName !== 'ComplexWindow') {
+        assert.ok(
+          method!.fqname.includes('ComplexWindow'),
+          `FQN for ${methodName} should include ComplexWindow: ${method!.fqname}`
+        );
+      }
+    }
+    
+    // Verify method count
+    const methods = result!.symbols.filter(s => s.kind === 'function' || s.kind === 'constructor');
+    assert.ok(
+      methods.length >= expectedMethods.length,
+      `Should find at least ${expectedMethods.length} methods, found ${methods.length}`
+    );
+  });
 });
 

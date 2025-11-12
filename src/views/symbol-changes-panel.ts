@@ -1586,8 +1586,15 @@ export class SymbolChangesPanel {
   private byteOffsetToLineNumber(filePath: string, byteOffset: number): number {
     try {
       const content = fs.readFileSync(filePath, 'utf8');
-      const lines = content.substring(0, byteOffset).split('\n');
-      return lines.length;
+      // Count actual newlines in the content up to the byte offset
+      // This handles both LF (\n) and CRLF (\r\n) correctly
+      let lineCount = 1; // Start at line 1
+      for (let i = 0; i < Math.min(byteOffset, content.length); i++) {
+        if (content[i] === '\n') {
+          lineCount++;
+        }
+      }
+      return lineCount;
     } catch {
       return 0;
     }

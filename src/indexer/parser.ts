@@ -18,16 +18,22 @@ export class CodeParser {
   }
 
   getLanguage(filePath: string): string | undefined {
-    const ext = filePath.split('.').pop()?.toLowerCase();
+    // Normalize path separators for cross-platform compatibility
+    const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
+    
+    // Check for compound extensions first (e.g., .xaml.cs)
+    // This is important for Windows WPF/MAUI projects
+    if (normalizedPath.endsWith('.xaml.cs')) {
+      console.log(`[Radium Parser] .xaml.cs file detected: ${filePath}`);
+      return 'csharp';
+    }
+    
+    // Get the file extension
+    const ext = normalizedPath.split('.').pop();
     if (!ext) return undefined;
 
     const language = LANGUAGE_EXTENSIONS[ext];
     
-    // Log for debugging .xaml.cs files
-    if (filePath.includes('.xaml.cs')) {
-      console.log(`[Radium Parser] .xaml.cs file detected: ${filePath}, extension: ${ext}, language: ${language}`);
-    }
-
     return language;
   }
 

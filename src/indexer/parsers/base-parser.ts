@@ -44,13 +44,18 @@ export abstract class BaseParser {
    * Parse a file and extract symbols, imports, and calls
    */
   async parse(filePath: string, code: string): Promise<ParseResult | null> {
-    const hash = crypto.createHash('sha256').update(code).digest('hex');
-
-    // Validate input
+    // Validate input early
     if (typeof code !== 'string') {
       console.error(`[Radium] Invalid code type for ${filePath}: ${typeof code}`);
-      return { symbols: [], imports: [], calls: [], hash };
+      return { symbols: [], imports: [], calls: [], hash: '' };
     }
+
+    if (code === null || code === undefined) {
+      console.error(`[Radium] Code is null or undefined for ${filePath}`);
+      return { symbols: [], imports: [], calls: [], hash: '' };
+    }
+
+    const hash = crypto.createHash('sha256').update(code).digest('hex');
 
     if (code.length === 0) {
       console.warn(`[Radium] Empty file: ${filePath}`);
@@ -71,12 +76,27 @@ export abstract class BaseParser {
 
     console.log(`[Radium Parser] Parsing ${filePath} as ${this.languageName}, length: ${code.length}`);
 
+    // Additional validation for tree-sitter
+    if (typeof code !== 'string') {
+      console.error(`[Radium] Code is not a string, type: ${typeof code}`);
+      return { symbols: [], imports: [], calls: [], hash };
+    }
+
+    // Check for BOM (Byte Order Mark) which can cause issues
+    if (code.charCodeAt(0) === 0xFEFF) {
+      console.warn(`[Radium] Removing BOM from ${filePath}`);
+      code = code.substring(1);
+    }
+
     let tree;
     try {
       tree = this.parser.parse(code);
     } catch (parseError) {
-      console.warn(`[Radium] Tree-sitter parse failed for ${filePath}, attempting fallback extraction`);
-      console.warn(`[Radium] Parse error:`, parseError);
+      console.error(`[Radium] Tree-sitter parse failed for ${filePath}`);
+      console.error(`[Radium] Parse error:`, parseError);
+      console.error(`[Radium] Code type: ${typeof code}, length: ${code.length}`);
+      console.error(`[Radium] First 100 chars: ${code.substring(0, 100)}`);
+      console.error(`[Radium] Has null bytes: ${code.includes('\0')}`);
       
       // Fallback will be handled by the caller
       return null;

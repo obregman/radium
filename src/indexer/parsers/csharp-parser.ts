@@ -9,7 +9,13 @@ const CSharp = require('tree-sitter-c-sharp');
  */
 export class CSharpParser extends BaseParser {
   constructor() {
-    super(CSharp, 'csharp');
+    try {
+      super(CSharp, 'csharp');
+      console.log('[Radium] C# parser initialized successfully');
+    } catch (error) {
+      console.error('[Radium] Failed to initialize C# parser:', error);
+      throw error;
+    }
   }
 
   protected extractSymbols(

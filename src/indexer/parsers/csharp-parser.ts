@@ -10,10 +10,18 @@ const CSharp = require('tree-sitter-c-sharp');
 export class CSharpParser extends BaseParser {
   constructor() {
     try {
+      console.log('[Radium C#] Loading tree-sitter-c-sharp language...');
+      console.log('[Radium C#] CSharp module type:', typeof CSharp);
+      console.log('[Radium C#] CSharp module keys:', Object.keys(CSharp || {}));
+      
       super(CSharp, 'csharp');
-      console.log('[Radium] C# parser initialized successfully');
+      
+      console.log('[Radium C#] Parser initialized successfully');
+      console.log('[Radium C#] Parser language:', this.parser.getLanguage() ? 'loaded' : 'NOT loaded');
     } catch (error) {
-      console.error('[Radium] Failed to initialize C# parser:', error);
+      console.error('[Radium C#] Failed to initialize C# parser:', error);
+      console.error('[Radium C#] Error details:', (error as Error).message);
+      console.error('[Radium C#] Error stack:', (error as Error).stack);
       throw error;
     }
   }

@@ -148,13 +148,33 @@ Patterns supported:
 
 If changes in your code are not being detected in the Symbol Changes view:
 
-1. **Check the Output Panel**: View → Output → Select "Radium Symbol Changes" to see detailed logs
-2. **For C# files with lambdas**: Look for logs prefixed with `[C#]` or `[XAML.CS]` that show:
-   - Whether symbols are being detected
-   - Which lines are marked as changed
-   - Whether changed lines match to symbols
+1. **Check the Output Panel**: View → Output → Select "Radium" to see detailed logs
+2. **For C# files**: Look for logs showing:
+   - `[Radium Parser] Parsing ... as csharp` - confirms file is being parsed
+   - `[C# Parser] Found method: ...` - shows detected symbols
+   - `[Radium Parser] File stats: ... lines, CRLF: true/false` - file characteristics
 3. **Try refreshing**: Close and reopen the Symbol Changes panel to clear caches
 4. **Check radiumignore**: Make sure your file isn't being ignored by patterns in `.radium/radiumignore`
+
+### Parser Errors
+
+If you see "Tree-sitter parse failed" errors in the output:
+
+1. **Check the detailed logs** - The extension now provides comprehensive diagnostics:
+   - File size and line count
+   - Line ending type (CRLF vs LF)
+   - Presence of BOM (Byte Order Mark)
+   - Unicode character detection
+   - First and last 100 characters of the file
+   
+2. **Automatic retry** - The parser automatically retries with a fresh instance if the first parse fails
+
+3. **Fallback extraction** - If tree-sitter parsing fails completely, the extension falls back to regex-based symbol extraction
+
+4. **Common issues**:
+   - **Large files (>150KB)**: May cause tree-sitter issues on some systems
+   - **BOM in UTF-8 files**: Automatically detected and removed
+   - **Mixed line endings**: Handled correctly on both Windows and Unix systems
 
 See [docs/lambda-detection-investigation.md](docs/lambda-detection-investigation.md) for detailed information about lambda expression detection in C#.
 

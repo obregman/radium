@@ -82,24 +82,75 @@ export abstract class BaseParser {
       return { symbols: [], imports: [], calls: [], hash };
     }
 
+    // Log file characteristics for debugging
+    const lineCount = code.split('\n').length;
+    const hasCRLF = code.includes('\r\n');
+    const hasLF = code.includes('\n');
+    console.log(`[Radium Parser] File stats: ${lineCount} lines, CRLF: ${hasCRLF}, LF: ${hasLF}`);
+
     // Check for BOM (Byte Order Mark) which can cause issues
+    let hadBOM = false;
     if (code.charCodeAt(0) === 0xFEFF) {
       console.warn(`[Radium] Removing BOM from ${filePath}`);
       code = code.substring(1);
+      hadBOM = true;
+    }
+
+    // Check for unusual characters that might cause issues
+    const hasHighUnicode = /[\u0080-\uFFFF]/.test(code.substring(0, 1000));
+    if (hasHighUnicode) {
+      console.log(`[Radium Parser] File contains Unicode characters (might be comments or strings)`);
     }
 
     let tree;
+    const language = this.parser.getLanguage();
+    
     try {
+      console.log(`[Radium Parser] Attempting parse with ${this.languageName} parser...`);
       tree = this.parser.parse(code);
+      console.log(`[Radium Parser] Parse succeeded on first attempt`);
     } catch (parseError) {
       console.error(`[Radium] Tree-sitter parse failed for ${filePath}`);
       console.error(`[Radium] Parse error:`, parseError);
       console.error(`[Radium] Code type: ${typeof code}, length: ${code.length}`);
       console.error(`[Radium] First 100 chars: ${code.substring(0, 100)}`);
+      console.error(`[Radium] Last 100 chars: ${code.substring(code.length - 100)}`);
       console.error(`[Radium] Has null bytes: ${code.includes('\0')}`);
+      console.error(`[Radium] Had BOM: ${hadBOM}`);
+      console.error(`[Radium] Line endings: CRLF=${hasCRLF}, LF=${hasLF}`);
       
-      // Fallback will be handled by the caller
-      return null;
+      // Try one more time with a fresh parser instance
+      // Sometimes tree-sitter gets into a bad state
+      try {
+        console.warn(`[Radium] Retrying parse with fresh parser instance`);
+        const freshParser = new Parser();
+        console.log(`[Radium] Fresh parser language set: ${language ? 'yes' : 'no'}`);
+        freshParser.setLanguage(language);
+        tree = freshParser.parse(code);
+        console.log(`[Radium] ✓ Retry succeeded for ${filePath}`);
+      } catch (retryError) {
+        console.error(`[Radium] Retry also failed:`, retryError);
+        console.error(`[Radium] Error name: ${(retryError as Error).name}`);
+        console.error(`[Radium] Error message: ${(retryError as Error).message}`);
+        console.error(`[Radium] Error stack: ${(retryError as Error).stack}`);
+        
+        // Last resort: try parsing just the first 50KB to see if it's a size issue
+        if (code.length > 50000) {
+          try {
+            console.warn(`[Radium] Attempting to parse first 50KB only as diagnostic...`);
+            const truncated = code.substring(0, 50000);
+            const testParser = new Parser();
+            testParser.setLanguage(language);
+            const testTree = testParser.parse(truncated);
+            console.log(`[Radium] Truncated parse succeeded - file size might be the issue`);
+          } catch (truncError) {
+            console.error(`[Radium] Even truncated parse failed - likely a parser/language issue`);
+          }
+        }
+        
+        // Fallback will be handled by the caller
+        return null;
+      }
     }
 
     if (!tree || !tree.rootNode) {

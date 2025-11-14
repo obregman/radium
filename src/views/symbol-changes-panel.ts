@@ -473,11 +473,38 @@ export class SymbolChangesPanel {
               calls: [],
               timestamp: Date.now(),
               isNew: isNew,
-              diff: patches
+              diff: patches,
+              comments: symbolChanges.comments || []
             }
           });
         } else {
-          this.log(`No symbols in current change for ${relativePath}, but file has symbols from previous changes - skipping FILE fallback`);
+          // Even if we skip the FILE fallback, still show comments if they exist
+          if (symbolChanges.comments && symbolChanges.comments.length > 0) {
+            this.log(`No symbols in current change for ${relativePath}, but found ${symbolChanges.comments.length} comments - sending them`);
+            const fileName = path.basename(relativePath);
+            this.panel.webview.postMessage({
+              type: 'symbol:changed',
+              data: {
+                filePath: relativePath,
+                symbol: {
+                  type: 'file',
+                  name: fileName,
+                  changeType: isNew ? 'added' : 'modified',
+                  filePath: relativePath,
+                  startLine: 1,
+                  endLine: 1,
+                  changeAmount: 1
+                },
+                calls: [],
+                timestamp: Date.now(),
+                isNew: isNew,
+                diff: patches,
+                comments: symbolChanges.comments
+              }
+            });
+          } else {
+            this.log(`No symbols in current change for ${relativePath}, but file has symbols from previous changes - skipping FILE fallback`);
+          }
         }
       } else {
         // Mark this file as having symbols
@@ -605,11 +632,38 @@ export class SymbolChangesPanel {
             calls: [],
             timestamp: Date.now(),
             isNew: isNew,
-            diff: diff
+            diff: diff,
+            comments: symbolChanges.comments || []
           }
         });
       } else {
-        this.log(`No symbols in current change for ${relativePath}, but file has symbols from previous changes - skipping FILE fallback`);
+        // Even if we skip the FILE fallback, still show comments if they exist
+        if (symbolChanges.comments && symbolChanges.comments.length > 0) {
+          this.log(`No symbols in current change for ${relativePath}, but found ${symbolChanges.comments.length} comments - sending them`);
+          const fileName = path.basename(relativePath);
+          this.panel.webview.postMessage({
+            type: 'symbol:changed',
+            data: {
+              filePath: relativePath,
+              symbol: {
+                type: 'file',
+                name: fileName,
+                changeType: isNew ? 'added' : 'modified',
+                filePath: relativePath,
+                startLine: 1,
+                endLine: 1,
+                changeAmount: 1
+              },
+              calls: [],
+              timestamp: Date.now(),
+              isNew: isNew,
+              diff: diff,
+              comments: symbolChanges.comments
+            }
+          });
+        } else {
+          this.log(`No symbols in current change for ${relativePath}, but file has symbols from previous changes - skipping FILE fallback`);
+        }
       }
     } else {
       // Mark this file as having symbols

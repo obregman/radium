@@ -4,6 +4,14 @@ All notable changes to the Radium extension will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Comment Display for XAML/XAML.cs Files**: Comments are now shown even when symbols cannot be extracted
+  - Comments from XAML files (HTML-style `<!-- -->`) are extracted and displayed
+  - Comments from XAML.cs files (C# style `//` and `/* */`) are extracted and displayed
+  - Applies to both realtime mode and git changes mode
+  - Useful for files where parser may not extract symbols but comments provide context
+  - Comments appear as purple overlays below the file container
+
 ### Fixed
 - **FILE Fallback Box Logic**: Improved fallback behavior for files with no symbols detected in current change
   - FILE fallback boxes are now only shown if the file has **never** had symbols detected

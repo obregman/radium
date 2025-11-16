@@ -642,13 +642,228 @@ namespace MyApp
     
     const structSymbol = result!.symbols.find(s => s.name === 'Point');
     assert.ok(structSymbol, 'Should find Point struct');
-    assert.strictEqual(structSymbol!.kind, 'class', 'Struct should be detected as class');
+    assert.strictEqual(structSymbol!.kind, 'struct', 'Struct should be detected as struct');
     
     const constructor = result!.symbols.find(s => s.kind === 'constructor');
     assert.ok(constructor, 'Should find constructor in struct');
     
     const method = result!.symbols.find(s => s.name === 'Distance');
     assert.ok(method, 'Should find Distance method in struct');
+  });
+
+  test('should detect multiple C# structs in same file', async () => {
+    const code = `
+namespace MyApp
+{
+    public struct Vector2
+    {
+        public float X;
+        public float Y;
+        
+        public Vector2(float x, float y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
+    
+    public struct Vector3
+    {
+        public float X;
+        public float Y;
+        public float Z;
+        
+        public Vector3(float x, float y, float z)
+        {
+            X = x;
+            Y = y;
+            Z = z;
+        }
+        
+        public float Magnitude()
+        {
+            return (float)Math.Sqrt(X * X + Y * Y + Z * Z);
+        }
+    }
+    
+    public struct Color
+    {
+        public byte R;
+        public byte G;
+        public byte B;
+        public byte A;
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const structs = result!.symbols.filter(s => s.kind === 'struct');
+    assert.strictEqual(structs.length, 3, 'Should find 3 structs');
+    
+    const vector2 = structs.find(s => s.name === 'Vector2');
+    assert.ok(vector2, 'Should find Vector2 struct');
+    
+    const vector3 = structs.find(s => s.name === 'Vector3');
+    assert.ok(vector3, 'Should find Vector3 struct');
+    
+    const color = structs.find(s => s.name === 'Color');
+    assert.ok(color, 'Should find Color struct');
+    
+    // Verify Vector3 has a method
+    const magnitude = result!.symbols.find(s => s.name === 'Magnitude');
+    assert.ok(magnitude, 'Should find Magnitude method in Vector3 struct');
+  });
+
+  test('should distinguish structs from classes', async () => {
+    const code = `
+namespace MyApp
+{
+    public class ReferenceType
+    {
+        public int Value;
+        
+        public ReferenceType(int value)
+        {
+            Value = value;
+        }
+    }
+    
+    public struct ValueType
+    {
+        public int Value;
+        
+        public ValueType(int value)
+        {
+            Value = value;
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const classSymbol = result!.symbols.find(s => s.name === 'ReferenceType');
+    assert.ok(classSymbol, 'Should find ReferenceType class');
+    assert.strictEqual(classSymbol!.kind, 'class', 'ReferenceType should be detected as class');
+    
+    const structSymbol = result!.symbols.find(s => s.name === 'ValueType');
+    assert.ok(structSymbol, 'Should find ValueType struct');
+    assert.strictEqual(structSymbol!.kind, 'struct', 'ValueType should be detected as struct');
+  });
+
+  test('should detect readonly structs (C# 7.2+)', async () => {
+    const code = `
+namespace MyApp
+{
+    public readonly struct ImmutablePoint
+    {
+        public int X { get; }
+        public int Y { get; }
+        
+        public ImmutablePoint(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+        
+        public double Distance()
+        {
+            return Math.Sqrt(X * X + Y * Y);
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const structSymbol = result!.symbols.find(s => s.name === 'ImmutablePoint');
+    assert.ok(structSymbol, 'Should find ImmutablePoint readonly struct');
+    assert.strictEqual(structSymbol!.kind, 'struct', 'Readonly struct should be detected as struct');
+    
+    const constructor = result!.symbols.find(s => s.kind === 'constructor');
+    assert.ok(constructor, 'Should find constructor in readonly struct');
+    
+    const method = result!.symbols.find(s => s.name === 'Distance');
+    assert.ok(method, 'Should find Distance method in readonly struct');
+  });
+
+  test('should detect ref structs (C# 7.2+)', async () => {
+    const code = `
+namespace MyApp
+{
+    public ref struct Span
+    {
+        private int length;
+        
+        public int Length => length;
+        
+        public Span(int len)
+        {
+            length = len;
+        }
+        
+        public void Clear()
+        {
+            length = 0;
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const structSymbol = result!.symbols.find(s => s.name === 'Span');
+    assert.ok(structSymbol, 'Should find Span ref struct');
+    assert.strictEqual(structSymbol!.kind, 'struct', 'Ref struct should be detected as struct');
+    
+    const constructor = result!.symbols.find(s => s.kind === 'constructor');
+    assert.ok(constructor, 'Should find constructor in ref struct');
+    
+    const method = result!.symbols.find(s => s.name === 'Clear');
+    assert.ok(method, 'Should find Clear method in ref struct');
+  });
+
+  test('should detect structs with interfaces', async () => {
+    const code = `
+using System;
+
+namespace MyApp
+{
+    public struct ComparablePoint : IComparable<ComparablePoint>
+    {
+        public int X;
+        public int Y;
+        
+        public ComparablePoint(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+        
+        public int CompareTo(ComparablePoint other)
+        {
+            int xComparison = X.CompareTo(other.X);
+            if (xComparison != 0) return xComparison;
+            return Y.CompareTo(other.Y);
+        }
+    }
+}`;
+    
+    const result = await parser.parseFile('test.cs', code);
+    
+    assert.ok(result, 'Should return parse result');
+    
+    const structSymbol = result!.symbols.find(s => s.name === 'ComparablePoint');
+    assert.ok(structSymbol, 'Should find ComparablePoint struct');
+    assert.strictEqual(structSymbol!.kind, 'struct', 'Struct with interface should be detected as struct');
+    
+    const compareToMethod = result!.symbols.find(s => s.name === 'CompareTo');
+    assert.ok(compareToMethod, 'Should find CompareTo method implementing interface');
   });
 
   test('should detect C# enums', async () => {

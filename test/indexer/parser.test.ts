@@ -378,7 +378,7 @@ type User struct {
       
       assert.ok(result, 'Result should not be null');
       
-      const structSymbol = result!.symbols.find(s => s.kind === 'class' && s.name === 'User');
+      const structSymbol = result!.symbols.find(s => s.kind === 'struct' && s.name === 'User');
       assert.ok(structSymbol, 'Should find struct symbol');
       assert.strictEqual(structSymbol!.name, 'User', 'Struct name should be User');
     });
@@ -431,7 +431,7 @@ const (
       
       const maxRetries = result!.symbols.find(s => s.name === 'MaxRetries');
       assert.ok(maxRetries, 'Should find MaxRetries constant');
-      assert.strictEqual(maxRetries!.kind, 'variable', 'MaxRetries should be a variable');
+      assert.strictEqual(maxRetries!.kind, 'constant', 'MaxRetries should be a constant');
       
       const timeout = result!.symbols.find(s => s.name === 'Timeout');
       assert.ok(timeout, 'Should find Timeout constant');
@@ -548,7 +548,7 @@ func NewServer(port int) *Server {
       const apiVersion = result!.symbols.find(s => s.name === 'APIVersion');
       assert.ok(apiVersion, 'Should find APIVersion constant');
       
-      const server = result!.symbols.find(s => s.name === 'Server' && s.kind === 'class');
+      const server = result!.symbols.find(s => s.name === 'Server' && s.kind === 'struct');
       assert.ok(server, 'Should find Server struct');
       
       const handler = result!.symbols.find(s => s.name === 'Handler' && s.kind === 'interface');

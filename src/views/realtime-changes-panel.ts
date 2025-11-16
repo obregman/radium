@@ -26,7 +26,7 @@ export class RealtimeChangesPanel {
   private fileHashes = new Map<string, string>(); // Track file content hashes
   private filesCreatedThisSession = new Set<string>(); // Track files created during this session
   private radiumIgnore: RadiumIgnore;
-  private readonly DEBOUNCE_DELAY = 300; // ms
+  private readonly DEBOUNCE_DELAY = 100; // ms
   private readonly CACHE_TTL = 2000; // ms
 
   private constructor(
@@ -102,8 +102,8 @@ export class RealtimeChangesPanel {
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: {
-        stabilityThreshold: 200,
-        pollInterval: 100
+        stabilityThreshold: 50,
+        pollInterval: 25
       }
     });
 

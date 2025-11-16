@@ -11,7 +11,7 @@ import { CodeParser } from '../indexer/parser';
 const exec = promisify(cp.exec);
 
 interface SymbolChange {
-  type: 'function' | 'class' | 'method' | 'interface' | 'type' | 'variable' | 'constant' | 'constructor' | 'file';
+  type: 'function' | 'class' | 'method' | 'interface' | 'type' | 'struct' | 'variable' | 'constant' | 'constructor' | 'file';
   name: string;
   changeType: 'added' | 'modified' | 'deleted' | 'value_changed';
   filePath: string;
@@ -51,9 +51,10 @@ export class SymbolChangesPanel {
   private filesWithSymbols = new Set<string>(); // Track files that have had symbols detected
   private lastKnownFileStates = new Map<string, string>(); // filePath -> content snapshot
   private baselineFileStates = new Map<string, string>(); // filePath -> original baseline content
+  private lastKnownSymbols = new Map<string, any[]>(); // filePath -> array of symbols
   private radiumIgnore: RadiumIgnore;
   private parser: CodeParser;
-  private readonly DEBOUNCE_DELAY = 300;
+  private readonly DEBOUNCE_DELAY = 100;
   private readonly CACHE_TTL = 2000;
   private mode: 'realtime' | 'git';
 
@@ -259,8 +260,8 @@ export class SymbolChangesPanel {
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: {
-        stabilityThreshold: 200,
-        pollInterval: 100
+        stabilityThreshold: 50,
+        pollInterval: 25
       }
     });
 
@@ -292,14 +293,37 @@ export class SymbolChangesPanel {
 
       const relativePath = path.relative(this.workspaceRoot, filePath);
       const wasInSession = this.filesCreatedThisSession.has(relativePath);
-      this.filesCreatedThisSession.delete(relativePath);
+      const hadSymbols = this.filesWithSymbols.has(relativePath);
+      const wasTracked = this.lastKnownFileStates.has(relativePath);
       
-      if (wasInSession) {
+      this.filesCreatedThisSession.delete(relativePath);
+      this.filesWithSymbols.delete(relativePath);
+      this.lastKnownFileStates.delete(relativePath);
+      this.baselineFileStates.delete(relativePath);
+      
+      // Show deletion if the file was being tracked (had symbols or was created this session)
+      if (wasInSession || hadSymbols || wasTracked) {
+        const fileName = path.basename(relativePath);
+        this.log(`File deleted: ${relativePath}`);
+        
+        // Send a file deletion symbol
         this.panel.webview.postMessage({
-          type: 'file:deleted',
+          type: 'symbol:changed',
           data: {
             filePath: relativePath,
-            timestamp: Date.now()
+            symbol: {
+              type: 'file',
+              name: fileName,
+              changeType: 'deleted',
+              filePath: relativePath,
+              startLine: 1,
+              endLine: 1,
+              changeAmount: 1
+            },
+            calls: [],
+            timestamp: Date.now(),
+            isNew: false,
+            diff: ''
           }
         });
       }
@@ -533,6 +557,9 @@ export class SymbolChangesPanel {
   }
 
   private async handleFileChange(absolutePath: string, isNewFile: boolean) {
+    const changeDetectedTime = Date.now();
+    this.log(`⏱️ File change detected at ${changeDetectedTime}: ${absolutePath}`);
+    
     if (!this.isSourceFile(absolutePath)) {
       return;
     }
@@ -554,8 +581,12 @@ export class SymbolChangesPanel {
     }
 
     const timeout = setTimeout(async () => {
+      const processingStartTime = Date.now();
+      this.log(`⏱️ Processing started at ${processingStartTime} (${processingStartTime - changeDetectedTime}ms after detection)`);
       this.pendingChanges.delete(absolutePath);
       await this.processFileChange(absolutePath);
+      const processingEndTime = Date.now();
+      this.log(`⏱️ Processing completed at ${processingEndTime} (took ${processingEndTime - processingStartTime}ms)`);
     }, this.DEBOUNCE_DELAY);
 
     this.pendingChanges.set(absolutePath, timeout);
@@ -1962,6 +1993,11 @@ export class SymbolChangesPanel {
       border-style: dashed;
     }
 
+    .symbol-box.struct {
+      border-color: #141414;
+      background: #DDA0DD;
+    }
+
     .symbol-box.variable {
       border-color: #141414;
       background: #808080;
@@ -2440,6 +2476,7 @@ export class SymbolChangesPanel {
         function getSymbolWeight(type) {
           // Higher weight = more important, shown first
           if (type === 'class') return 5;
+          if (type === 'struct') return 5;
           if (type === 'interface' || type === 'type') return 4;
           if (type === 'function' || type === 'method') return 3;
           if (type === 'constant') return 2;
@@ -2709,7 +2746,7 @@ export class SymbolChangesPanel {
         function getSymbolCategory(type) {
           if (type === 'variable' || type === 'constant') return 'variables';
           if (type === 'interface' || type === 'type') return 'types';
-          if (type === 'class') return 'classes';
+          if (type === 'class' || type === 'struct') return 'classes';
           if (type === 'function' || type === 'method') return 'functions';
           return 'other';
         }

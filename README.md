@@ -66,23 +66,27 @@ To use: Run `Radium: Real-time File Changes` from the command palette.
 The Symbol Changes view provides an intuitive visualization of code changes using symbols instead of raw diffs:
 
 **Symbol Types:**
-- **Function boxes** (teal, rounded) - New or modified functions with change details (+/- lines)
-- **Class boxes** (blue, rounded) - New or modified classes  
-- **Constructor boxes** (purple, rounded) - New or modified constructors
-- **Method boxes** (purple, rounded) - New or modified methods
-- **Interface boxes** (light blue, dashed, rounded) - New or modified interfaces
-- **Variable boxes** (yellow, rounded) - New or modified variables with values
-- **Constant boxes** (gold, rounded) - New or modified constants with values
-- **File boxes** (gray, rounded) - Fallback when no symbols are detected in a changed file
+- **Function boxes** (light green) - New or modified functions with change details (+/- lines)
+- **Class boxes** (light blue) - New or modified classes  
+- **Struct boxes** (plum) - New or modified struct data types (C#, Go)
+- **Constructor boxes** (light green) - New or modified constructors
+- **Method boxes** (light green) - New or modified methods
+- **Interface boxes** (yellow, dashed) - New or modified interfaces
+- **Type boxes** (yellow, dashed) - New or modified type aliases
+- **Variable boxes** (gray) - New or modified variables with values
+- **Constant boxes** (gray, thicker border) - New or modified constants with values
+- **File boxes** (light blue) - Fallback when no symbols are detected in a changed file, or when files are deleted
 
 Each symbol box displays the symbol type (FUNCTION, CLASS, etc.) at the top for easy identification.
 
 **Change Detection:**
 - ✅ **Adding a function** - Shows as new function box with green pulse
 - 🔧 **Changing a function** - Shows modified function with yellow pulse and +/- stats
+- ❌ **Deleting a function** - Shows deleted function with red pulse and faded appearance
 - 📦 **Adding variables** - Shows new variable/constant with initial value
 - 🔄 **Changing variable values** - Shows value change with orange pulse (old → new)
 - 📋 **Creating interfaces/types** - Shows new interface with dashed border
+- 🗑️ **Deleting files** - Shows deleted file box with red pulse
 - 🔗 **Adding function calls** - Animated arrows connect caller to callee
 
 **Visual Features:**

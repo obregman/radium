@@ -120,7 +120,7 @@ export class CSharpParser extends BaseParser {
         const name = code.slice(nameNode.startIndex, nameNode.endIndex);
         const fqname = namespace ? `${namespace}.${name}` : name;
         symbols.push({
-          kind: 'class',
+          kind: 'struct',
           name,
           fqname,
           range: { start: node.startIndex, end: node.endIndex }

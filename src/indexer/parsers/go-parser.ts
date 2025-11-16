@@ -77,7 +77,7 @@ export class GoParser extends BaseParser {
             // Determine specific kind based on type
             if (typeNode) {
               if (typeNode.type === 'struct_type') {
-                kind = 'class';
+                kind = 'struct';
               } else if (typeNode.type === 'interface_type') {
                 kind = 'interface';
               }
@@ -101,7 +101,7 @@ export class GoParser extends BaseParser {
           if (nameNode) {
             const name = code.slice(nameNode.startIndex, nameNode.endIndex);
             symbols.push({
-              kind: 'variable',
+              kind: 'constant',
               name,
               fqname: namespace ? `${namespace}.${name}` : name,
               range: { start: child.startIndex, end: child.endIndex }

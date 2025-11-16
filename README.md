@@ -66,32 +66,34 @@ To use: Run `Radium: Real-time File Changes` from the command palette.
 The Symbol Changes view provides an intuitive visualization of code changes using symbols instead of raw diffs:
 
 **Symbol Types:**
-- **Function boxes** (light green) - New or modified functions with change details (+/- lines)
-- **Class boxes** (light blue) - New or modified classes  
-- **Struct boxes** (plum) - New or modified struct data types (C#, Go)
-- **Constructor boxes** (light green) - New or modified constructors
-- **Method boxes** (light green) - New or modified methods
-- **Interface boxes** (yellow, dashed) - New or modified interfaces
-- **Type boxes** (yellow, dashed) - New or modified type aliases
-- **Variable boxes** (gray) - New or modified variables with values
-- **Constant boxes** (gray, thicker border) - New or modified constants with values
-- **File boxes** (light blue) - Fallback when no symbols are detected in a changed file, or when files are deleted
+- **Functions** - Functions, methods, constructors
+- **Classes** - Classes, structs
+- **Interfaces** - Interfaces (dashed border)
+- **Types** - Type aliases (dashed border)
+- **Variables** - Variables and constants (constants have thicker border)
+- **Files** - Fallback when no symbols are detected in a changed file, or when files are deleted
 
 Each symbol box displays the symbol type (FUNCTION, CLASS, etc.) at the top for easy identification.
 
+**Color Coding by Change Type:**
+- 🟡 **Yellow** - New symbols (added)
+- 🟢 **Light Green** - Modified symbols (changed)
+- ⚫ **Dark Gray** - Deleted symbols (removed, with light gray text)
+
 **Change Detection:**
-- ✅ **Adding a function** - Shows as new function box with green pulse
-- 🔧 **Changing a function** - Shows modified function with yellow pulse and +/- stats
-- ❌ **Deleting a function** - Shows deleted function with red pulse and faded appearance
-- 📦 **Adding variables** - Shows new variable/constant with initial value
-- 🔄 **Changing variable values** - Shows value change with orange pulse (old → new)
-- 📋 **Creating interfaces/types** - Shows new interface with dashed border
-- 🗑️ **Deleting files** - Shows deleted file box with red pulse
+- ✅ **Adding a function** - Shows as yellow box with pulsing animation
+- 🔧 **Changing a function** - Shows as light green box with pulsing animation and +/- stats
+- ❌ **Deleting a function** - Shows as dark gray box with light gray text and pulsing animation
+- 📦 **Adding variables** - Shows as yellow box with initial value
+- 🔄 **Changing variable values** - Shows as light green box (old → new)
+- 📋 **Creating interfaces/types** - Shows as yellow box with dashed border
+- 🗑️ **Deleting files** - Shows as dark gray file box with light gray text
 - 🔗 **Adding function calls** - Animated arrows connect caller to callee
 
 **Visual Features:**
 - **Call connectors** - Animated curved arrows showing function calls between symbols
-- **Change indicators** - Pulsing animations: green (added), yellow (modified), orange (value changed), red (deleted)
+- **Change indicators** - Pulsing border animations on all symbols
+- **Color-coded changes** - Yellow (new), light green (changed), dark gray (deleted)
 - **Details display** - Shows change statistics and values directly on symbols
 - **File grouping** - Symbols are organized by file with clear labels
 - **Pan and zoom** - Navigate the view with mouse drag and scroll wheel

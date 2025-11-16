@@ -357,6 +357,17 @@ export class SymbolChangesPanel {
           const content = fs.readFileSync(filePath, 'utf8');
           this.baselineFileStates.set(relativePath, content);
           this.lastKnownFileStates.set(relativePath, content);
+          
+          // Also parse and store symbols for deletion detection
+          try {
+            const parseResult = await this.parser.parseFile(filePath, content);
+            if (parseResult && parseResult.symbols.length > 0) {
+              this.lastKnownSymbols.set(relativePath, parseResult.symbols);
+            }
+          } catch (parseError) {
+            // Silently ignore parse errors during snapshot
+          }
+          
           snapshotCount++;
         } catch (error) {
           this.log(`Failed to snapshot ${relativePath}: ${error}`);
@@ -1155,6 +1166,52 @@ export class SymbolChangesPanel {
       }
     }
 
+    // Detect completely deleted symbols by comparing with previous state
+    if (!isNewFile && this.lastKnownSymbols.has(filePath)) {
+      const previousSymbols = this.lastKnownSymbols.get(filePath)!;
+      const currentSymbolKeys = new Set(currentSymbols.map(s => `${s.kind}:${s.name}`));
+      
+      this.log(`Checking for deleted symbols in ${filePath}`);
+      this.log(`Previous symbols: ${previousSymbols.length}, Current symbols: ${currentSymbols.length}`);
+      
+      for (const prevSymbol of previousSymbols) {
+        const prevSymbolKey = `${prevSymbol.kind}:${prevSymbol.name}`;
+        
+        // If this symbol existed before but doesn't exist now, it was deleted
+        if (!currentSymbolKeys.has(prevSymbolKey)) {
+          this.log(`Detected deleted symbol: ${prevSymbol.name} (${prevSymbol.kind})`);
+          
+          // Map parser kinds to symbol types
+          let symbolType: SymbolChange['type'] = 'function';
+          if (prevSymbol.kind === 'class') symbolType = 'class';
+          else if (prevSymbol.kind === 'struct') symbolType = 'struct';
+          else if (prevSymbol.kind === 'interface') symbolType = 'interface';
+          else if (prevSymbol.kind === 'type') symbolType = 'type';
+          else if (prevSymbol.kind === 'function') symbolType = 'function';
+          else if (prevSymbol.kind === 'constructor') symbolType = 'constructor';
+          else if (prevSymbol.kind === 'variable') symbolType = 'variable';
+          else if (prevSymbol.kind === 'constant') symbolType = 'constant';
+          
+          const startLine = this.byteOffsetToLineNumber(fullPath, prevSymbol.range.start);
+          const endLine = this.byteOffsetToLineNumber(fullPath, prevSymbol.range.end);
+          
+          symbols.push({
+            type: symbolType,
+            name: prevSymbol.name,
+            changeType: 'deleted',
+            filePath: filePath,
+            startLine: startLine,
+            endLine: endLine,
+            details: this.getChangeDescription('deleted', prevSymbol.kind, prevSymbol.name, 0, endLine - startLine, undefined),
+            changeAmount: Math.max(1, endLine - startLine)
+          });
+        }
+      }
+    }
+    
+    // Store current symbols for next comparison
+    this.lastKnownSymbols.set(filePath, currentSymbols);
+
     return {
       filePath,
       symbols,
@@ -1380,12 +1437,18 @@ export class SymbolChangesPanel {
         continue;
       }
 
-      // Check for variable declarations
+      // Check for variable declarations (skip destructuring patterns)
       const varMatch = trimmed.match(/\b(const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*[:=]\s*(.+?)(?:;|$)/);
       if (varMatch) {
         const varType = varMatch[1];
         const varName = varMatch[2];
         const varValue = varMatch[3].trim();
+        
+        // Skip destructuring patterns (e.g., const { error } = ..., const [a, b] = ...)
+        if (varName.startsWith('{') || varName.startsWith('[') || 
+            trimmed.match(/\b(const|let|var)\s*[{[]/)) {
+          continue;
+        }
         
         // Skip if this is a function declaration (arrow function or function expression)
         if (varValue.startsWith('function') || 
@@ -1512,6 +1575,10 @@ export class SymbolChangesPanel {
     const deletedVars = new Map<string, string>();
     for (const [lineNum, lineContent] of deletedLines) {
       const trimmed = lineContent.trim();
+      // Skip destructuring patterns
+      if (trimmed.match(/\b(const|let|var)\s*[{[]/)) {
+        continue;
+      }
       const varMatch = trimmed.match(/\b(const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*[:=]\s*(.+?)(?:;|$)/);
       if (varMatch) {
         deletedVars.set(varMatch[2], varMatch[3].trim());
@@ -1526,6 +1593,10 @@ export class SymbolChangesPanel {
     // Find value changes
     for (const [lineNum, lineContent] of addedLines) {
       const trimmed = lineContent.trim();
+      // Skip destructuring patterns
+      if (trimmed.match(/\b(const|let|var)\s*[{[]/)) {
+        continue;
+      }
       const varMatch = trimmed.match(/\b(const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*[:=]\s*(.+?)(?:;|$)/);
       
       if (varMatch) {
@@ -1934,12 +2005,12 @@ export class SymbolChangesPanel {
       top: 4px;
       left: 50%;
       transform: translateX(-50%);
-      font-size: 8px;
-      font-weight: 600;
+      font-size: 9px;
+      font-weight: 700;
       text-transform: uppercase;
       color: #000000;
-      opacity: 0.8;
-      letter-spacing: 0.8px;
+      opacity: 0.85;
+      letter-spacing: 0.5px;
       white-space: nowrap;
       z-index: 1;
       pointer-events: none;
@@ -1961,97 +2032,89 @@ export class SymbolChangesPanel {
       padding: 1px 3px;
     }
 
-    .symbol-box.function {
+    /* Base styles for all symbol types */
+    .symbol-box.function,
+    .symbol-box.class,
+    .symbol-box.method,
+    .symbol-box.constructor,
+    .symbol-box.struct,
+    .symbol-box.variable,
+    .symbol-box.constant,
+    .symbol-box.file {
       border-color: #141414;
-      background: #90EE90;
     }
 
-    .symbol-box.class {
-      border-color: #141414;
-      background: #ADD8E6;
-    }
-
-    .symbol-box.method {
-      border-color: #141414;
-      background: #90EE90;
-    }
-
-    .symbol-box.constructor {
-      border-color: #141414;
-      background: #90EE90;
-    }
-
-    .symbol-box.interface {
-      border-color: #141414;
-      background: #FFFF00;
-      border-style: dashed;
-    }
-
+    /* Interface and type get dashed borders */
+    .symbol-box.interface,
     .symbol-box.type {
       border-color: #141414;
-      background: #FFFF00;
       border-style: dashed;
     }
 
-    .symbol-box.struct {
-      border-color: #141414;
-      background: #DDA0DD;
-    }
-
-    .symbol-box.variable {
-      border-color: #141414;
-      background: #808080;
-    }
-
+    /* Constants get thicker borders */
     .symbol-box.constant {
-      border-color: #141414;
-      background: #808080;
       border-width: 2px;
     }
 
+    /* File boxes have minimum width */
     .symbol-box.file {
-      border-color: #141414;
-      background: #ADD8E6;
-      border-style: solid;
       min-width: 120px;
     }
 
-    .symbol-box.added {
-      animation: pulseGreen 3s ease-in-out infinite;
+    /* Permanent background colors by change type */
+    .symbol-box[data-change-type="added"] {
+      background: #FFFF99; /* Yellow for added/new */
     }
 
-    .symbol-box.modified {
+    .symbol-box[data-change-type="modified"] {
+      background: #90EE90; /* Light green for modified/changed */
+    }
+
+    .symbol-box[data-change-type="deleted"] {
+      background: #4A4A4A; /* Dark gray for deleted */
+      opacity: 0.8;
+    }
+
+    .symbol-box[data-change-type="deleted"] .symbol-name,
+    .symbol-box[data-change-type="deleted"] .symbol-type-label,
+    .symbol-box[data-change-type="deleted"] .change-symbol {
+      color: #D3D3D3; /* Light gray text for deleted symbols */
+    }
+
+    .symbol-box[data-change-type="value_changed"] {
+      background: #90EE90; /* Light green for value changed */
+    }
+
+    /* Temporary pulsing animations (removed after 3 seconds) */
+    .symbol-box.added {
       animation: pulseYellow 3s ease-in-out infinite;
     }
 
+    .symbol-box.modified {
+      animation: pulseGreen 3s ease-in-out infinite;
+    }
+
     .symbol-box.deleted {
-      opacity: 0.4;
-      border-color: #F48771;
-      animation: pulseRed 3s ease-in-out infinite;
+      animation: pulseGray 3s ease-in-out infinite;
     }
 
     .symbol-box.value_changed {
-      animation: pulseOrange 3s ease-in-out infinite;
-    }
-
-    @keyframes pulseGreen {
-      0%, 100% { border-color: #4EC9B0; opacity: 1; }
-      50% { border-color: #6EDDC0; opacity: 0.85; }
+      animation: pulseGreen 3s ease-in-out infinite;
     }
 
     @keyframes pulseYellow {
-      0%, 100% { border-color: #DCDCAA; opacity: 1; }
-      50% { border-color: #ECECC0; opacity: 0.85; }
+      0%, 100% { border-color: #FFD700; opacity: 1; }
+      50% { border-color: #FFED4E; opacity: 0.85; }
     }
 
-    @keyframes pulseRed {
-      0%, 100% { border-color: #F48771; opacity: 0.4; }
-      50% { border-color: #FF9B85; opacity: 0.3; }
+    @keyframes pulseGreen {
+      0%, 100% { border-color: #32CD32; opacity: 1; }
+      50% { border-color: #7FFF7F; opacity: 0.85; }
     }
 
-    @keyframes pulseOrange {
-      0%, 100% { border-color: #D7BA7D; opacity: 1; }
-      50% { border-color: #E7CA8D; opacity: 0.85; }
+    @keyframes pulseGray {
+      0%, 100% { border-color: #808080; opacity: 0.8; }
+      50% { border-color: #A0A0A0; opacity: 0.7; }
     }
 
     .symbol-box:hover {
@@ -2979,9 +3042,10 @@ export class SymbolChangesPanel {
       const box = document.createElement('div');
       box.className = 'symbol-box ' + symbol.type;
       
-      // Store changeAmount in dataset for later use
+      // Store changeAmount and changeType in dataset for later use
       const changeAmount = symbol.changeAmount || 1;
       box.dataset.changeAmount = String(changeAmount);
+      box.dataset.changeType = symbol.changeType; // Store change type for permanent color
       
       // Size will be calculated and applied during repositioning
       // Don't set size here - let the packing algorithm handle it
@@ -2994,10 +3058,18 @@ export class SymbolChangesPanel {
         ? symbol.name + '()' 
         : symbol.name;
       
-      // Add type label at the top
+      // Add type label at the top with change type
       const typeLabel = document.createElement('div');
       typeLabel.className = 'symbol-type-label';
-      typeLabel.textContent = symbol.type;
+      
+      // Format change type for display (change type comes first)
+      let changeTypeText = '';
+      if (symbol.changeType === 'added') changeTypeText = 'New';
+      else if (symbol.changeType === 'modified') changeTypeText = 'Changed';
+      else if (symbol.changeType === 'deleted') changeTypeText = 'Deleted';
+      else if (symbol.changeType === 'value_changed') changeTypeText = 'Changed';
+      
+      typeLabel.textContent = changeTypeText + ' ' + symbol.type;
       box.appendChild(typeLabel);
       
       // Add size label above the box (for debugging)

@@ -35,6 +35,8 @@ interface FileSymbolChanges {
   isNew: boolean;
   diff?: string; // Full diff for the file
   comments?: string[]; // Extracted comments from the diff
+  additions?: number; // Number of lines added
+  deletions?: number; // Number of lines deleted
 }
 
 export class SymbolChangesPanel {
@@ -323,7 +325,9 @@ export class SymbolChangesPanel {
             calls: [],
             timestamp: Date.now(),
             isNew: false,
-            diff: ''
+            diff: '',
+            additions: 0,
+            deletions: 0
           }
         });
       }
@@ -509,7 +513,9 @@ export class SymbolChangesPanel {
               timestamp: Date.now(),
               isNew: isNew,
               diff: patches,
-              comments: symbolChanges.comments || []
+              comments: symbolChanges.comments || [],
+              additions: symbolChanges.additions || 0,
+              deletions: symbolChanges.deletions || 0
             }
           });
         } else {
@@ -534,7 +540,9 @@ export class SymbolChangesPanel {
                 timestamp: Date.now(),
                 isNew: isNew,
                 diff: patches,
-                comments: symbolChanges.comments
+                comments: symbolChanges.comments,
+                additions: symbolChanges.additions || 0,
+                deletions: symbolChanges.deletions || 0
               }
             });
           } else {
@@ -557,7 +565,9 @@ export class SymbolChangesPanel {
               timestamp: Date.now(),
               isNew: isNew,
               diff: patches,
-              comments: symbolChanges.comments || []
+              comments: symbolChanges.comments || [],
+              additions: symbolChanges.additions || 0,
+              deletions: symbolChanges.deletions || 0
             }
           });
         }
@@ -675,7 +685,9 @@ export class SymbolChangesPanel {
             timestamp: Date.now(),
             isNew: isNew,
             diff: diff,
-            comments: symbolChanges.comments || []
+            comments: symbolChanges.comments || [],
+            additions: symbolChanges.additions || 0,
+            deletions: symbolChanges.deletions || 0
           }
         });
       } else {
@@ -700,7 +712,9 @@ export class SymbolChangesPanel {
               timestamp: Date.now(),
               isNew: isNew,
               diff: diff,
-              comments: symbolChanges.comments
+              comments: symbolChanges.comments,
+              additions: symbolChanges.additions || 0,
+              deletions: symbolChanges.deletions || 0
             }
           });
         } else {
@@ -731,7 +745,9 @@ export class SymbolChangesPanel {
             timestamp: Date.now(),
             isNew: isNew,
             diff: diff,
-            comments: symbolChanges.comments || []
+            comments: symbolChanges.comments || [],
+            additions: symbolChanges.additions || 0,
+            deletions: symbolChanges.deletions || 0
           }
         });
       }
@@ -842,6 +858,7 @@ export class SymbolChangesPanel {
     const deletedLines = new Map<number, string>(); // line number -> content
     
     let currentLineNumber = 0;
+    let deletedLineCounter = 0; // Count actual deleted lines
     
     for (const line of diffLines) {
       // Parse hunk headers to track line numbers
@@ -856,9 +873,10 @@ export class SymbolChangesPanel {
         addedLines.set(currentLineNumber, line.substring(1));
         currentLineNumber++;
       } else if (line.startsWith('-') && !line.startsWith('---')) {
-        deletedLineNumbers.add(currentLineNumber);
-        changedLineNumbers.add(currentLineNumber);
-        deletedLines.set(currentLineNumber, line.substring(1));
+        // Use a unique counter for deleted lines since they don't have line numbers in the new file
+        deletedLineNumbers.add(deletedLineCounter);
+        deletedLines.set(deletedLineCounter, line.substring(1));
+        deletedLineCounter++;
       } else if (!line.startsWith('\\')) {
         currentLineNumber++;
       }
@@ -1212,6 +1230,10 @@ export class SymbolChangesPanel {
     // Store current symbols for next comparison
     this.lastKnownSymbols.set(filePath, currentSymbols);
 
+    // Calculate total additions and deletions for the file
+    const additions = addedLineNumbers.size;
+    const deletions = deletedLineNumbers.size;
+
     return {
       filePath,
       symbols,
@@ -1219,7 +1241,9 @@ export class SymbolChangesPanel {
       timestamp: Date.now(),
       isNew: isNewFile,
       diff: diff,
-      comments: comments
+      comments: comments,
+      additions: additions,
+      deletions: deletions
     };
   }
 
@@ -2063,48 +2087,43 @@ export class SymbolChangesPanel {
 
     /* Permanent background colors by change type */
     .symbol-box[data-change-type="added"] {
-      background: #FFFF99; /* Yellow for added/new */
+      background: #90EE90; /* Light green for new symbols */
     }
 
     .symbol-box[data-change-type="modified"] {
-      background: #90EE90; /* Light green for modified/changed */
+      background: #dfe85d; /* Yellow-green for changed symbols */
     }
 
     .symbol-box[data-change-type="deleted"] {
-      background: #4A4A4A; /* Dark gray for deleted */
-      opacity: 0.8;
+      background: #FFB6C1; /* Light red for deleted symbols */
+      opacity: 1;
     }
 
     .symbol-box[data-change-type="deleted"] .symbol-name,
     .symbol-box[data-change-type="deleted"] .symbol-type-label,
     .symbol-box[data-change-type="deleted"] .change-symbol {
-      color: #D3D3D3; /* Light gray text for deleted symbols */
+      color: #000000; /* Black text for deleted symbols */
     }
 
     .symbol-box[data-change-type="value_changed"] {
-      background: #90EE90; /* Light green for value changed */
+      background: #dfe85d; /* Yellow-green for value changed */
     }
 
     /* Temporary pulsing animations (removed after 3 seconds) */
     .symbol-box.added {
-      animation: pulseYellow 3s ease-in-out infinite;
+      animation: pulseGreen 3s ease-in-out infinite;
     }
 
     .symbol-box.modified {
-      animation: pulseGreen 3s ease-in-out infinite;
+      animation: pulseYellow 3s ease-in-out infinite;
     }
 
     .symbol-box.deleted {
-      animation: pulseGray 3s ease-in-out infinite;
+      animation: pulseRed 3s ease-in-out infinite;
     }
 
     .symbol-box.value_changed {
-      animation: pulseGreen 3s ease-in-out infinite;
-    }
-
-    @keyframes pulseYellow {
-      0%, 100% { border-color: #FFD700; opacity: 1; }
-      50% { border-color: #FFED4E; opacity: 0.85; }
+      animation: pulseYellow 3s ease-in-out infinite;
     }
 
     @keyframes pulseGreen {
@@ -2112,9 +2131,14 @@ export class SymbolChangesPanel {
       50% { border-color: #7FFF7F; opacity: 0.85; }
     }
 
-    @keyframes pulseGray {
-      0%, 100% { border-color: #808080; opacity: 0.8; }
-      50% { border-color: #A0A0A0; opacity: 0.7; }
+    @keyframes pulseYellow {
+      0%, 100% { border-color: #FFD700; opacity: 1; }
+      50% { border-color: #FFED4E; opacity: 0.85; }
+    }
+
+    @keyframes pulseRed {
+      0%, 100% { border-color: #FF6B6B; opacity: 1; }
+      50% { border-color: #FFB6C1; opacity: 0.85; }
     }
 
     .symbol-box:hover {
@@ -2206,6 +2230,28 @@ export class SymbolChangesPanel {
       text-overflow: ellipsis;
       padding: 0 8px;
       cursor: help;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .file-stats {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      flex-shrink: 0;
+    }
+
+    .stat-additions {
+      color: #00FF00;
+    }
+
+    .stat-deletions {
+      color: #FF0000;
     }
 
     .symbol-content {
@@ -2564,23 +2610,26 @@ export class SymbolChangesPanel {
         const MIN_CHANGE_AMOUNT = 1;   // Smallest change to visualize
 
         // Calculate box dimensions based on change amount
-        function calculateBoxSize(changeAmount) {
+        function calculateBoxSize(changeAmount, symbolName) {
           // Ensure we have a valid change amount
           const amount = Math.max(MIN_CHANGE_AMOUNT, changeAmount || MIN_CHANGE_AMOUNT);
           
-          // Special case: minimum change gets minimum size
-          if (amount === 1) {
-            return { width: MIN_WIDTH, height: MIN_HEIGHT };
-          }
-          
           // Use logarithmic scaling for better visual distribution
           // Scale from 1 to 100: log(amount)/log(100) gives 0 at amount=1, 1 at amount=100
-          const scale = Math.log(amount) / Math.log(100);
+          const scale = amount === 1 ? 0 : Math.log(amount) / Math.log(100);
           const clampedScale = Math.max(0, Math.min(1, scale));
           
           // Calculate width and height maintaining 10:3 ratio
-          const width = MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * clampedScale;
+          let width = MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * clampedScale;
           const height = MIN_HEIGHT + (MAX_HEIGHT - MIN_HEIGHT) * clampedScale;
+          
+          // If symbol name is provided, ensure width is sufficient to fit the text
+          if (symbolName) {
+            // Estimate text width: roughly 7-8 pixels per character at base font size
+            // Add padding for the box (28px left+right padding) + some margin
+            const estimatedTextWidth = symbolName.length * 8 + 40;
+            width = Math.max(width, estimatedTextWidth);
+          }
           
           return { 
             width: Math.round(width), 
@@ -2597,7 +2646,10 @@ export class SymbolChangesPanel {
             if (elements && elements.length > 0) {
               const box = elements[0];
               const changeAmount = parseInt(box.dataset.changeAmount || '1', 10);
-              const size = calculateBoxSize(changeAmount);
+              // Get symbol name from the box for width calculation
+              const symbolNameElement = box.querySelector('.symbol-name');
+              const symbolName = symbolNameElement ? symbolNameElement.textContent : '';
+              const size = calculateBoxSize(changeAmount, symbolName);
               symbolsArray.push({
                 key: symbolKey,
                 element: box,
@@ -2705,7 +2757,10 @@ export class SymbolChangesPanel {
             if (elements && elements.length > 0) {
               const box = elements[0];
               const changeAmount = parseInt(box.dataset.changeAmount || '1', 10);
-              const size = calculateBoxSize(changeAmount);
+              // Get symbol name from the box for width calculation
+              const symbolNameElement = box.querySelector('.symbol-name');
+              const symbolName = symbolNameElement ? symbolNameElement.textContent : '';
+              const size = calculateBoxSize(changeAmount, symbolName);
               totalArea += size.width * size.height;
               maxSymbolWidth = Math.max(maxSymbolWidth, size.width);
             }
@@ -2877,12 +2932,6 @@ export class SymbolChangesPanel {
               symbolName.style.fontSize = Math.round(fontSize) + 'px';
             }
             
-            // Scale change symbol proportionally
-            const changeSymbol = box.querySelector('.change-symbol');
-            if (changeSymbol) {
-              changeSymbol.style.fontSize = Math.round(fontSize + 1) + 'px';
-            }
-            
             // Update size label to show dimensions
             const sizeLabel = box.querySelector('.symbol-size-label');
             if (sizeLabel) {
@@ -2989,8 +3038,38 @@ export class SymbolChangesPanel {
         
         // Extract just the filename from the path (cross-platform)
         const fileName = getFileName(filePath);
+        
+        // Create filename span first
+        const fileNameSpan = document.createElement('span');
         const fileDisplay = fileName + (isNew ? ' (new)' : '');
-        fileLabel.textContent = fileDisplay;
+        fileNameSpan.textContent = fileDisplay;
+        fileLabel.appendChild(fileNameSpan);
+        
+        // Create stats display if we have additions/deletions (after filename)
+        const additions = data.additions || 0;
+        const deletions = data.deletions || 0;
+        
+        if (additions > 0 || deletions > 0) {
+          // Create stats container
+          const statsContainer = document.createElement('span');
+          statsContainer.className = 'file-stats';
+          
+          if (additions > 0) {
+            const addSpan = document.createElement('span');
+            addSpan.className = 'stat-additions';
+            addSpan.textContent = '+' + additions;
+            statsContainer.appendChild(addSpan);
+          }
+          
+          if (deletions > 0) {
+            const delSpan = document.createElement('span');
+            delSpan.className = 'stat-deletions';
+            delSpan.textContent = '-' + deletions;
+            statsContainer.appendChild(delSpan);
+          }
+          
+          fileLabel.appendChild(statsContainer);
+        }
         
         // Add tooltip with full path
         fileLabel.title = filePath;
@@ -3012,6 +3091,62 @@ export class SymbolChangesPanel {
       }
 
       const group = fileGroups.get(filePath);
+      
+      // Accumulate stats for this file (independent counters)
+      const additions = data.additions || 0;
+      const deletions = data.deletions || 0;
+      
+      // Initialize stats if not present
+      if (!group.stats) {
+        group.stats = { additions: 0, deletions: 0 };
+      }
+      
+      // Accumulate additions and deletions independently
+      // Each change adds to the counters, they never subtract from each other
+      if (additions > 0) {
+        group.stats.additions += additions;
+      }
+      if (deletions > 0) {
+        group.stats.deletions += deletions;
+      }
+      
+      // Update the file label display if we have stats
+      if ((group.stats.additions > 0 || group.stats.deletions > 0) && group.fileLabel) {
+        // Extract just the filename from the path (cross-platform)
+        const fileName = getFileName(filePath);
+        
+        // Clear and rebuild the label
+        group.fileLabel.innerHTML = '';
+        
+        // Create filename span first
+        const fileNameSpan = document.createElement('span');
+        const fileDisplay = fileName + (isNew ? ' (new)' : '');
+        fileNameSpan.textContent = fileDisplay;
+        group.fileLabel.appendChild(fileNameSpan);
+        
+        // Create stats container after filename
+        const statsContainer = document.createElement('span');
+        statsContainer.className = 'file-stats';
+        
+        if (group.stats.additions > 0) {
+          const addSpan = document.createElement('span');
+          addSpan.className = 'stat-additions';
+          addSpan.textContent = '+' + group.stats.additions;
+          statsContainer.appendChild(addSpan);
+        }
+        
+        if (group.stats.deletions > 0) {
+          const delSpan = document.createElement('span');
+          delSpan.className = 'stat-deletions';
+          delSpan.textContent = '-' + group.stats.deletions;
+          statsContainer.appendChild(delSpan);
+        }
+        
+        group.fileLabel.appendChild(statsContainer);
+        
+        // Preserve tooltip
+        group.fileLabel.title = filePath;
+      }
       
       // Create a unique key based on symbol type and name
       // This ensures only one box per symbol regardless of line number changes
@@ -3050,9 +3185,6 @@ export class SymbolChangesPanel {
       // Size will be calculated and applied during repositioning
       // Don't set size here - let the packing algorithm handle it
       
-      // Get change symbol using the global helper function
-      const changeSymbol = getChangeSymbol(symbol.changeType);
-      
       // Add () suffix for functions and methods
       const displayName = (symbol.type === 'function' || symbol.type === 'method') 
         ? symbol.name + '()' 
@@ -3079,7 +3211,7 @@ export class SymbolChangesPanel {
       sizeLabel.textContent = ''; // Will be updated later
       box.appendChild(sizeLabel);
       
-      // Symbol content: name and change symbol
+      // Symbol content: just the name (no change symbol)
       const contentWrapper = document.createElement('div');
       contentWrapper.className = 'symbol-content';
 
@@ -3087,12 +3219,7 @@ export class SymbolChangesPanel {
       nameSpan.className = 'symbol-name';
       nameSpan.textContent = displayName;
 
-      const changeSpan = document.createElement('span');
-      changeSpan.className = 'change-symbol';
-      changeSpan.textContent = changeSymbol;
-
       contentWrapper.appendChild(nameSpan);
-      contentWrapper.appendChild(changeSpan);
       box.appendChild(contentWrapper);
       
       // Append to file container (not canvas)

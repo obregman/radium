@@ -2230,20 +2230,22 @@ export class SymbolChangesPanel {
       text-overflow: ellipsis;
       padding: 0 8px;
       cursor: help;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
     }
 
     .file-stats {
+      position: absolute;
+      top: 10px;
+      right: 8px;
       display: flex;
       align-items: center;
       gap: 6px;
       font-size: 13px;
       font-weight: 600;
       font-family: 'Courier New', monospace;
-      flex-shrink: 0;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 4px 8px;
+      border-radius: 3px;
+      z-index: 5;
     }
 
     .stat-additions {
@@ -2637,7 +2639,7 @@ export class SymbolChangesPanel {
           };
         }
 
-        // Bin-packing algorithm for tight symbol layout (NFDH)
+        // Bin-packing algorithm using Guillotine with Best Area Fit
         // Returns positions plus packed content width/height
         function packSymbols(symbolsMap, containerWidth) {
           // Convert map to array and extract symbol data with change amounts
@@ -2650,60 +2652,201 @@ export class SymbolChangesPanel {
               const symbolNameElement = box.querySelector('.symbol-name');
               const symbolName = symbolNameElement ? symbolNameElement.textContent : '';
               const size = calculateBoxSize(changeAmount, symbolName);
+              
+              // Set the size on the box first so we can measure it accurately
+              box.style.width = size.width + 'px';
+              box.style.height = size.height + 'px';
+              
+              // Get the actual rendered dimensions (includes border, padding due to box-sizing: border-box)
+              // Use offsetWidth/offsetHeight which includes border and padding
+              const actualWidth = box.offsetWidth || size.width;
+              const actualHeight = box.offsetHeight || size.height;
+              
               symbolsArray.push({
                 key: symbolKey,
                 element: box,
                 changeAmount: changeAmount,
-                width: size.width,
-                height: size.height
+                width: actualWidth,
+                height: actualHeight
               });
             }
           }
           
-          // Sort by height descending, then by width descending (largest first for better packing)
+          // Sort by area descending (largest first for better packing)
           symbolsArray.sort((a, b) => {
-            if (b.height !== a.height) return b.height - a.height;
-            return b.width - a.width;
+            const areaA = a.width * a.height;
+            const areaB = b.width * b.height;
+            return areaB - areaA;
           });
           
+          const PADDING = 10;
           const positions = [];
-          let currentX = 0;
-          let currentY = 0;
-          let rowHeight = 0;
-          const PADDING = 2; // Small padding between symbols to prevent overlap
           
-          for (const symbol of symbolsArray) {
-            // Check if we need to wrap to next row
-            // Add small margin to ensure we don't exceed container width
-            if (currentX + symbol.width > containerWidth - 2 && currentX > 0) {
-              currentX = 0;
-              currentY += rowHeight + PADDING;
-              rowHeight = 0;
+          // Free rectangles (available spaces)
+          const freeRects = [{ x: 0, y: 0, width: containerWidth, height: 100000 }];
+          
+          // Find best rectangle for a box using Best Area Fit
+          function findBestRect(boxWidth, boxHeight) {
+            let bestRect = null;
+            let bestAreaFit = Infinity;
+            let bestShortSideFit = Infinity;
+            
+            for (const rect of freeRects) {
+              // Check if box fits
+              if (rect.width >= boxWidth + PADDING && rect.height >= boxHeight + PADDING) {
+                const areaFit = rect.width * rect.height - boxWidth * boxHeight;
+                const leftoverHoriz = rect.width - boxWidth;
+                const leftoverVert = rect.height - boxHeight;
+                const shortSideFit = Math.min(leftoverHoriz, leftoverVert);
+                
+                if (areaFit < bestAreaFit || (areaFit === bestAreaFit && shortSideFit < bestShortSideFit)) {
+                  bestRect = rect;
+                  bestAreaFit = areaFit;
+                  bestShortSideFit = shortSideFit;
+                }
+              }
             }
             
-            positions.push({
-              key: symbol.key,
-              element: symbol.element,
-              x: currentX,
-              y: currentY,
-              width: symbol.width,
-              height: symbol.height
-            });
-            
-            currentX += symbol.width + PADDING;
-            rowHeight = Math.max(rowHeight, symbol.height);
+            return bestRect;
           }
+          
+          // Split a rectangle after placing a box
+          function splitRect(usedRect, boxX, boxY, boxWidth, boxHeight) {
+            const newRects = [];
+            
+            // Remove the used rectangle
+            const index = freeRects.indexOf(usedRect);
+            if (index > -1) {
+              freeRects.splice(index, 1);
+            }
+            
+            // Create new rectangles from the leftover space
+            // Right side
+            if (boxX + boxWidth + PADDING < usedRect.x + usedRect.width) {
+              newRects.push({
+                x: boxX + boxWidth + PADDING,
+                y: usedRect.y,
+                width: usedRect.x + usedRect.width - (boxX + boxWidth + PADDING),
+                height: usedRect.height
+              });
+            }
+            
+            // Bottom side
+            if (boxY + boxHeight + PADDING < usedRect.y + usedRect.height) {
+              newRects.push({
+                x: usedRect.x,
+                y: boxY + boxHeight + PADDING,
+                width: usedRect.width,
+                height: usedRect.y + usedRect.height - (boxY + boxHeight + PADDING)
+              });
+            }
+            
+            // Add new rectangles
+            for (const newRect of newRects) {
+              // Check if this rectangle is not contained within another
+              let isContained = false;
+              for (const existingRect of freeRects) {
+                if (newRect.x >= existingRect.x && 
+                    newRect.y >= existingRect.y &&
+                    newRect.x + newRect.width <= existingRect.x + existingRect.width &&
+                    newRect.y + newRect.height <= existingRect.y + existingRect.height) {
+                  isContained = true;
+                  break;
+                }
+              }
+              
+              if (!isContained) {
+                freeRects.push(newRect);
+              }
+            }
+            
+            // Remove rectangles that overlap with the placed box
+            for (let i = freeRects.length - 1; i >= 0; i--) {
+              const rect = freeRects[i];
+              if (!(boxX + boxWidth + PADDING <= rect.x ||
+                    boxX >= rect.x + rect.width ||
+                    boxY + boxHeight + PADDING <= rect.y ||
+                    boxY >= rect.y + rect.height)) {
+                // Overlaps, need to split or remove
+                freeRects.splice(i, 1);
+                
+                // Create non-overlapping parts
+                // Left part
+                if (rect.x < boxX) {
+                  freeRects.push({
+                    x: rect.x,
+                    y: rect.y,
+                    width: boxX - rect.x,
+                    height: rect.height
+                  });
+                }
+                // Right part
+                if (rect.x + rect.width > boxX + boxWidth + PADDING) {
+                  freeRects.push({
+                    x: boxX + boxWidth + PADDING,
+                    y: rect.y,
+                    width: rect.x + rect.width - (boxX + boxWidth + PADDING),
+                    height: rect.height
+                  });
+                }
+                // Top part
+                if (rect.y < boxY) {
+                  freeRects.push({
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: boxY - rect.y
+                  });
+                }
+                // Bottom part
+                if (rect.y + rect.height > boxY + boxHeight + PADDING) {
+                  freeRects.push({
+                    x: rect.x,
+                    y: boxY + boxHeight + PADDING,
+                    width: rect.width,
+                    height: rect.y + rect.height - (boxY + boxHeight + PADDING)
+                  });
+                }
+              }
+            }
+          }
+          
+          // Place each box
+          for (const symbol of symbolsArray) {
+            const rect = findBestRect(symbol.width, symbol.height);
+            
+            if (rect) {
+              positions.push({
+                key: symbol.key,
+                element: symbol.element,
+                x: rect.x,
+                y: rect.y,
+                width: symbol.width,
+                height: symbol.height
+              });
+              
+              splitRect(rect, rect.x, rect.y, symbol.width, symbol.height);
+            } else {
+              // Fallback: place at bottom
+              const maxY = positions.length > 0 ? Math.max(...positions.map(p => p.y + p.height)) : 0;
+              positions.push({
+                key: symbol.key,
+                element: symbol.element,
+                x: 0,
+                y: maxY + PADDING,
+                width: symbol.width,
+                height: symbol.height
+              });
+            }
+          }
+          
           // Compute packed content dimensions
           let contentW = 0;
           let contentH = 0;
-          // Determine max right edge and actual maximum bottom edge
           if (positions.length > 0) {
-            // Calculate actual maximum bottom edge (most accurate method)
             for (const p of positions) {
-              const right = p.x + p.width;
-              const bottom = p.y + p.height;
-              contentW = Math.max(contentW, right);
-              contentH = Math.max(contentH, bottom);
+              contentW = Math.max(contentW, p.x + p.width);
+              contentH = Math.max(contentH, p.y + p.height);
             }
           }
           
@@ -3038,20 +3181,21 @@ export class SymbolChangesPanel {
         
         // Extract just the filename from the path (cross-platform)
         const fileName = getFileName(filePath);
-        
-        // Create filename span first
-        const fileNameSpan = document.createElement('span');
         const fileDisplay = fileName + (isNew ? ' (new)' : '');
-        fileNameSpan.textContent = fileDisplay;
-        fileLabel.appendChild(fileNameSpan);
+        fileLabel.textContent = fileDisplay;
         
-        // Create stats display if we have additions/deletions (after filename)
+        // Add tooltip with full path
+        fileLabel.title = filePath;
+        
+        fileContainer.appendChild(fileLabel);
+        
+        // Create stats display in top right corner if we have additions/deletions
         const additions = data.additions || 0;
         const deletions = data.deletions || 0;
         
         if (additions > 0 || deletions > 0) {
           // Create stats container
-          const statsContainer = document.createElement('span');
+          const statsContainer = document.createElement('div');
           statsContainer.className = 'file-stats';
           
           if (additions > 0) {
@@ -3068,13 +3212,8 @@ export class SymbolChangesPanel {
             statsContainer.appendChild(delSpan);
           }
           
-          fileLabel.appendChild(statsContainer);
+          fileContainer.appendChild(statsContainer);
         }
-        
-        // Add tooltip with full path
-        fileLabel.title = filePath;
-        
-        fileContainer.appendChild(fileLabel);
         
         const newGroup = { 
           symbols: new Map(), 
@@ -3110,24 +3249,22 @@ export class SymbolChangesPanel {
         group.stats.deletions += deletions;
       }
       
-      // Update the file label display if we have stats
-      if ((group.stats.additions > 0 || group.stats.deletions > 0) && group.fileLabel) {
-        // Extract just the filename from the path (cross-platform)
-        const fileName = getFileName(filePath);
+      // Update or create the stats display in top right corner
+      if (group.stats.additions > 0 || group.stats.deletions > 0) {
+        // Check if stats container already exists
+        let statsContainer = group.fileContainer.querySelector('.file-stats');
         
-        // Clear and rebuild the label
-        group.fileLabel.innerHTML = '';
+        if (!statsContainer) {
+          // Create new stats container
+          statsContainer = document.createElement('div');
+          statsContainer.className = 'file-stats';
+          group.fileContainer.appendChild(statsContainer);
+        } else {
+          // Clear existing stats
+          statsContainer.innerHTML = '';
+        }
         
-        // Create filename span first
-        const fileNameSpan = document.createElement('span');
-        const fileDisplay = fileName + (isNew ? ' (new)' : '');
-        fileNameSpan.textContent = fileDisplay;
-        group.fileLabel.appendChild(fileNameSpan);
-        
-        // Create stats container after filename
-        const statsContainer = document.createElement('span');
-        statsContainer.className = 'file-stats';
-        
+        // Add updated stats
         if (group.stats.additions > 0) {
           const addSpan = document.createElement('span');
           addSpan.className = 'stat-additions';
@@ -3141,11 +3278,6 @@ export class SymbolChangesPanel {
           delSpan.textContent = '-' + group.stats.deletions;
           statsContainer.appendChild(delSpan);
         }
-        
-        group.fileLabel.appendChild(statsContainer);
-        
-        // Preserve tooltip
-        group.fileLabel.title = filePath;
       }
       
       // Create a unique key based on symbol type and name

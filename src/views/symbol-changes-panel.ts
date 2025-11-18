@@ -3575,8 +3575,11 @@ export class SymbolChangesPanel {
       // Store the elements for this symbol
       group.symbols.set(symbolKey, newElements);
       
-      // Debounce repositioning to wait for all symbols to be added
-      // This is critical because symbols are sent one at a time from the backend
+      // Immediately reposition this file's symbols to prevent overlapping
+      repositionFileSymbols(group);
+      
+      // Debounce full repositioning to wait for all symbols to be added
+      // This handles the global layout (positioning file containers relative to each other)
       if (repositionTimeout) {
         clearTimeout(repositionTimeout);
       }

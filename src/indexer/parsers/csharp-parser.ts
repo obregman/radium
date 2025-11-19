@@ -33,7 +33,8 @@ export class CSharpParser extends BaseParser {
     imports: ImportDeclaration[],
     calls: CallSite[],
     filePath: string,
-    namespace: string = ''
+    namespace: string = '',
+    insideFunction: boolean = false
   ): void {
     // Debug logging for .xaml.cs files
     const isXamlCs = filePath.includes('.xaml.cs');
@@ -53,6 +54,8 @@ export class CSharpParser extends BaseParser {
           range: { start: node.startIndex, end: node.endIndex }
         });
       }
+      // Mark that we're inside a function
+      insideFunction = true;
     }
     // Constructor declarations
     else if (node.type === 'constructor_declaration') {
@@ -83,12 +86,13 @@ export class CSharpParser extends BaseParser {
           range: { start: node.startIndex, end: node.endIndex }
         });
         // Recurse into class body with new namespace
+        // Reset insideFunction to false when entering a class body
         const bodyNode = node.childForFieldName('body');
         if (bodyNode) {
           if (isXamlCs) {
             console.log(`[C# Parser] Recursing into class body for: ${name}, body has ${bodyNode.childCount} children`);
           }
-          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
+          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname, false);
         }
         return; // Don't recurse to children again
       }
@@ -108,7 +112,7 @@ export class CSharpParser extends BaseParser {
         // Recurse into interface body with new namespace
         const bodyNode = node.childForFieldName('body');
         if (bodyNode) {
-          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
+          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname, false);
         }
         return; // Don't recurse to children again
       }
@@ -128,7 +132,7 @@ export class CSharpParser extends BaseParser {
         // Recurse into struct body with new namespace
         const bodyNode = node.childForFieldName('body');
         if (bodyNode) {
-          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
+          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname, false);
         }
         return; // Don't recurse to children again
       }
@@ -317,7 +321,7 @@ export class CSharpParser extends BaseParser {
         // Recurse into record body with new namespace
         const bodyNode = node.childForFieldName('body');
         if (bodyNode) {
-          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname);
+          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, fqname, false);
         }
         return; // Don't recurse to children again
       }
@@ -354,18 +358,18 @@ export class CSharpParser extends BaseParser {
         // Recurse into namespace body with new namespace
         const bodyNode = node.childForFieldName('body');
         if (bodyNode) {
-          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, newNamespace);
+          this.extractSymbols(bodyNode, code, symbols, imports, calls, filePath, newNamespace, false);
         }
         return; // Don't recurse to children again
       }
     }
 
-    // Recurse to children
+    // Recurse to children, passing along the insideFunction flag
     for (const child of node.children) {
       if (isXamlCs && node.type === 'declaration_list') {
         console.log(`[C# Parser] Processing child node type: ${child.type} in declaration_list`);
       }
-      this.extractSymbols(child, code, symbols, imports, calls, filePath, namespace);
+      this.extractSymbols(child, code, symbols, imports, calls, filePath, namespace, insideFunction);
     }
   }
 }

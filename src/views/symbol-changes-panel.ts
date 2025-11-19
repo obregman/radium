@@ -2207,7 +2207,7 @@ export class SymbolChangesPanel {
       border: 2px solid var(--vscode-panel-border);
       border-radius: 0;
       background-color: #4c4d4c;
-      padding: 40px 2px 10px 2px;
+      padding: 85px 2px 10px 2px;
       box-sizing: border-box; /* Width/height includes border and padding */
       /* Make this the positioning context for child symbol boxes */
       /* Child elements with position:absolute will be relative to this container */
@@ -2215,26 +2215,45 @@ export class SymbolChangesPanel {
 
     .file-path-label {
       position: absolute;
-      top: 10px;
-      left: 0;
-      right: 0;
-      font-size: 16px;
-      font-weight: 600;
+      top: 31px;
+      left: 8px;
+      right: 8px;
       font-family: var(--vscode-font-family);
       color: #FFFFFF;
       text-align: center;
-      line-height: 1.3;
-      word-break: break-word;
+      cursor: default;
+      max-height: 50px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    
+    .file-directory-path {
+      font-size: 14px;
+      font-weight: 400;
+      opacity: 0.7;
+      line-height: 1.1;
+      word-break: keep-all;
+      word-wrap: break-word;
+      white-space: normal;
+      overflow: hidden;
+      max-height: 22px;
+    }
+    
+    .file-name {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.2;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      padding: 0 8px;
-      cursor: help;
+      max-width: 100%;
     }
 
     .file-stats {
       position: absolute;
-      top: 10px;
+      top: 6px;
       right: 8px;
       display: flex;
       align-items: center;
@@ -2515,6 +2534,63 @@ export class SymbolChangesPanel {
           return normalized.split('/');
         }
         
+        function formatPathForDisplay(filePath) {
+          // Normalize to forward slashes for consistent display
+          const normalized = filePath.replace(/\\/g, '/');
+          // Split on slashes and rejoin with slash + line break for proper wrapping
+          const parts = normalized.split('/');
+          return parts.join('/\u200B'); // Zero-width space allows breaking after /
+        }
+        
+        function splitPathIntoDirectoryAndFile(filePath) {
+          // Normalize to forward slashes
+          const normalized = filePath.replace(/\\/g, '/');
+          const parts = normalized.split('/');
+          
+          if (parts.length === 1) {
+            // No directory, just filename
+            return { directory: '', filename: parts[0] };
+          }
+          
+          // Last part is filename, rest is directory
+          const filename = parts[parts.length - 1];
+          const directory = parts.slice(0, -1).join('/');
+          
+          return { directory, filename };
+        }
+        
+        function adjustFileLabelFontSize(label, containerWidth) {
+          // Start with a reasonable font size
+          let fontSize = 16;
+          const minFontSize = 10;
+          const maxFontSize = 18;
+          
+          // Set initial font size
+          label.style.fontSize = fontSize + 'px';
+          
+          // Measure and adjust if needed
+          // Allow some iterations to find the best fit
+          let iterations = 0;
+          while (iterations < 10) {
+            const scrollHeight = label.scrollHeight;
+            const maxHeight = 50; // Match CSS max-height
+            
+            if (scrollHeight > maxHeight && fontSize > minFontSize) {
+              // Text is too tall, reduce font size
+              fontSize -= 1;
+              label.style.fontSize = fontSize + 'px';
+            } else if (scrollHeight < maxHeight * 0.7 && fontSize < maxFontSize) {
+              // Text is too small, we can increase font size
+              fontSize += 1;
+              label.style.fontSize = fontSize + 'px';
+            } else {
+              // Good fit
+              break;
+            }
+            iterations++;
+          }
+        }
+        
         const vscode = acquireVsCodeApi();
         const container = document.getElementById('container');
         const canvas = document.getElementById('canvas');
@@ -2539,7 +2615,7 @@ export class SymbolChangesPanel {
         const fileOrder = []; // Track file creation order
         let nextX = 100;
         const SYMBOL_SPACING = 20; // Minimum spacing between symbols (legacy)
-        const FILE_LABEL_HEIGHT = 45;
+        const FILE_LABEL_HEIGHT = 85; // Height of header area (stats + file path)
         const START_Y = 50 + FILE_LABEL_HEIGHT; // Where symbols start
         const FILE_SPACING = 80; // Spacing between file columns (reduced for row layout)
         const SYMBOL_WIDTH = 150; // Approximate symbol width (for estimates)
@@ -2604,28 +2680,29 @@ export class SymbolChangesPanel {
           return '';
         }
 
-        // Constants for sizing
-        const MIN_WIDTH = 100;         // Minimum box width (100px)
-        const MIN_HEIGHT = 30;         // Minimum box height (30px) - 10:3 ratio
-        const MAX_WIDTH = 400;         // Maximum box width (400px)
-        const MAX_HEIGHT = 120;        // Maximum box height (120px) - maintains 10:3 ratio
-        const MIN_CHANGE_AMOUNT = 1;   // Smallest change to visualize
+        // Constants for sizing - 3 discrete sizes
+        const SMALL_SIZE = { width: 120, height: 40 };
+        const MEDIUM_SIZE = { width: 200, height: 65 };
+        const LARGE_SIZE = { width: 300, height: 95 };
 
         // Calculate box dimensions based on change amount
+        // Returns one of three discrete sizes: small, medium, or large
         function calculateBoxSize(changeAmount, symbolName) {
           // Ensure we have a valid change amount
-          const amount = Math.max(MIN_CHANGE_AMOUNT, changeAmount || MIN_CHANGE_AMOUNT);
+          const amount = Math.max(1, changeAmount || 1);
           
-          // Use logarithmic scaling for better visual distribution
-          // Scale from 1 to 100: log(amount)/log(100) gives 0 at amount=1, 1 at amount=100
-          const scale = amount === 1 ? 0 : Math.log(amount) / Math.log(100);
-          const clampedScale = Math.max(0, Math.min(1, scale));
-          
-          // Calculate width and height maintaining 10:3 ratio
-          let width = MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * clampedScale;
-          const height = MIN_HEIGHT + (MAX_HEIGHT - MIN_HEIGHT) * clampedScale;
+          // Determine size based on thresholds
+          let size;
+          if (amount <= 10) {
+            size = SMALL_SIZE;
+          } else if (amount <= 50) {
+            size = MEDIUM_SIZE;
+          } else {
+            size = LARGE_SIZE;
+          }
           
           // If symbol name is provided, ensure width is sufficient to fit the text
+          let width = size.width;
           if (symbolName) {
             // Estimate text width: roughly 7-8 pixels per character at base font size
             // Add padding for the box (28px left+right padding) + some margin
@@ -2634,8 +2711,8 @@ export class SymbolChangesPanel {
           }
           
           return { 
-            width: Math.round(width), 
-            height: Math.round(height) 
+            width: width, 
+            height: size.height 
           };
         }
 
@@ -2679,7 +2756,7 @@ export class SymbolChangesPanel {
             return areaB - areaA;
           });
           
-          const PADDING = 10;
+          const PADDING = 4;
           const positions = [];
           
           // Free rectangles (available spaces)
@@ -2947,7 +3024,7 @@ export class SymbolChangesPanel {
         // Helper function to reposition all files using brick-packing layout
         function repositionAllFiles() {
           const CONTAINER_WIDTH = 1400; // Max width before wrapping
-          const FILE_PADDING = 20; // Padding between file containers
+          const FILE_PADDING = 12; // Padding between file containers
           const START_X = 80;
           const START_Y = 50;
           
@@ -3021,17 +3098,6 @@ export class SymbolChangesPanel {
               const measured = group.fileLabel.scrollWidth || 0;
               const estimate = (group.fileLabel.textContent || '').length * 8 + 20;
               labelMinWidth = Math.max(300, measured || estimate);
-              
-              // Scale font size for empty container too
-              const minFontSize = 14;
-              const maxFontSize = 24;
-              const minWidth = 300;
-              const maxWidth = 900;
-              
-              const fontScale = Math.max(0, Math.min(1, (labelMinWidth - minWidth) / (maxWidth - minWidth)));
-              const fontSize = minFontSize + (maxFontSize - minFontSize) * fontScale;
-              
-              group.fileLabel.style.fontSize = Math.round(fontSize) + 'px';
             }
             group.fileContainer.style.width = labelMinWidth + 'px';
             group.fileContainer.style.height = '100px';
@@ -3053,26 +3119,27 @@ export class SymbolChangesPanel {
           for (const pos of packed.positions) {
             const box = pos.element;
             
-            // Position relative to file container (accounting for 40px top padding and 2px left padding)
+            // Position relative to file container (accounting for 85px top padding and 2px left padding)
             box.style.left = (pos.x + 2) + 'px'; // Add 2px for left padding
-            box.style.top = (pos.y + 40) + 'px'; // Add 40px for label space
+            box.style.top = (pos.y + 85) + 'px'; // Add 85px for label space
             
             // Ensure the box has the correct size
             box.style.width = pos.width + 'px';
             box.style.height = pos.height + 'px';
             
-            // Scale font size based on box size
-            // Base font size is 11px for MIN_WIDTH (100px)
-            // Scale up to 18px for MAX_WIDTH (400px)
-            const minFontSize = 11;
-            const maxFontSize = 18;
-            const fontScale = (pos.width - 100) / (400 - 100); // 0 to 1
-            const fontSize = minFontSize + (maxFontSize - minFontSize) * Math.max(0, Math.min(1, fontScale));
+            // Set font size based on discrete box size
+            // Small: 11px, Medium: 14px, Large: 17px
+            let fontSize = 11;
+            if (pos.height >= LARGE_SIZE.height) {
+              fontSize = 17;
+            } else if (pos.height >= MEDIUM_SIZE.height) {
+              fontSize = 14;
+            }
             
             // Apply font size to symbol name
             const symbolName = box.querySelector('.symbol-name');
             if (symbolName) {
-              symbolName.style.fontSize = Math.round(fontSize) + 'px';
+              symbolName.style.fontSize = fontSize + 'px';
             }
             
             // Update size label to show dimensions
@@ -3090,7 +3157,7 @@ export class SymbolChangesPanel {
             
             // Store symbol position for connections (absolute coordinates)
             const absoluteX = group.x + pos.x + pos.width / 2;
-            const absoluteY = group.y + 40 + pos.y + pos.height / 2; // group.y container top + 40px label padding + pos.y
+            const absoluteY = group.y + 85 + pos.y + pos.height / 2; // group.y container top + 85px label padding + pos.y
             
             // Get the actual symbol name from the box content
             const nameSpan = box.querySelector('.symbol-name');
@@ -3116,47 +3183,22 @@ export class SymbolChangesPanel {
           
           // Resize container to fit all symbols AND the label
           // Container has box-sizing: border-box, so width/height includes border (2px each side = 4px total)
-          // and padding (40px top, 10px bottom). The content area for symbols is the full width/height minus these.
+          // and padding (85px top, 10px bottom). The content area for symbols is the full width/height minus these.
           // Since symbols are positioned in the content area, we set container size to exactly match packed size.
           // Add extra padding to ensure symbols don't touch borders or overflow
           // IMPORTANT: With box-sizing: border-box, the total height must account for:
-          //   - 40px top padding (where label lives)
+          //   - 85px top padding (where label and stats live)
           //   - packed.contentH (actual symbol content height)
           //   - 10px bottom padding
           //   - 4px borders (2px top + 2px bottom)
           const finalWidth = Math.max(packed.contentW + 4, labelMinWidth); // Add 4px horizontal padding
-          const finalHeight = packed.contentH + 40 + 10 + 4; // 40px label padding + 10px bottom padding + 4px borders
+          const finalHeight = packed.contentH + 85 + 10 + 4; // 85px label padding + 10px bottom padding + 4px borders
           
           console.log('[Layout] Final container size:', finalWidth, 'x', finalHeight, '(label min:', labelMinWidth, ', packed:', packed.contentW, 'x', packed.contentH, ')');
           group.fileContainer.style.width = finalWidth + 'px';
           group.fileContainer.style.height = finalHeight + 'px';
           
-          // Scale file label font size based on container width
-          // Base font size is 16px for 300px width
-          // Scale up to 24px for 900px+ width
-          if (group.fileLabel) {
-            const minFontSize = 14;
-            const maxFontSize = 24;
-            const minWidth = 300;
-            const maxWidth = 900;
-            
-            const fontScale = Math.max(0, Math.min(1, (finalWidth - minWidth) / (maxWidth - minWidth)));
-            const fontSize = minFontSize + (maxFontSize - minFontSize) * fontScale;
-            
-            group.fileLabel.style.fontSize = Math.round(fontSize) + 'px';
-            
-            // Ensure text fits by checking if it overflows
-            // If it overflows, reduce font size slightly
-            setTimeout(() => {
-              if (group.fileLabel.scrollWidth > group.fileLabel.clientWidth) {
-                let adjustedSize = fontSize;
-                while (group.fileLabel.scrollWidth > group.fileLabel.clientWidth && adjustedSize > minFontSize) {
-                  adjustedSize -= 0.5;
-                  group.fileLabel.style.fontSize = adjustedSize + 'px';
-                }
-              }
-            }, 0);
-          }
+          // No need to adjust font size anymore - using fixed sizes for directory and filename
           
           // Update group width for file spacing calculations
           group.width = finalWidth;
@@ -3179,13 +3221,22 @@ export class SymbolChangesPanel {
         const fileLabel = document.createElement('div');
         fileLabel.className = 'file-path-label';
         
-        // Extract just the filename from the path (cross-platform)
-        const fileName = getFileName(filePath);
-        const fileDisplay = fileName + (isNew ? ' (new)' : '');
-        fileLabel.textContent = fileDisplay;
+        // Split path into directory and filename
+        const { directory, filename } = splitPathIntoDirectoryAndFile(filePath);
         
-        // Add tooltip with full path
-        fileLabel.title = filePath;
+        // Create directory path element (if there is a directory)
+        if (directory) {
+          const directoryElement = document.createElement('div');
+          directoryElement.className = 'file-directory-path';
+          directoryElement.textContent = directory;
+          fileLabel.appendChild(directoryElement);
+        }
+        
+        // Create filename element
+        const filenameElement = document.createElement('div');
+        filenameElement.className = 'file-name';
+        filenameElement.textContent = filename + (isNew ? ' (new)' : '');
+        fileLabel.appendChild(filenameElement);
         
         fileContainer.appendChild(fileLabel);
         
@@ -3576,17 +3627,16 @@ export class SymbolChangesPanel {
       group.symbols.set(symbolKey, newElements);
       
       // Immediately reposition this file's symbols to prevent overlapping
-      repositionFileSymbols(group);
-      
-      // Debounce full repositioning to wait for all symbols to be added
-      // This handles the global layout (positioning file containers relative to each other)
-      if (repositionTimeout) {
-        clearTimeout(repositionTimeout);
-      }
-      repositionTimeout = setTimeout(() => {
-        repositionAllFiles();
-        repositionTimeout = null;
-      }, 50); // Wait 50ms for batching
+      // Use requestAnimationFrame to ensure DOM has updated with the new box
+      requestAnimationFrame(() => {
+        repositionFileSymbols(group);
+        
+        // After repositioning symbols, also reposition all file containers
+        // This ensures the global layout is updated immediately
+        requestAnimationFrame(() => {
+          repositionAllFiles();
+        });
+      });
 
       // Draw call relationships using stored symbol positions
       for (const call of calls) {

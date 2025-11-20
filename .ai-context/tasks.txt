@@ -3,13 +3,4 @@
 
 Symbol visualization view tasks:
 
-
--- center the line counters
-
--- sometimes the comments popup opens very thin
-
--- the user should be able to right click on a symbol box and have a context menu with the items:
-  - Explain latest change
-  - Revert change
-  when the user clicks on "explain latest change", the details of the latest change to that symbol box should be copied to the clipboard
-  ,including the symbol label, type and line numbers. it will create a prompt that says: "please explain the following change. do not change any code, just reply"
+-- 

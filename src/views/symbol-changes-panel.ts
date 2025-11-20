@@ -111,6 +111,16 @@ export class SymbolChangesPanel {
               vscode.window.showErrorMessage(`Failed to open file: ${message.filePath}`);
             }
             break;
+          case 'revertSymbolChange':
+            // Revert changes to a specific symbol
+            await this.revertSymbolChange(message.filePath, message.startLine, message.endLine, message.symbolName);
+            break;
+          case 'webviewError':
+            // Log webview JavaScript errors
+            this.log(`❌ WEBVIEW ERROR: ${message.error.message}`);
+            this.log(`Stack trace: ${message.error.stack}`);
+            vscode.window.showErrorMessage(`Symbol Changes webview error: ${message.error.message}`);
+            break;
         }
       },
       null,
@@ -1944,15 +1954,87 @@ export class SymbolChangesPanel {
     return sourceExtensions.some(ext => filePath.endsWith(ext));
   }
 
+  private async revertSymbolChange(relativeFilePath: string, startLine: number, endLine: number, symbolName: string): Promise<void> {
+    const fullPath = path.join(this.workspaceRoot, relativeFilePath);
+    
+    try {
+      // Get the baseline state for this file
+      const baselineState = this.baselineFileStates.get(fullPath);
+      
+      if (!baselineState) {
+        vscode.window.showWarningMessage(`Cannot revert: No baseline state found for ${symbolName}`);
+        this.log(`No baseline state found for ${fullPath}`);
+        return;
+      }
+
+      // Read current file content
+      const currentContent = fs.readFileSync(fullPath, 'utf8');
+      const currentLines = currentContent.split('\n');
+      
+      // Get baseline lines
+      const baselineLines = baselineState.split('\n');
+      
+      // Calculate the range to revert (0-based)
+      const startIdx = Math.max(0, startLine - 1);
+      const endIdx = Math.min(currentLines.length, endLine);
+      
+      // Make sure we have enough lines in baseline
+      if (endIdx > baselineLines.length) {
+        vscode.window.showWarningMessage(`Cannot revert: Symbol ${symbolName} extends beyond baseline file length`);
+        return;
+      }
+      
+      // Replace the lines with baseline content
+      const newLines = [
+        ...currentLines.slice(0, startIdx),
+        ...baselineLines.slice(startIdx, endIdx),
+        ...currentLines.slice(endIdx)
+      ];
+      
+      const newContent = newLines.join('\n');
+      
+      // Write the reverted content
+      fs.writeFileSync(fullPath, newContent, 'utf8');
+      
+      this.log(`Reverted changes to ${symbolName} in ${relativeFilePath} (lines ${startLine}-${endLine})`);
+      vscode.window.showInformationMessage(`✓ Reverted changes to ${symbolName}`);
+      
+      // Update the baseline state to current state after revert
+      // This prevents the symbol from reappearing as changed
+      this.baselineFileStates.set(fullPath, newContent);
+      
+    } catch (error) {
+      this.log(`Failed to revert symbol ${symbolName}: ${error}`);
+      vscode.window.showErrorMessage(`Failed to revert ${symbolName}: ${error}`);
+    }
+  }
+
+  private getNonce(): string {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+  }
+
   private getHtmlContent(): string {
     const isRealtimeMode = this.mode === 'realtime';
     const buttonLabel = isRealtimeMode ? '🗑️ Clear All' : '🔄 Refresh';
     const buttonTitle = isRealtimeMode ? 'Clear all symbols' : 'Refresh git changes';
+    
+    // Generate a nonce for the inline script
+    const nonce = this.getNonce();
+    
+    // Get the webview's CSP source
+    const cspSource = this.panel.webview.cspSource;
+    
     return String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'nonce-${nonce}' 'unsafe-eval'; img-src ${cspSource} data: https:; font-src ${cspSource} data:;">
   <title>Symbol Changes</title>
   <style>
     * {
@@ -2043,7 +2125,8 @@ export class SymbolChangesPanel {
     .symbol-size-label {
       position: absolute;
       top: -18px;
-      left: 2px;
+      left: 50%;
+      transform: translateX(-50%);
       font-size: 9px;
       font-weight: 500;
       font-family: 'Courier New', monospace;
@@ -2202,6 +2285,10 @@ export class SymbolChangesPanel {
       opacity: 0.7;
     }
 
+    .diff-tooltip .diff-line.context[style*="font-weight: bold"] {
+      text-align: center;
+    }
+
     .file-container {
       position: absolute;
       border: 2px solid var(--vscode-panel-border);
@@ -2215,7 +2302,7 @@ export class SymbolChangesPanel {
 
     .file-path-label {
       position: absolute;
-      top: 31px;
+      top: 35px;
       left: 8px;
       right: 8px;
       font-family: var(--vscode-font-family);
@@ -2254,7 +2341,8 @@ export class SymbolChangesPanel {
     .file-stats {
       position: absolute;
       top: 6px;
-      right: 8px;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
       align-items: center;
       gap: 6px;
@@ -2462,6 +2550,7 @@ export class SymbolChangesPanel {
       font-size: 20px;
       font-weight: 400;
       font-style: italic;
+      min-width: 200px;
       max-width: 400px;
       text-align: left;
       z-index: 15;
@@ -2480,6 +2569,43 @@ export class SymbolChangesPanel {
     @keyframes fadeOut {
       0% { opacity: 1; transform: translateY(0); }
       100% { opacity: 0; transform: translateY(-5px); }
+    }
+
+    .context-menu {
+      position: fixed;
+      background-color: var(--vscode-menu-background);
+      border: 1px solid var(--vscode-menu-border);
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      z-index: 10000;
+      min-width: 180px;
+      padding: 4px 0;
+      display: none;
+    }
+
+    .context-menu.visible {
+      display: block;
+    }
+
+    .context-menu-item {
+      padding: 6px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--vscode-menu-foreground);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .context-menu-item:hover {
+      background-color: var(--vscode-menu-selectionBackground);
+      color: var(--vscode-menu-selectionForeground);
+    }
+
+    .context-menu-separator {
+      height: 1px;
+      background-color: var(--vscode-menu-separatorBackground);
+      margin: 4px 0;
     }
   </style>
 </head>
@@ -2503,6 +2629,16 @@ export class SymbolChangesPanel {
     <span class="toggle-checkbox"></span>
     <span>Auto-focus on changes</span>
   </button>
+
+  <div id="context-menu" class="context-menu">
+    <div class="context-menu-item" id="context-explain">
+      📝 Explain latest change
+    </div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" id="context-revert">
+      ↩️ Revert change
+    </div>
+  </div>
   
   <div id="container">
     <div id="canvas">
@@ -2516,8 +2652,43 @@ export class SymbolChangesPanel {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
+    console.log('[Symbol Changes] Script tag loaded');
     (function() {
+      console.log('[Symbol Changes] IIFE started');
+      // Acquire VS Code API once at the top (can only be called once!)
+      const vscode = acquireVsCodeApi();
+      console.log('[Symbol Changes] VS Code API acquired');
+      
+      // Global error handler
+      window.addEventListener('error', (event) => {
+        console.error('[Symbol Changes] Global error:', event.error);
+        console.error('[Symbol Changes] Error message:', event.message);
+        console.error('[Symbol Changes] Error at:', event.filename, event.lineno, event.colno);
+        
+        vscode.postMessage({
+          type: 'webviewError',
+          error: {
+            message: event.message || 'Unknown error',
+            stack: event.error?.stack || 'No stack trace',
+            location: event.filename + ':' + event.lineno + ':' + event.colno
+          }
+        });
+      });
+      
+      // Unhandled promise rejection handler
+      window.addEventListener('unhandledrejection', (event) => {
+        console.error('[Symbol Changes] Unhandled promise rejection:', event.reason);
+        
+        vscode.postMessage({
+          type: 'webviewError',
+          error: {
+            message: 'Unhandled promise rejection: ' + (event.reason?.message || event.reason),
+            stack: event.reason?.stack || 'No stack trace'
+          }
+        });
+      });
+      
       try {
         console.log('[Symbol Changes] Initializing view...');
         
@@ -2591,7 +2762,7 @@ export class SymbolChangesPanel {
           }
         }
         
-        const vscode = acquireVsCodeApi();
+        // vscode API already acquired at the top
         const container = document.getElementById('container');
         const canvas = document.getElementById('canvas');
         const svg = document.getElementById('connections');
@@ -2623,6 +2794,98 @@ export class SymbolChangesPanel {
         let repositionTimeout = null; // Debounce repositioning
         let autoFocusEnabled = true; // Auto focus on changes by default
 
+        // Context menu setup
+        const contextMenu = document.getElementById('context-menu');
+        const contextExplain = document.getElementById('context-explain');
+        const contextRevert = document.getElementById('context-revert');
+        
+        // Hide context menu when clicking elsewhere
+        document.addEventListener('click', () => {
+          if (contextMenu) {
+            contextMenu.classList.remove('visible');
+          }
+        });
+
+        // Handle "Explain latest change" menu item
+        if (contextExplain && contextMenu) {
+          contextExplain.addEventListener('click', (e) => {
+          e.stopPropagation();
+          
+          const symbolName = contextMenu.dataset.symbolName;
+          const symbolType = contextMenu.dataset.symbolType;
+          const changeType = contextMenu.dataset.symbolChangeType;
+          const startLine = contextMenu.dataset.symbolStartLine;
+          const endLine = contextMenu.dataset.symbolEndLine;
+          const changeAmount = contextMenu.dataset.symbolChangeAmount;
+          const filePath = contextMenu.dataset.filePath;
+          const diff = contextMenu.dataset.diff;
+          
+          // Create the prompt text
+          const prompt = 'Please explain the following change. Do not change any code, just reply.\\n\\n' +
+            'Symbol: ' + symbolName + '\\n' +
+            'Type: ' + symbolType + '\\n' +
+            'Change Type: ' + changeType + '\\n' +
+            'File: ' + filePath + '\\n' +
+            'Lines: ' + startLine + '-' + endLine + '\\n' +
+            'Lines Changed: ' + changeAmount + '\\n\\n' +
+            'Diff:\\n' + diff;
+          
+          // Copy to clipboard
+          navigator.clipboard.writeText(prompt).then(() => {
+            console.log('[Symbol Changes] Copied explanation prompt to clipboard');
+            
+            // Show a brief notification
+            const notification = document.createElement('div');
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.left = '50%';
+            notification.style.transform = 'translateX(-50%)';
+            notification.style.backgroundColor = 'var(--vscode-notifications-background)';
+            notification.style.color = 'var(--vscode-notifications-foreground)';
+            notification.style.padding = '12px 20px';
+            notification.style.borderRadius = '4px';
+            notification.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+            notification.style.zIndex = '20000';
+            notification.style.fontSize = '13px';
+            notification.textContent = '✓ Copied to clipboard';
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+              notification.style.transition = 'opacity 0.3s ease';
+              notification.style.opacity = '0';
+              setTimeout(() => notification.remove(), 300);
+            }, 2000);
+          }).catch(err => {
+            console.error('[Symbol Changes] Failed to copy to clipboard:', err);
+          });
+          
+          contextMenu.classList.remove('visible');
+          });
+        }
+
+        // Handle "Revert change" menu item
+        if (contextRevert && contextMenu) {
+          contextRevert.addEventListener('click', (e) => {
+          e.stopPropagation();
+          
+          const filePath = contextMenu.dataset.filePath;
+          const startLine = parseInt(contextMenu.dataset.symbolStartLine, 10);
+          const endLine = parseInt(contextMenu.dataset.symbolEndLine, 10);
+          const symbolName = contextMenu.dataset.symbolName;
+          
+          // Send message to extension to revert the change
+          vscode.postMessage({
+            type: 'revertSymbolChange',
+            filePath: filePath,
+            startLine: startLine,
+            endLine: endLine,
+            symbolName: symbolName
+          });
+          
+          contextMenu.classList.remove('visible');
+          });
+        }
+
         function updateTransform() {
           canvas.style.transform = 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')';
           zoomLevelEl.textContent = Math.round(scale * 100) + '%';
@@ -2632,10 +2895,7 @@ export class SymbolChangesPanel {
         function focusOnElement(element) {
           if (!autoFocusEnabled || !element) return;
           
-          // Set comfortable zoom level (not too close)
-          const targetScale = 0.8; // 80% zoom - comfortable viewing distance
-          
-          // Get element position in canvas coordinates (before zoom change)
+          // Get element position in canvas coordinates (using current scale)
           const rect = element.getBoundingClientRect();
           const canvasRect = canvas.getBoundingClientRect();
           
@@ -2647,10 +2907,7 @@ export class SymbolChangesPanel {
           const viewportCenterX = container.clientWidth / 2;
           const viewportCenterY = container.clientHeight / 2;
           
-          // Update scale
-          scale = targetScale;
-          
-          // Calculate required translation to center the element at new scale
+          // Calculate required translation to center the element (keeping current zoom)
           translateX = viewportCenterX - elementCenterX * scale;
           translateY = viewportCenterY - elementCenterY * scale;
           
@@ -3425,11 +3682,19 @@ export class SymbolChangesPanel {
           box.classList.remove('added', 'modified', 'deleted', 'value_changed');
         }, 3000);
         
-        // Add yellow highlight border for 3 seconds
-        box.classList.add('highlight');
-        setTimeout(() => {
-          box.classList.remove('highlight');
-        }, 3000);
+        // Make the symbol box glow three times with one second in between
+        let glowCount = 0;
+        const glowInterval = setInterval(() => {
+          box.classList.add('highlight');
+          setTimeout(() => {
+            box.classList.remove('highlight');
+          }, 500); // Glow duration: 500ms
+          
+          glowCount++;
+          if (glowCount >= 3) {
+            clearInterval(glowInterval);
+          }
+        }, 1000); // 1 second between each glow
         
         // Auto-focus on the new symbol after a brief delay to allow repositioning
         setTimeout(() => {
@@ -3444,6 +3709,29 @@ export class SymbolChangesPanel {
             filePath: filePath,
             line: symbol.startLine
           });
+        });
+
+        // Add right-click handler for context menu
+        box.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const contextMenu = document.getElementById('context-menu');
+          
+          // Store current symbol data on the context menu for later use
+          contextMenu.dataset.symbolName = symbol.name;
+          contextMenu.dataset.symbolType = symbol.type;
+          contextMenu.dataset.symbolChangeType = symbol.changeType;
+          contextMenu.dataset.symbolStartLine = symbol.startLine;
+          contextMenu.dataset.symbolEndLine = symbol.endLine;
+          contextMenu.dataset.symbolChangeAmount = symbol.changeAmount || '1';
+          contextMenu.dataset.filePath = filePath;
+          contextMenu.dataset.diff = diff || '';
+          
+          // Position context menu at cursor
+          contextMenu.style.left = e.clientX + 'px';
+          contextMenu.style.top = e.clientY + 'px';
+          contextMenu.classList.add('visible');
         });
         
         // Add hover tooltip for diff
@@ -3793,26 +4081,42 @@ export class SymbolChangesPanel {
         });
 
         // Auto-focus toggle
+        console.log('[Symbol Changes] Setting up auto-focus toggle...');
         const autoFocusToggle = document.getElementById('auto-focus-toggle');
-        const toggleCheckbox = autoFocusToggle.querySelector('.toggle-checkbox');
-        
-        // Initialize toggle state (enabled by default)
-        autoFocusToggle.classList.add('active');
-        toggleCheckbox.textContent = '✓';
-        
-        autoFocusToggle.addEventListener('click', () => {
-          autoFocusEnabled = !autoFocusEnabled;
+        console.log('[Symbol Changes] Auto-focus toggle element:', autoFocusToggle);
+        if (autoFocusToggle) {
+          const toggleCheckbox = autoFocusToggle.querySelector('.toggle-checkbox');
+          console.log('[Symbol Changes] Toggle checkbox element:', toggleCheckbox);
           
-          if (autoFocusEnabled) {
-            autoFocusToggle.classList.add('active');
+          // Initialize toggle state (enabled by default)
+          autoFocusToggle.classList.add('active');
+          if (toggleCheckbox) {
             toggleCheckbox.textContent = '✓';
-          } else {
-            autoFocusToggle.classList.remove('active');
-            toggleCheckbox.textContent = '';
           }
+          console.log('[Symbol Changes] Auto-focus toggle initialized as active');
           
-          console.log('[Symbol Changes] Auto-focus', autoFocusEnabled ? 'enabled' : 'disabled');
-        });
+          autoFocusToggle.addEventListener('click', () => {
+            console.log('[Symbol Changes] Auto-focus toggle clicked!');
+            autoFocusEnabled = !autoFocusEnabled;
+            
+            if (autoFocusEnabled) {
+              autoFocusToggle.classList.add('active');
+              if (toggleCheckbox) {
+                toggleCheckbox.textContent = '✓';
+              }
+            } else {
+              autoFocusToggle.classList.remove('active');
+              if (toggleCheckbox) {
+                toggleCheckbox.textContent = '';
+              }
+            }
+            
+            console.log('[Symbol Changes] Auto-focus', autoFocusEnabled ? 'enabled' : 'disabled');
+          });
+          console.log('[Symbol Changes] Auto-focus toggle click listener attached');
+        } else {
+          console.error('[Symbol Changes] Auto-focus toggle element not found!');
+        }
 
         // Listen for messages
         window.addEventListener('message', event => {
@@ -3953,7 +4257,18 @@ export class SymbolChangesPanel {
         console.log('[Symbol Changes] Pan/zoom handlers registered');
       } catch (error) {
         console.error('[Symbol Changes] Initialization error:', error);
+        console.error('[Symbol Changes] Error message:', error.message);
         console.error('[Symbol Changes] Stack trace:', error.stack);
+        
+        // Send error to extension host for logging (vscode API already acquired at the top)
+        vscode.postMessage({
+          type: 'webviewError',
+          error: {
+            message: error.message,
+            stack: error.stack,
+            toString: error.toString()
+          }
+        });
       }
     })();
   </script>

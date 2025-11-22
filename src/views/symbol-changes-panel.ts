@@ -2106,6 +2106,22 @@ export class SymbolChangesPanel {
       box-shadow: inset 0 0 0 4px #FFD700;
     }
 
+    /* Glowing light blue border for change detection */
+    .symbol-box.change-detected {
+      border: 4px solid #87CEEB;
+      box-shadow: 0 0 20px #87CEEB, 0 0 40px #87CEEB, inset 0 0 20px rgba(135, 206, 235, 0.3);
+      animation: glowPulse 1s ease-in-out infinite;
+    }
+
+    @keyframes glowPulse {
+      0%, 100% { 
+        box-shadow: 0 0 20px #87CEEB, 0 0 40px #87CEEB, inset 0 0 20px rgba(135, 206, 235, 0.3);
+      }
+      50% { 
+        box-shadow: 0 0 30px #87CEEB, 0 0 60px #87CEEB, inset 0 0 30px rgba(135, 206, 235, 0.5);
+      }
+    }
+
     .symbol-type-label {
       position: absolute;
       top: 4px;
@@ -3681,6 +3697,14 @@ export class SymbolChangesPanel {
         setTimeout(() => {
           box.classList.remove('added', 'modified', 'deleted', 'value_changed');
         }, 3000);
+        
+        // Add glowing light blue border for change detection
+        box.classList.add('change-detected');
+        
+        // Remove the glowing border after 4 seconds
+        setTimeout(() => {
+          box.classList.remove('change-detected');
+        }, 4000);
         
         // Make the symbol box glow three times with one second in between
         let glowCount = 0;

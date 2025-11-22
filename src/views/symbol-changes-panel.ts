@@ -2081,7 +2081,7 @@ export class SymbolChangesPanel {
       position: absolute;
       padding: 26px 14px 14px 14px;
       background-color: transparent;
-      border: 1.5px solid var(--vscode-panel-border);
+      border: 1.5px solid transparent;
       border-radius: 0;
       font-size: 11px;
       font-weight: 400;
@@ -2164,14 +2164,14 @@ export class SymbolChangesPanel {
     .symbol-box.variable,
     .symbol-box.constant,
     .symbol-box.file {
-      border-color: #141414;
+      /* border-color remains transparent from .symbol-box base style */
     }
 
     /* Interface and type get dashed borders */
     .symbol-box.interface,
     .symbol-box.type {
-      border-color: #141414;
       border-style: dashed;
+      border-color: transparent;
     }
 
     /* Constants get thicker borders */

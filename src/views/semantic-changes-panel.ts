@@ -370,23 +370,26 @@ export class SemanticChangesPanel {
         this.log(`  ${idx + 1}. [${change.category}] ${change.description} at line ${change.lineNumber}`);
       });
 
+      // Consolidate all changes into a single change entry
+      const consolidatedChange = this.consolidateChanges(semanticChanges, relativePath);
+
       // Store in history
       const history = this.changeHistory.get(relativePath) || [];
       history.push({
         filePath: relativePath,
-        changes: semanticChanges,
+        changes: [consolidatedChange],
         timestamp: Date.now(),
         diff: diff
       });
       this.changeHistory.set(relativePath, history);
 
       // Send to webview
-      this.log(`📤 Sending ${semanticChanges.length} semantic changes to webview for ${relativePath}`);
+      this.log(`📤 Sending consolidated change to webview for ${relativePath}`);
       this.panel.webview.postMessage({
         type: 'semantic:changed',
         data: {
           filePath: relativePath,
-          changes: semanticChanges,
+          changes: [consolidatedChange],
           timestamp: Date.now(),
           isNew: isNew,
           diff: diff,
@@ -554,6 +557,80 @@ export class SemanticChangesPanel {
     return patches;
   }
 
+  private consolidateChanges(changes: SemanticChange[], filePath: string): SemanticChange {
+    // Count changes by category
+    const categoryCounts = new Map<string, number>();
+    changes.forEach(change => {
+      categoryCounts.set(change.category, (categoryCounts.get(change.category) || 0) + 1);
+    });
+
+    // Determine primary category (most frequent)
+    let primaryCategory: SemanticChangeCategory = 'logic_change';
+    let maxCount = 0;
+    categoryCounts.forEach((count, category) => {
+      if (count > maxCount) {
+        maxCount = count;
+        primaryCategory = category as SemanticChangeCategory;
+      }
+    });
+
+    // Build description
+    const categoryDescriptions: string[] = [];
+    const categoryOrder: SemanticChangeCategory[] = [
+      'add_function',
+      'delete_function',
+      'add_logic',
+      'logic_change',
+      'delete_code',
+      'call_api',
+      'expose_api',
+      'read_external'
+    ];
+
+    categoryOrder.forEach(cat => {
+      const count = categoryCounts.get(cat);
+      if (count) {
+        const names: { [key: string]: string } = {
+          'logic_change': 'logic change',
+          'add_logic': 'logic addition',
+          'delete_code': 'code deletion',
+          'read_external': 'external read',
+          'call_api': 'API call',
+          'expose_api': 'API exposure',
+          'add_function': 'function addition',
+          'delete_function': 'function deletion'
+        };
+        const name = names[cat] || cat;
+        categoryDescriptions.push(`${count} ${name}${count > 1 ? 's' : ''}`);
+      }
+    });
+
+    const description = `File modified: ${categoryDescriptions.join(', ')}`;
+
+    // Get first line number for reference
+    const firstLineNumber = changes.length > 0 ? changes[0].lineNumber : 1;
+
+    // Collect all comments
+    const allComments: string[] = [];
+    changes.forEach(change => {
+      if (change.comments && change.comments.length > 0) {
+        allComments.push(...change.comments);
+      }
+    });
+
+    // Remove duplicate comments
+    const uniqueComments = Array.from(new Set(allComments));
+
+    return {
+      category: primaryCategory,
+      filePath: filePath,
+      lineNumber: firstLineNumber,
+      lineContent: `${changes.length} changes detected`,
+      description: description,
+      comments: uniqueComments.length > 0 ? uniqueComments : undefined
+    };
+  }
+
   private isSourceFile(filePath: string): boolean {
     const sourceExtensions = [
       '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
@@ -716,6 +793,7 @@ export class SemanticChangesPanel {
       max-width: 100%;
       word-wrap: break-word;
       overflow-wrap: break-word;
+      transform: scale(1);
     }
 
     .diff-icon {
@@ -783,7 +861,7 @@ export class SemanticChangesPanel {
       color: var(--vscode-button-background);
     }
 
-    .change-card:hover {
+    .change-card.popped {
       transform: scale(1.4);
       border-color: var(--vscode-button-background);
       z-index: 1000;
@@ -1241,8 +1319,29 @@ export class SemanticChangesPanel {
       });
     }
 
+    function calculateDiffStats(diff) {
+      if (!diff) return { additions: 0, deletions: 0 };
+      
+      const lines = diff.split('\\n');
+      let additions = 0;
+      let deletions = 0;
+      
+      lines.forEach(line => {
+        if (line.startsWith('+') && !line.startsWith('+++')) {
+          additions++;
+        } else if (line.startsWith('-') && !line.startsWith('---')) {
+          deletions++;
+        }
+      });
+      
+      return { additions, deletions };
+    }
+
     function handleSemanticChange(data) {
       const { filePath, changes, timestamp, isNew, history, diff } = data;
+      
+      // Calculate diff stats
+      const diffStats = calculateDiffStats(diff);
 
       // Get or create file group
       if (!fileGroups.has(filePath)) {
@@ -1277,10 +1376,19 @@ export class SemanticChangesPanel {
         const statsContainer = document.createElement('div');
         statsContainer.className = 'file-stats';
         
-        const addSpan = document.createElement('span');
-        addSpan.className = 'stat-additions';
-        addSpan.textContent = '+' + changes.length;
-        statsContainer.appendChild(addSpan);
+        if (diffStats.additions > 0) {
+          const addSpan = document.createElement('span');
+          addSpan.className = 'stat-additions';
+          addSpan.textContent = '+' + diffStats.additions;
+          statsContainer.appendChild(addSpan);
+        }
+        
+        if (diffStats.deletions > 0) {
+          const delSpan = document.createElement('span');
+          delSpan.className = 'stat-deletions';
+          delSpan.textContent = '-' + diffStats.deletions;
+          statsContainer.appendChild(delSpan);
+        }
 
         fileContainer.appendChild(statsContainer);
 
@@ -1344,10 +1452,20 @@ export class SemanticChangesPanel {
       const statsContainer = group.container.querySelector('.file-stats');
       if (statsContainer) {
         statsContainer.innerHTML = '';
-        const addSpan = document.createElement('span');
-        addSpan.className = 'stat-additions';
-        addSpan.textContent = '+' + group.changes.length;
-        statsContainer.appendChild(addSpan);
+        
+        if (diffStats.additions > 0) {
+          const addSpan = document.createElement('span');
+          addSpan.className = 'stat-additions';
+          addSpan.textContent = '+' + diffStats.additions;
+          statsContainer.appendChild(addSpan);
+        }
+        
+        if (diffStats.deletions > 0) {
+          const delSpan = document.createElement('span');
+          delSpan.className = 'stat-deletions';
+          delSpan.textContent = '-' + diffStats.deletions;
+          statsContainer.appendChild(delSpan);
+        }
       }
 
       // Reposition all files
@@ -1362,6 +1480,22 @@ export class SemanticChangesPanel {
     function createChangeCard(change, filePath, timestamp, isLatest, diff) {
       const card = document.createElement('div');
       card.className = 'change-card' + (isLatest ? ' latest' : '');
+      
+      // Add delayed hover effect
+      let hoverTimeout = null;
+      card.addEventListener('mouseenter', () => {
+        hoverTimeout = setTimeout(() => {
+          card.classList.add('popped');
+        }, 800);
+      });
+      
+      card.addEventListener('mouseleave', () => {
+        if (hoverTimeout) {
+          clearTimeout(hoverTimeout);
+          hoverTimeout = null;
+        }
+        card.classList.remove('popped');
+      });
 
       const header = document.createElement('div');
       header.className = 'change-header';

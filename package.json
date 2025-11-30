@@ -55,6 +55,11 @@
         "command": "radium.gitChanges",
         "title": "Radium: Non-committed Git Changes",
         "icon": "$(git-commit)"
+      },
+      {
+        "command": "radium.semanticChanges",
+        "title": "Radium: Semantic Changes",
+        "icon": "$(search-view-icon)"
       }
     ],
     "viewsContainers": {

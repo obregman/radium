@@ -44,6 +44,7 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 - `Radium: Real-time File Changes` - Monitor file changes in real-time with visual diff display
 - `Radium: Real-time Symbol Visualization` - Visualize code changes as symbols (functions, classes) with call relationships
 - `Radium: Non-committed Git Changes` - Visualize all uncommitted git changes as symbols
+- `Radium: Semantic Changes` - Track semantic changes by category (logic, API calls, file I/O, etc.)
 
 ### Real-time File Changes
 
@@ -120,6 +121,41 @@ The Non-committed Git Changes view works exactly like Symbol Changes but shows a
 This is useful for reviewing all your work before committing, understanding the scope of changes across multiple files, or getting a high-level overview of your current work in progress.
 
 To use: Run `Radium: Non-committed Git Changes` from the command palette.
+
+### Semantic Changes
+
+The Semantic Changes view provides a different perspective on code changes by categorizing them based on their semantic meaning rather than structural changes to symbols. This view helps you understand what your code is doing at a higher level.
+
+**Change Categories:**
+- 🔵 **Logic Change** - Modified conditionals, loops, operators, return statements
+- 🟢 **Add Logic** - New control flow structures (if/for/while/switch/try-catch)
+- 🔴 **Delete Code** - Removed lines containing logic
+- 🟠 **Read External** - File I/O, database queries, configuration reads
+- 🟣 **Call API** - HTTP requests, GraphQL, gRPC, WebSocket calls
+- 🔴 **Expose API** - Route definitions, endpoint decorators, API exports
+
+**Visual Features:**
+- **Color-coded badges** - Each category has a distinct color for quick identification
+- **Latest change highlighted** - Most recent change is prominently displayed
+- **Change history** - Expandable list of previous changes per file
+- **Clickable locations** - Click file path and line number to jump to the code
+- **Real-time monitoring** - Automatically detects changes as you code
+- **Session-based tracking** - Changes are grouped by session (cleared on "Clear All")
+
+**Pattern Detection:**
+The view uses intelligent pattern matching to detect:
+- **Logic changes**: Modified if/else, loops, operators, return statements
+- **API calls**: fetch(), axios, http requests, GraphQL queries, WebSocket connections
+- **External reads**: File operations (fs.readFile, open), database queries (SELECT, find), config access (process.env)
+- **API exposure**: Route handlers (app.get, @Get), exports (export function, module.exports)
+
+**Use Cases:**
+- Review what types of changes you've made during a coding session
+- Identify when you've added new API calls or external dependencies
+- Track logic modifications separately from structural changes
+- Understand the semantic impact of your changes at a glance
+
+To use: Run `Radium: Semantic Changes` from the command palette.
 
 #### Ignoring Files
 

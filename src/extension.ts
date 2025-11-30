@@ -8,6 +8,7 @@ import { MapPanel } from './views/codebase-map-panel';
 import { FeaturesMapPanel } from './views/features-map-panel';
 import { RealtimeChangesPanel } from './views/realtime-changes-panel';
 import { SymbolChangesPanel } from './views/symbol-changes-panel';
+import { SemanticChangesPanel } from './views/semantic-changes-panel';
 import { GitDiffTracker } from './git/git-diff-tracker';
 import { RadiumConfigLoader } from './config/radium-config';
 import { FeaturesConfigLoader } from './config/features-config';
@@ -294,6 +295,15 @@ function registerCommands(context: vscode.ExtensionContext) {
         return;
       }
       SymbolChangesPanel.createOrShowGitChanges(context.extensionUri, workspaceFolders[0].uri.fsPath);
+    }),
+
+    vscode.commands.registerCommand('radium.semanticChanges', () => {
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders) {
+        vscode.window.showWarningMessage('No workspace folder open. Radium requires a workspace.');
+        return;
+      }
+      SemanticChangesPanel.createOrShow(context.extensionUri, workspaceFolders[0].uri.fsPath);
     })
 
   );

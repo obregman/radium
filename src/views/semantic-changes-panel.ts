@@ -631,8 +631,12 @@ export class SemanticChangesPanel {
       min-width: 300px;
       max-height: 80vh;
       overflow-y: auto;
-      overflow-x: hidden;
+      overflow-x: visible;
       transition: max-height 0.3s ease;
+    }
+    
+    .file-container:hover {
+      overflow: visible;
     }
 
     .file-path-label {
@@ -753,7 +757,7 @@ export class SemanticChangesPanel {
       word-wrap: break-word;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
       z-index: 1000;
-      pointer-events: none;
+      pointer-events: auto;
     }
 
     .diff-tooltip .diff-line-add {
@@ -780,9 +784,10 @@ export class SemanticChangesPanel {
     }
 
     .change-card:hover {
-      transform: scale(1.02);
+      transform: scale(1.4);
       border-color: var(--vscode-button-background);
-      z-index: 10;
+      z-index: 1000;
+      position: relative;
     }
 
     .change-card.latest {
@@ -1151,6 +1156,9 @@ export class SemanticChangesPanel {
     const FILE_SPACING = 80;
     const START_X = 100;
     const START_Y = 50;
+    
+    // Track all timestamp elements for dynamic updates
+    const timestampElements = new Map(); // timestamp -> Set of elements
 
     // Category display names
     const categoryNames = {
@@ -1163,6 +1171,27 @@ export class SemanticChangesPanel {
       'add_function': 'Add Function',
       'delete_function': 'Delete Function'
     };
+
+    // Format relative time
+    function formatRelativeTime(timestamp) {
+      const now = Date.now();
+      const diff = now - timestamp;
+      
+      const seconds = Math.floor(diff / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      
+      if (seconds < 60) {
+        return seconds === 1 ? '1 second ago' : \`\${seconds} seconds ago\`;
+      } else if (minutes < 60) {
+        return minutes === 1 ? '1 minute ago' : \`\${minutes} minutes ago\`;
+      } else if (hours < 24) {
+        return hours === 1 ? '1 hour ago' : \`\${hours} hours ago\`;
+      } else {
+        return days === 1 ? '1 day ago' : \`\${days} days ago\`;
+      }
+    }
 
     function splitPathIntoDirectoryAndFile(filePath) {
       const normalized = filePath.replace(/\\\\/g, '/');
@@ -1373,7 +1402,15 @@ export class SemanticChangesPanel {
 
       const timestampEl = document.createElement('div');
       timestampEl.className = 'change-timestamp';
-      timestampEl.textContent = new Date(timestamp).toLocaleTimeString();
+      timestampEl.textContent = formatRelativeTime(timestamp);
+      timestampEl.dataset.timestamp = timestamp;
+      
+      // Track this element for updates
+      if (!timestampElements.has(timestamp)) {
+        timestampElements.set(timestamp, new Set());
+      }
+      timestampElements.get(timestamp).add(timestampEl);
+      
       card.appendChild(timestampEl);
 
       // Add diff icon if diff is available
@@ -1384,9 +1421,15 @@ export class SemanticChangesPanel {
         diffIcon.title = 'Show code changes';
         
         let tooltip = null;
+        let hideTimeout = null;
         
-        diffIcon.addEventListener('mouseenter', (e) => {
-          e.stopPropagation();
+        const showTooltip = () => {
+          if (hideTimeout) {
+            clearTimeout(hideTimeout);
+            hideTimeout = null;
+          }
+          
+          if (tooltip) return; // Already showing
           
           // Create tooltip
           tooltip = document.createElement('div');
@@ -1416,14 +1459,16 @@ export class SemanticChangesPanel {
           
           document.body.appendChild(tooltip);
           
-          // Position tooltip near the icon
+          // Position tooltip to the left of the icon
           const iconRect = diffIcon.getBoundingClientRect();
           const tooltipRect = tooltip.getBoundingClientRect();
           
-          // Position to the left of the icon if there's space, otherwise to the right
+          // Always position to the left
           let left = iconRect.left - tooltipRect.width - 10;
+          
+          // If it goes off screen, adjust
           if (left < 10) {
-            left = iconRect.right + 10;
+            left = 10;
           }
           
           // Position vertically centered with the icon
@@ -1437,14 +1482,42 @@ export class SemanticChangesPanel {
           
           tooltip.style.left = left + 'px';
           tooltip.style.top = top + 'px';
+          
+          // Add hover listeners to tooltip
+          tooltip.addEventListener('mouseenter', () => {
+            if (hideTimeout) {
+              clearTimeout(hideTimeout);
+              hideTimeout = null;
+            }
+          });
+          
+          tooltip.addEventListener('mouseleave', () => {
+            hideTimeout = setTimeout(() => {
+              if (tooltip) {
+                tooltip.remove();
+                tooltip = null;
+              }
+            }, 100);
+          });
+        };
+        
+        const hideTooltip = () => {
+          hideTimeout = setTimeout(() => {
+            if (tooltip) {
+              tooltip.remove();
+              tooltip = null;
+            }
+          }, 100);
+        };
+        
+        diffIcon.addEventListener('mouseenter', (e) => {
+          e.stopPropagation();
+          showTooltip();
         });
         
         diffIcon.addEventListener('mouseleave', (e) => {
           e.stopPropagation();
-          if (tooltip) {
-            tooltip.remove();
-            tooltip = null;
-          }
+          hideTooltip();
         });
         
         card.appendChild(diffIcon);
@@ -1525,7 +1598,14 @@ export class SemanticChangesPanel {
         const timeDiv = document.createElement('div');
         timeDiv.style.opacity = '0.6';
         timeDiv.style.fontSize = '10px';
-        timeDiv.textContent = new Date(timestamp).toLocaleTimeString();
+        timeDiv.textContent = formatRelativeTime(timestamp);
+        timeDiv.dataset.timestamp = timestamp;
+        
+        // Track this element for updates
+        if (!timestampElements.has(timestamp)) {
+          timestampElements.set(timestamp, new Set());
+        }
+        timestampElements.get(timestamp).add(timeDiv);
         
         changeItem.appendChild(timeDiv);
         
@@ -1540,9 +1620,15 @@ export class SemanticChangesPanel {
           diffIcon.style.right = '4px';
           
           let tooltip = null;
+          let hideTimeout = null;
           
-          diffIcon.addEventListener('mouseenter', (e) => {
-            e.stopPropagation();
+          const showTooltip = () => {
+            if (hideTimeout) {
+              clearTimeout(hideTimeout);
+              hideTimeout = null;
+            }
+            
+            if (tooltip) return; // Already showing
             
             // Create tooltip
             tooltip = document.createElement('div');
@@ -1572,14 +1658,16 @@ export class SemanticChangesPanel {
             
             document.body.appendChild(tooltip);
             
-            // Position tooltip near the icon
+            // Position tooltip to the left of the icon
             const iconRect = diffIcon.getBoundingClientRect();
             const tooltipRect = tooltip.getBoundingClientRect();
             
-            // Position to the left of the icon if there's space, otherwise to the right
+            // Always position to the left
             let left = iconRect.left - tooltipRect.width - 10;
+            
+            // If it goes off screen, adjust
             if (left < 10) {
-              left = iconRect.right + 10;
+              left = 10;
             }
             
             // Position vertically centered with the icon
@@ -1593,14 +1681,42 @@ export class SemanticChangesPanel {
             
             tooltip.style.left = left + 'px';
             tooltip.style.top = top + 'px';
+            
+            // Add hover listeners to tooltip
+            tooltip.addEventListener('mouseenter', () => {
+              if (hideTimeout) {
+                clearTimeout(hideTimeout);
+                hideTimeout = null;
+              }
+            });
+            
+            tooltip.addEventListener('mouseleave', () => {
+              hideTimeout = setTimeout(() => {
+                if (tooltip) {
+                  tooltip.remove();
+                  tooltip = null;
+                }
+              }, 100);
+            });
+          };
+          
+          const hideTooltip = () => {
+            hideTimeout = setTimeout(() => {
+              if (tooltip) {
+                tooltip.remove();
+                tooltip = null;
+              }
+            }, 100);
+          };
+          
+          diffIcon.addEventListener('mouseenter', (e) => {
+            e.stopPropagation();
+            showTooltip();
           });
           
           diffIcon.addEventListener('mouseleave', (e) => {
             e.stopPropagation();
-            if (tooltip) {
-              tooltip.remove();
-              tooltip = null;
-            }
+            hideTooltip();
           });
           
           changeItem.appendChild(diffIcon);
@@ -1761,6 +1877,7 @@ export class SemanticChangesPanel {
 
       fileGroups.clear();
       fileOrder.length = 0;
+      timestampElements.clear();
 
       vscode.postMessage({ type: 'clearAll' });
     });
@@ -1803,6 +1920,26 @@ export class SemanticChangesPanel {
           break;
       }
     });
+
+    // Update all timestamps every minute
+    setInterval(() => {
+      timestampElements.forEach((elements, timestamp) => {
+        const relativeTime = formatRelativeTime(timestamp);
+        elements.forEach(element => {
+          if (element && element.isConnected) {
+            element.textContent = relativeTime;
+          } else {
+            // Remove disconnected elements
+            elements.delete(element);
+          }
+        });
+        
+        // Clean up empty sets
+        if (elements.size === 0) {
+          timestampElements.delete(timestamp);
+        }
+      });
+    }, 60000); // Update every minute
 
     // Error handling
     window.addEventListener('error', (event) => {

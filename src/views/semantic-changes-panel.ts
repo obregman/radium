@@ -706,14 +706,8 @@ export class SemanticChangesPanel {
       padding: 85px 10px 5px 10px;
       box-sizing: border-box;
       min-width: 300px;
-      max-height: 80vh;
-      overflow-y: auto;
-      overflow-x: visible;
-      transition: max-height 0.3s ease;
-    }
-    
-    .file-container:hover {
       overflow: visible;
+      transition: height 0.3s ease;
     }
 
     .file-path-label {
@@ -995,7 +989,7 @@ export class SemanticChangesPanel {
     .previous-changes-section {
       margin-top: 6px;
       padding: 8px;
-      background-color: rgba(0, 0, 0, 0.2);
+      background-color: rgba(0, 0, 0, 0.5);
       border-radius: 4px;
       border: 1px solid var(--vscode-panel-border);
     }
@@ -1030,7 +1024,8 @@ export class SemanticChangesPanel {
       overflow: hidden;
       margin-top: 0;
       padding-top: 0;
-      transition: max-height 0.3s ease, margin-top 0.3s ease, padding-top 0.3s ease;
+      background-color: transparent;
+      transition: max-height 0.3s ease, margin-top 0.3s ease, padding-top 0.3s ease, background-color 0.3s ease;
     }
 
     .previous-changes-list.expanded {
@@ -1039,6 +1034,9 @@ export class SemanticChangesPanel {
       margin-top: 8px;
       padding-top: 8px;
       border-top: 1px solid var(--vscode-panel-border);
+      background-color: rgba(0, 0, 0, 0.4);
+      padding: 8px;
+      border-radius: 3px;
     }
 
     .previous-change-item {
@@ -1231,7 +1229,7 @@ export class SemanticChangesPanel {
     // File groups tracking
     const fileGroups = new Map(); // filePath -> { container, changes: [], x, y, width }
     const fileOrder = []; // Track file creation order
-    const FILE_SPACING = 80;
+    const FILE_SPACING = 40;
     const START_X = 100;
     const START_Y = 50;
     
@@ -1286,36 +1284,53 @@ export class SemanticChangesPanel {
     }
 
     function repositionAllFiles() {
-      let currentX = START_X;
-      let currentY = START_Y;
-      let rowHeight = 0;
-      const CONTAINER_WIDTH = container.clientWidth - 200;
+      const viewportWidth = window.innerWidth || 1920; // Use window width instead of container
+      const FILE_WIDTH = 320; // Fixed width for all file containers
+      const ROW_SPACING = 50; // Vertical spacing between rows (reduced by 50%)
+      const HORIZONTAL_MARGIN = 200; // Leave some margin on the right
+      
+      // Calculate how many columns we can fit
+      const availableWidth = viewportWidth - START_X - HORIZONTAL_MARGIN;
+      const columns = Math.max(2, Math.floor(availableWidth / (FILE_WIDTH + FILE_SPACING)));
+      
+      console.log('Viewport width:', viewportWidth, 'Available width:', availableWidth, 'Columns:', columns);
+      
+      let currentRow = 0;
+      let currentCol = 0;
+      let rowHeights = []; // Track height of each row
 
-      fileOrder.forEach(filePath => {
+      fileOrder.forEach((filePath, index) => {
         const group = fileGroups.get(filePath);
         if (!group) return;
 
-        const containerWidth = parseInt(group.container.style.width) || 300;
         const containerHeight = parseInt(group.container.style.height) || 200;
 
-        // Check if we need to wrap to next row
-        if (currentX + containerWidth > CONTAINER_WIDTH && currentX > START_X) {
-          currentX = START_X;
-          currentY += rowHeight + FILE_SPACING;
-          rowHeight = 0;
-        }
+        // Calculate position
+        const x = START_X + (currentCol * (FILE_WIDTH + FILE_SPACING));
+        const y = START_Y + rowHeights.slice(0, currentRow).reduce((sum, h) => sum + h + ROW_SPACING, 0);
+
+        console.log('File ' + index + ' (' + filePath + '): row=' + currentRow + ', col=' + currentCol + ', x=' + x + ', y=' + y);
 
         // Update group position
-        group.x = currentX;
-        group.y = currentY;
-        group.container.style.left = currentX + 'px';
-        group.container.style.top = currentY + 'px';
+        group.x = x;
+        group.y = y;
+        group.container.style.left = x + 'px';
+        group.container.style.top = y + 'px';
+        group.container.style.width = FILE_WIDTH + 'px';
 
-        // Track row height
-        rowHeight = Math.max(rowHeight, containerHeight);
+        // Track row height (max height in this row)
+        if (!rowHeights[currentRow]) {
+          rowHeights[currentRow] = containerHeight;
+        } else {
+          rowHeights[currentRow] = Math.max(rowHeights[currentRow], containerHeight);
+        }
 
-        // Move to next column
-        currentX += containerWidth + FILE_SPACING;
+        // Move to next position
+        currentCol++;
+        if (currentCol >= columns) {
+          currentCol = 0;
+          currentRow++;
+        }
       });
     }
 
@@ -1338,7 +1353,10 @@ export class SemanticChangesPanel {
     }
 
     function handleSemanticChange(data) {
+      console.log('handleSemanticChange called with data:', data);
       const { filePath, changes, timestamp, isNew, history, diff } = data;
+      
+      console.log('Changes:', changes, 'History:', history);
       
       // Calculate diff stats
       const diffStats = calculateDiffStats(diff);
@@ -1397,7 +1415,7 @@ export class SemanticChangesPanel {
           changes: [],
           x: START_X,
           y: START_Y,
-          width: 300
+          width: 320
         };
         fileGroups.set(filePath, newGroup);
         fileOrder.push(filePath);
@@ -1409,44 +1427,63 @@ export class SemanticChangesPanel {
       group.changes.forEach(card => card.remove());
       group.changes = [];
 
-      // Collect all previous changes (everything except the very latest)
-      const allPreviousChanges = [];
+      // Collect ALL changes including current and history
+      const allChangesWithTimestamps = [];
       
-      // Add remaining current changes (if more than 1)
-      if (changes.length > 1) {
-        for (let i = 1; i < changes.length; i++) {
-          allPreviousChanges.push({ change: changes[i], timestamp: timestamp, diff: diff });
-        }
-      }
+      // Add all current changes
+      changes.forEach(change => {
+        allChangesWithTimestamps.push({ change: change, timestamp: timestamp, diff: diff });
+      });
       
       // Add history
       if (history && history.length > 0) {
         history.forEach(historyItem => {
           historyItem.changes.forEach(change => {
-            allPreviousChanges.push({ change: change, timestamp: historyItem.timestamp, diff: historyItem.diff });
+            allChangesWithTimestamps.push({ change: change, timestamp: historyItem.timestamp, diff: historyItem.diff });
           });
         });
       }
 
-      // Add "Previous changes" section FIRST (if there are any)
-      if (allPreviousChanges.length > 0) {
-        const previousSection = createPreviousChangesSection(allPreviousChanges, filePath);
+      // Sort all changes by timestamp (newest first)
+      allChangesWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
+
+      console.log('All changes with timestamps:', allChangesWithTimestamps);
+
+      // Display the two most recent changes at the top
+      const recentChanges = allChangesWithTimestamps.slice(0, 2);
+      const previousChanges = allChangesWithTimestamps.slice(2);
+      
+      console.log('Recent changes:', recentChanges, 'Previous changes:', previousChanges);
+
+      // Add the two most recent changes (newest first)
+      recentChanges.forEach((item, index) => {
+        const isLatest = index === 0; // Only the very first one is marked as latest
+        const card = createChangeCard(item.change, filePath, item.timestamp, isLatest, item.diff);
+        group.container.appendChild(card);
+        group.changes.push(card);
+      });
+
+      // Add "Previous changes" section BELOW the two recent changes (if there are any)
+      if (previousChanges.length > 0) {
+        const previousSection = createPreviousChangesSection(previousChanges, filePath);
         group.container.appendChild(previousSection);
         group.changes.push(previousSection);
       }
 
-      // Add latest change AFTER previous changes (last one)
-      if (changes.length > 0) {
-        const latestCard = createChangeCard(changes[0], filePath, timestamp, true, diff);
-        group.container.appendChild(latestCard);
-        group.changes.push(latestCard);
-      }
-
-      // Update container size based on content
-      const latestCardHeight = 150; // Approximate height of latest change card
-      const previousSectionHeight = allPreviousChanges.length > 0 ? 60 : 0; // Collapsed height
-      const containerHeight = 85 + latestCardHeight + previousSectionHeight + 5;
-      group.container.style.height = containerHeight + 'px';
+      // Update container size based on actual content
+      // Wait for DOM to update, then measure actual height
+      requestAnimationFrame(() => {
+        const contentHeight = Array.from(group.container.children)
+          .filter(child => child.classList.contains('change-card') || child.classList.contains('previous-changes-section'))
+          .reduce((total, child) => total + child.offsetHeight, 0);
+        
+        const headerHeight = 85; // File path label and stats
+        const padding = 10; // Bottom padding
+        const spacing = 6 * (recentChanges.length + (previousChanges.length > 0 ? 1 : 0) - 1); // margin-bottom between cards
+        
+        const totalHeight = headerHeight + contentHeight + spacing + padding;
+        group.container.style.height = totalHeight + 'px';
+      });
       
       // Update stats
       const statsContainer = group.container.querySelector('.file-stats');

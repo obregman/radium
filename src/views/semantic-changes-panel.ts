@@ -992,6 +992,8 @@ export class SemanticChangesPanel {
       background-color: rgba(0, 0, 0, 0.5);
       border-radius: 4px;
       border: 1px solid var(--vscode-panel-border);
+      position: relative;
+      z-index: 999;
     }
 
     .previous-changes-toggle {
@@ -1034,9 +1036,11 @@ export class SemanticChangesPanel {
       margin-top: 8px;
       padding-top: 8px;
       border-top: 1px solid var(--vscode-panel-border);
-      background-color: rgba(0, 0, 0, 0.4);
+      background-color: var(--vscode-editor-background);
       padding: 8px;
       border-radius: 3px;
+      position: relative;
+      z-index: 1000;
     }
 
     .previous-change-item {

@@ -1187,7 +1187,7 @@ export class SemanticChangesPanel {
 </head>
 <body>
   <div id="info">
-    <h3>🔍 Semantic Changes</h3>
+    <h3>🔴 Watching for Changes</h3>
   </div>
   <div id="zoom-controls">
     <button class="zoom-button" id="zoom-in" title="Zoom In">+</button>

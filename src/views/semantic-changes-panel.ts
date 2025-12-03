@@ -731,11 +731,10 @@ export class SemanticChangesPanel {
       font-weight: 400;
       opacity: 0.7;
       line-height: 1.1;
-      word-break: keep-all;
-      word-wrap: break-word;
-      white-space: normal;
+      white-space: nowrap;
       overflow: hidden;
-      max-height: 22px;
+      text-overflow: ellipsis;
+      max-width: 100%;
     }
     
     .file-name {

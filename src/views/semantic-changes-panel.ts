@@ -747,6 +747,21 @@ export class SemanticChangesPanel {
       max-width: 100%;
     }
 
+    .file-path-tooltip {
+      position: fixed;
+      background-color: var(--vscode-editorHoverWidget-background, #252526);
+      color: var(--vscode-editorHoverWidget-foreground, #cccccc);
+      border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+      border-radius: 3px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-family: var(--vscode-font-family);
+      white-space: nowrap;
+      z-index: 10000;
+      pointer-events: none;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
     .file-stats {
       position: absolute;
       top: 6px;
@@ -1383,6 +1398,39 @@ export class SemanticChangesPanel {
           const directoryElement = document.createElement('div');
           directoryElement.className = 'file-directory-path';
           directoryElement.textContent = directory;
+          
+          // Add tooltip on hover for truncated paths
+          let pathTooltipTimeout = null;
+          let pathTooltip = null;
+          
+          directoryElement.addEventListener('mouseenter', (e) => {
+            // Only show tooltip if text is truncated
+            if (directoryElement.scrollWidth > directoryElement.clientWidth) {
+              pathTooltipTimeout = setTimeout(() => {
+                pathTooltip = document.createElement('div');
+                pathTooltip.className = 'file-path-tooltip';
+                pathTooltip.textContent = directory;
+                document.body.appendChild(pathTooltip);
+                
+                // Position near the element
+                const rect = directoryElement.getBoundingClientRect();
+                pathTooltip.style.left = rect.left + 'px';
+                pathTooltip.style.top = (rect.bottom + 4) + 'px';
+              }, 1000);
+            }
+          });
+          
+          directoryElement.addEventListener('mouseleave', () => {
+            if (pathTooltipTimeout) {
+              clearTimeout(pathTooltipTimeout);
+              pathTooltipTimeout = null;
+            }
+            if (pathTooltip) {
+              pathTooltip.remove();
+              pathTooltip = null;
+            }
+          });
+          
           fileLabel.appendChild(directoryElement);
         }
 

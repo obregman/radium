@@ -469,15 +469,17 @@ export class SemanticChangesPanel {
         }
       }
       
-      // Try git diff HEAD first
+      // Try git diff HEAD first (with -p for function context)
       let diff: string = '';
       try {
-        const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
+        const { stdout } = await exec(`git diff -p HEAD -- "${filePath}"`, {
           cwd: this.workspaceRoot
         });
         if (stdout) {
           this.log(`Got diff from HEAD for ${filePath}`);
           diff = stdout;
+          // If git didn't add function context, add it ourselves
+          diff = this.addFunctionContextToGitDiff(diff, filePath);
         }
       } catch (headError: any) {
         this.log(`git diff HEAD failed for ${filePath}: ${headError.message}`);
@@ -486,13 +488,15 @@ export class SemanticChangesPanel {
       // If no diff from HEAD, try unstaged diff
       if (!diff) {
         try {
-          const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
+          const { stdout: unstagedDiff } = await exec(`git diff -p -- "${filePath}"`, {
             cwd: this.workspaceRoot
           });
           
           if (unstagedDiff) {
             this.log(`Got unstaged diff for ${filePath}`);
             diff = unstagedDiff;
+            // If git didn't add function context, add it ourselves
+            diff = this.addFunctionContextToGitDiff(diff, filePath);
           }
         } catch (unstagedError: any) {
           this.log(`git diff unstaged failed for ${filePath}: ${unstagedError.message}`);
@@ -554,7 +558,179 @@ export class SemanticChangesPanel {
   private generateDiff(filePath: string, oldContent: string, newContent: string): string {
     // Use the Diff library to generate a unified diff
     const patches = Diff.createPatch(filePath, oldContent, newContent, '', '');
-    return patches;
+    
+    // Enhance the diff with function context in hunk headers (like git does)
+    return this.addFunctionContextToHunks(patches, oldContent);
+  }
+
+  /**
+   * Add function context to hunk headers, similar to how git diff -p works.
+   * This helps identify which function a change belongs to.
+   */
+  private addFunctionContextToHunks(diff: string, oldContent: string): string {
+    const oldLines = oldContent.split('\n');
+    const lines = diff.split('\n');
+    const result: string[] = [];
+    
+    // Patterns to detect function/method signatures (NOT classes/interfaces)
+    const functionPatterns = [
+      // TypeScript/JavaScript
+      /^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)/,
+      /^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(/,
+      /^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>/,
+      /^\s*(?:public|private|protected|static|async|readonly|\s)*(\w+)\s*\([^)]*\)\s*[:{]/,
+      /^\s*(?:public|private|protected|static|async|readonly|\s)*(?:get|set)\s+(\w+)\s*\(/,
+      // C#
+      /^\s*(?:public|private|protected|internal|static|virtual|override|async|readonly|\s)+\w+\s+(\w+)\s*\(/,
+      // Python
+      /^\s*(?:async\s+)?def\s+(\w+)/,
+      // Go
+      /^\s*func\s+(?:\([^)]+\)\s+)?(\w+)\s*\(/,
+      // NOTE: Class/interface definitions are intentionally excluded
+      // Code between methods inside a class should not be attributed to the class
+    ];
+    
+    let currentHunkStartLine = 0;
+    let currentHunkHeaderIndex = -1;
+    let firstChangedLineInHunk = -1;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Check if this is a hunk header
+      const hunkMatch = line.match(/^(@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@)(.*)$/);
+      if (hunkMatch) {
+        // Before processing new hunk, finalize the previous one
+        if (currentHunkHeaderIndex >= 0 && firstChangedLineInHunk >= 0) {
+          // Find function for the actual changed line, not hunk start
+          const funcContext = this.findEnclosingFunction(oldLines, firstChangedLineInHunk - 1, functionPatterns);
+          if (funcContext) {
+            const prevHeader = result[currentHunkHeaderIndex];
+            const headerMatch = prevHeader.match(/^(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@)/);
+            if (headerMatch) {
+              result[currentHunkHeaderIndex] = `${headerMatch[1]} ${funcContext}`;
+            }
+          }
+        }
+        
+        currentHunkStartLine = parseInt(hunkMatch[2], 10);
+        currentHunkHeaderIndex = result.length;
+        firstChangedLineInHunk = -1;
+        
+        // Add header without context for now, we'll update it when we find the first change
+        result.push(hunkMatch[1]);
+      } else {
+        // Track the first actual change in the hunk
+        if (firstChangedLineInHunk < 0 && (line.startsWith('+') || line.startsWith('-')) && 
+            !line.startsWith('+++') && !line.startsWith('---')) {
+          // Calculate the actual line number of this change
+          // Count context and deleted lines from hunk start to here
+          let lineOffset = 0;
+          for (let j = currentHunkHeaderIndex + 1; j < result.length; j++) {
+            const prevLine = result[j];
+            if (prevLine.startsWith(' ') || prevLine.startsWith('-')) {
+              lineOffset++;
+            }
+          }
+          firstChangedLineInHunk = currentHunkStartLine + lineOffset;
+        }
+        result.push(line);
+      }
+    }
+    
+    // Finalize the last hunk
+    if (currentHunkHeaderIndex >= 0 && firstChangedLineInHunk >= 0) {
+      const funcContext = this.findEnclosingFunction(oldLines, firstChangedLineInHunk - 1, functionPatterns);
+      if (funcContext) {
+        const prevHeader = result[currentHunkHeaderIndex];
+        const headerMatch = prevHeader.match(/^(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@)/);
+        if (headerMatch) {
+          result[currentHunkHeaderIndex] = `${headerMatch[1]} ${funcContext}`;
+        }
+      }
+    }
+    
+    return result.join('\n');
+  }
+
+  /**
+   * Find the enclosing function/method for a given line number.
+   * Uses brace matching to find the function whose body contains the target line.
+   * Returns null if the line is not inside any function (e.g., between functions).
+   */
+  private findEnclosingFunction(lines: string[], lineIndex: number, patterns: RegExp[]): string | null {
+    // Strategy: Track brace nesting going backwards from the target line
+    // We're inside a function ONLY if we encounter its opening { before we've seen its closing }
+    
+    let braceBalance = 0; // Positive = more } seen than {, Negative = more { seen than }
+    let seenAnyCloseBrace = false; // Track if we've exited any block
+    
+    for (let i = Math.min(lineIndex, lines.length - 1); i >= 0; i--) {
+      const line = lines[i];
+      
+      // Count braces on this line (simplified, ignores strings/comments)
+      const openBraces = (line.match(/\{/g) || []).length;
+      const closeBraces = (line.match(/\}/g) || []).length;
+      
+      if (closeBraces > 0) {
+        seenAnyCloseBrace = true;
+      }
+      
+      // Update balance: going backwards, } means we entered a block, { means we exited
+      braceBalance += closeBraces - openBraces;
+      
+      // Check if this line has a function signature
+      let isFunction = false;
+      for (const pattern of patterns) {
+        if (pattern.test(line)) {
+          isFunction = true;
+          break;
+        }
+      }
+      
+      if (isFunction && openBraces > 0) {
+        // This line has a function signature with an opening brace
+        // We're inside this function ONLY if:
+        // 1. braceBalance < 0: We've seen more { than }, definitely inside a nested scope
+        // 2. braceBalance == 0 AND we haven't seen any } yet: We started inside this function
+        //    and haven't exited it
+        // 
+        // If braceBalance == 0 but we HAVE seen }, it means we exited this function's scope
+        // before reaching the target line (the change is BETWEEN functions)
+        
+        if (braceBalance < 0 || (braceBalance === 0 && !seenAnyCloseBrace)) {
+          const trimmed = line.trim();
+          if (trimmed.length > 60) {
+            return trimmed.substring(0, 57) + '...';
+          }
+          return trimmed;
+        }
+        
+        // If we're here, this function closed before our target line
+        // Continue searching for an outer/parent function
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Add function context to git diff output if it's missing.
+   * Git sometimes doesn't include function context for certain file types.
+   */
+  private addFunctionContextToGitDiff(diff: string, filePath: string): string {
+    const fullPath = path.join(this.workspaceRoot, filePath);
+    
+    // Read the current file content to find function context
+    let fileContent: string;
+    try {
+      fileContent = fs.readFileSync(fullPath, 'utf8');
+    } catch {
+      // Can't read file, return original diff
+      return diff;
+    }
+    
+    return this.addFunctionContextToHunks(diff, fileContent);
   }
 
   private consolidateChanges(changes: SemanticChange[], filePath: string): SemanticChange {
@@ -571,6 +747,14 @@ export class SemanticChangesPanel {
       if (count > maxCount) {
         maxCount = count;
         primaryCategory = category as SemanticChangeCategory;
+      }
+    });
+
+    // Collect unique function names from changes
+    const functionNames = new Set<string>();
+    changes.forEach(change => {
+      if (change.functionName) {
+        functionNames.add(change.functionName);
       }
     });
 
@@ -605,7 +789,14 @@ export class SemanticChangesPanel {
       }
     });
 
-    const description = `File modified: ${categoryDescriptions.join(', ')}`;
+    // Build description with function names if available
+    let description = categoryDescriptions.join(', ');
+    if (functionNames.size > 0) {
+      // Add () to function names and limit to 3
+      const funcList = Array.from(functionNames).slice(0, 3).map(name => `${name}()`);
+      const funcSuffix = functionNames.size > 3 ? ` (+${functionNames.size - 3} more)` : '';
+      description = `in ${funcList.join(', ')}${funcSuffix}: ${description}`;
+    }
 
     // Get first line number for reference
     const firstLineNumber = changes.length > 0 ? changes[0].lineNumber : 1;
@@ -621,13 +812,17 @@ export class SemanticChangesPanel {
     // Remove duplicate comments
     const uniqueComments = Array.from(new Set(allComments));
 
+    // Use the first function name found
+    const primaryFunctionName = functionNames.size > 0 ? Array.from(functionNames)[0] : undefined;
+
     return {
       category: primaryCategory,
       filePath: filePath,
       lineNumber: firstLineNumber,
       lineContent: `${changes.length} changes detected`,
       description: description,
-      comments: uniqueComments.length > 0 ? uniqueComments : undefined
+      comments: uniqueComments.length > 0 ? uniqueComments : undefined,
+      functionName: primaryFunctionName
     };
   }
 
@@ -870,7 +1065,7 @@ export class SemanticChangesPanel {
     }
 
     .change-card.popped {
-      transform: scale(1.4);
+      transform: scale(1.8);
       border-color: var(--vscode-button-background);
       z-index: 1000;
       position: relative;
@@ -880,6 +1075,11 @@ export class SemanticChangesPanel {
       border-color: var(--vscode-button-background);
       box-shadow: 0 4px 12px rgba(255, 165, 0, 0.4);
       animation: pulseLatest 2s ease-in-out 3;
+    }
+
+    .change-card.highlight-border {
+      border: 3px solid #FFFFFF !important;
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.6), 0 4px 12px rgba(255, 165, 0, 0.4) !important;
     }
 
     @keyframes pulseLatest {
@@ -1302,32 +1502,39 @@ export class SemanticChangesPanel {
     }
 
     function repositionAllFiles() {
-      const viewportWidth = window.innerWidth || 1920; // Use window width instead of container
       const FILE_WIDTH = 320; // Fixed width for all file containers
-      const ROW_SPACING = 50; // Vertical spacing between rows (reduced by 50%)
-      const HORIZONTAL_MARGIN = 200; // Leave some margin on the right
+      const VERTICAL_GAP = FILE_SPACING; // Same gap as horizontal spacing between columns
       
-      // Calculate how many columns we can fit
-      const availableWidth = viewportWidth - START_X - HORIZONTAL_MARGIN;
-      const columns = Math.max(2, Math.floor(availableWidth / (FILE_WIDTH + FILE_SPACING)));
+      const fileCount = fileOrder.length;
+      if (fileCount === 0) return;
       
-      console.log('Viewport width:', viewportWidth, 'Available width:', availableWidth, 'Columns:', columns);
+      // Determine number of columns using sqrt to balance rows/columns
+      const columns = Math.max(1, Math.ceil(Math.sqrt(fileCount)));
       
-      let currentRow = 0;
-      let currentCol = 0;
-      let rowHeights = []; // Track height of each row
+      // Calculate files per column for balanced distribution
+      // For 2 columns: distribute evenly, with extra file going to first column
+      const filesPerColumn = Math.ceil(fileCount / columns);
+      
+      console.log('File count:', fileCount, 'Columns:', columns, 'Files per column:', filesPerColumn);
+      
+      // Track current Y position for each column
+      const columnYPositions = Array(columns).fill(START_Y);
 
       fileOrder.forEach((filePath, index) => {
         const group = fileGroups.get(filePath);
         if (!group) return;
 
         const containerHeight = parseInt(group.container.style.height) || 200;
-
+        
+        // Determine which column this file goes in
+        // Fill columns top-to-bottom: first filesPerColumn files go to col 0, next to col 1, etc.
+        const col = Math.floor(index / filesPerColumn);
+        
         // Calculate position
-        const x = START_X + (currentCol * (FILE_WIDTH + FILE_SPACING));
-        const y = START_Y + rowHeights.slice(0, currentRow).reduce((sum, h) => sum + h + ROW_SPACING, 0);
+        const x = START_X + (col * (FILE_WIDTH + FILE_SPACING));
+        const y = columnYPositions[col];
 
-        console.log('File ' + index + ' (' + filePath + '): row=' + currentRow + ', col=' + currentCol + ', x=' + x + ', y=' + y);
+        console.log('File ' + index + ' (' + filePath + '): col=' + col + ', x=' + x + ', y=' + y);
 
         // Update group position
         group.x = x;
@@ -1336,19 +1543,8 @@ export class SemanticChangesPanel {
         group.container.style.top = y + 'px';
         group.container.style.width = FILE_WIDTH + 'px';
 
-        // Track row height (max height in this row)
-        if (!rowHeights[currentRow]) {
-          rowHeights[currentRow] = containerHeight;
-        } else {
-          rowHeights[currentRow] = Math.max(rowHeights[currentRow], containerHeight);
-        }
-
-        // Move to next position
-        currentCol++;
-        if (currentCol >= columns) {
-          currentCol = 0;
-          currentRow++;
-        }
+        // Update column Y position for next file in this column
+        columnYPositions[col] += containerHeight + VERTICAL_GAP;
       });
     }
 
@@ -1567,7 +1763,14 @@ export class SemanticChangesPanel {
 
     function createChangeCard(change, filePath, timestamp, isLatest, diff) {
       const card = document.createElement('div');
-      card.className = 'change-card' + (isLatest ? ' latest' : '');
+      card.className = 'change-card' + (isLatest ? ' latest highlight-border' : '');
+      
+      // Remove highlight border after 3 seconds for latest cards
+      if (isLatest) {
+        setTimeout(() => {
+          card.classList.remove('highlight-border');
+        }, 3000);
+      }
       
       // Add delayed hover effect
       let hoverTimeout = null;

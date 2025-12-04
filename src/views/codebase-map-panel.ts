@@ -1519,18 +1519,26 @@ export class MapPanel {
     const extractCommentText = (trimmed: string): string | null => {
       // JavaScript/TypeScript/C-style comments
       if (['js', 'ts', 'jsx', 'tsx', 'c', 'cpp', 'java', 'cs', 'go', 'rs', 'swift'].includes(ext)) {
+        // Single-line comments (handles // and ///)
         if (trimmed.startsWith('//')) {
-          const comment = trimmed.substring(2).trim();
+          // Remove all leading slashes and trim
+          const comment = trimmed.replace(/^\/+\s*/, '').trim();
           if (comment.length > 0) return comment;
         }
-        const multiLineMatch = trimmed.match(/\/\*\s*(.+?)\s*\*\//);
-        if (multiLineMatch) return multiLineMatch[1].trim();
+        // Multi-line comments (handles /* and /**)
+        const multiLineMatch = trimmed.match(/\/\*+\s*(.+?)\s*\*\//);
+        if (multiLineMatch) {
+          // Remove any leading * characters
+          const comment = multiLineMatch[1].replace(/^\*+\s*/, '').trim();
+          if (comment.length > 0) return comment;
+        }
       }
       
       // Python/Ruby/Shell comments
       if (['py', 'rb', 'sh', 'bash'].includes(ext)) {
         if (trimmed.startsWith('#')) {
-          const comment = trimmed.substring(1).trim();
+          // Remove all leading # and trim
+          const comment = trimmed.replace(/^#+\s*/, '').trim();
           if (comment.length > 0 && !comment.startsWith('!')) return comment;
         }
       }

@@ -1319,24 +1319,30 @@ export class SymbolChangesPanel {
       if (ext === 'js' || ext === 'ts' || ext === 'jsx' || ext === 'tsx' || 
           ext === 'c' || ext === 'cpp' || ext === 'java' || ext === 'cs' ||
           ext === 'go' || ext === 'rs' || ext === 'swift') {
-        // Single-line comments
+        // Single-line comments (handles // and ///)
         if (trimmed.startsWith('//')) {
-          const comment = trimmed.substring(2).trim();
+          // Remove all leading slashes and trim
+          const comment = trimmed.replace(/^\/+\s*/, '').trim();
           if (comment.length > 0) {
             return comment;
           }
         }
-        // Multi-line comments
-        const multiLineMatch = trimmed.match(/\/\*\s*(.+?)\s*\*\//);
+        // Multi-line comments (handles /* and /**)
+        const multiLineMatch = trimmed.match(/\/\*+\s*(.+?)\s*\*\//);
         if (multiLineMatch) {
-          return multiLineMatch[1].trim();
+          // Remove any leading * characters
+          const comment = multiLineMatch[1].replace(/^\*+\s*/, '').trim();
+          if (comment.length > 0) {
+            return comment;
+          }
         }
       }
       
       // Python/Ruby/Shell comments
       if (ext === 'py' || ext === 'rb' || ext === 'sh' || ext === 'bash') {
         if (trimmed.startsWith('#')) {
-          const comment = trimmed.substring(1).trim();
+          // Remove all leading # and trim
+          const comment = trimmed.replace(/^#+\s*/, '').trim();
           if (comment.length > 0 && !comment.startsWith('!')) { // Skip shebangs
             return comment;
           }

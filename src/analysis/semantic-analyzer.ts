@@ -28,6 +28,7 @@ export interface SemanticChange {
   description: string;
   context?: string; // Additional context about the change
   comments?: string[]; // Extracted comments from the change
+  functionName?: string; // Name of the function where the change occurred
 }
 
 export interface DiffLine {
@@ -157,6 +158,7 @@ export class SemanticAnalyzer {
     
     let currentLineNumber = 0;
     let inHunk = false;
+    let currentFunctionContext = ''; // Track the function context from hunk headers
     
     // First pass: collect all additions and deletions to distinguish modifications from pure deletions
     const deletions = new Map<number, string>(); // line index -> content
@@ -181,16 +183,22 @@ export class SemanticAnalyzer {
     // Second pass: analyze changes
     currentLineNumber = 0;
     inHunk = false;
+    currentFunctionContext = '';
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
-      // Parse hunk headers to track line numbers
+      // Parse hunk headers to track line numbers and function context
       if (line.startsWith('@@')) {
-        const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@\s*(.*)/);
         if (match) {
           currentLineNumber = parseInt(match[1], 10);
           inHunk = true;
+          // Extract function context from hunk header (text after the second @@)
+          const hunkContext = match[2] || '';
+          currentFunctionContext = this.extractFunctionNameFromContext(hunkContext);
+          console.log(`[SemanticAnalyzer] Hunk header: "${line}"`);
+          console.log(`[SemanticAnalyzer] Hunk context: "${hunkContext}" -> function: "${currentFunctionContext}"`);
         }
         continue;
       }
@@ -207,6 +215,7 @@ export class SemanticAnalyzer {
       
       if (lineType === 'added') {
         let detectedAny = false;
+        const changesBeforeCount = changes.length;
         
         // Check for added functions (highest priority)
         const addedFunctions = this.detectAddedFunctions(filePath, currentLineNumber, content);
@@ -262,6 +271,13 @@ export class SemanticAnalyzer {
           });
         }
         
+        // Add function context to all changes detected in this iteration
+        if (currentFunctionContext) {
+          for (let j = changesBeforeCount; j < changes.length; j++) {
+            changes[j].functionName = currentFunctionContext;
+          }
+        }
+        
         currentLineNumber++;
       } else if (lineType === 'deleted') {
         // Check if there are additions within 3 lines (before or after)
@@ -269,6 +285,7 @@ export class SemanticAnalyzer {
         
         if (!hasNearbyAdditions && content.trim().length > 0) {
           // This is a pure deletion, not part of a modification
+          const changesBeforeCount = changes.length;
           
           // Check if it's a deleted function (highest priority)
           const deletedFunctions = this.detectDeletedFunctions(filePath, currentLineNumber, content);
@@ -284,6 +301,13 @@ export class SemanticAnalyzer {
               description: 'Code deleted',
               context: this.extractContext(content)
             });
+          }
+          
+          // Add function context to deletion changes
+          if (currentFunctionContext) {
+            for (let j = changesBeforeCount; j < changes.length; j++) {
+              changes[j].functionName = currentFunctionContext;
+            }
           }
         }
       } else {
@@ -577,6 +601,64 @@ export class SemanticAnalyzer {
   }
 
   /**
+   * Extract function name from diff hunk context (text after @@ markers)
+   * Git includes function/method context in hunk headers for many languages
+   */
+  private extractFunctionNameFromContext(hunkContext: string): string {
+    if (!hunkContext || hunkContext.trim().length === 0) return '';
+    
+    const trimmed = hunkContext.trim();
+    
+    // Skip control flow keywords
+    const skipKeywords = ['if', 'for', 'while', 'switch', 'catch', 'try', 'else', 'return', 'throw', 'new'];
+    
+    // JavaScript/TypeScript: function name(...) or async function name(...)
+    let match = trimmed.match(/\b(?:async\s+)?function\s+(\w+)/);
+    if (match) return match[1];
+    
+    // JavaScript/TypeScript: const/let/var name = (...) => or = function
+    match = trimmed.match(/\b(?:const|let|var)\s+(\w+)\s*=/);
+    if (match && !skipKeywords.includes(match[1])) return match[1];
+    
+    // TypeScript/JavaScript class method: methodName(...) { or async methodName(...)
+    match = trimmed.match(/^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*[:{]/);
+    if (match && !skipKeywords.includes(match[1])) return match[1];
+    
+    // TypeScript/JavaScript with modifiers: public/private methodName(...)
+    match = trimmed.match(/\b(?:public|private|protected|static|async|readonly)\s+(?:async\s+)?(\w+)\s*\(/);
+    if (match && !skipKeywords.includes(match[1])) return match[1];
+    
+    // Getter/setter: get/set propertyName()
+    match = trimmed.match(/\b(?:get|set)\s+(\w+)\s*\(/);
+    if (match) return match[1];
+    
+    // Python: def function_name(
+    match = trimmed.match(/\bdef\s+(\w+)/);
+    if (match) return match[1];
+    
+    // Go: func (receiver) functionName( or func functionName(
+    match = trimmed.match(/\bfunc\s+(?:\([^)]+\)\s+)?(\w+)\s*\(/);
+    if (match) return match[1];
+    
+    // Java/C#/C++: access_modifier return_type methodName(
+    match = trimmed.match(/\b(?:public|private|protected|internal|static|async|virtual|override|final|abstract)\s+(?:\w+\s+)?(\w+)\s*\(/);
+    if (match && !skipKeywords.includes(match[1])) return match[1];
+    
+    // Ruby: def method_name
+    match = trimmed.match(/\bdef\s+(\w+)/);
+    if (match) return match[1];
+    
+    // Fallback: look for word followed by ( that's not a keyword
+    match = trimmed.match(/\b(\w+)\s*\(/);
+    if (match && !skipKeywords.includes(match[1])) return match[1];
+    
+    // NOTE: Class/interface definitions are intentionally excluded
+    // Code between methods inside a class should not be attributed to the class
+    
+    return '';
+  }
+
+  /**
    * Describe added logic
    */
   private describeAddedLogic(content: string): string {
@@ -692,28 +774,36 @@ export class SemanticAnalyzer {
   private extractComment(line: string): string | null {
     const trimmed = line.trim();
     
-    // Single-line comments: //, #, --
+    // Single-line comments: //, ///, #, --
     const singleLinePatterns = [
-      /\/\/\s*(.+)$/,           // JavaScript, TypeScript, C#, C++, Java
-      /#\s*(.+)$/,              // Python, Ruby, Shell
-      /--\s*(.+)$/,             // SQL, Lua, Haskell
-      /'\s*(.+)$/,              // VB
+      /^\/\/+\s*(.*)$/,         // JavaScript, TypeScript, C#, C++, Java (handles // and ///)
+      /^#+\s*(.*)$/,            // Python, Ruby, Shell (handles # and ##)
+      /^--+\s*(.*)$/,           // SQL, Lua, Haskell
+      /^'\s*(.*)$/,             // VB
     ];
     
     for (const pattern of singleLinePatterns) {
       const match = trimmed.match(pattern);
-      if (match && trimmed.startsWith(match[0].split(/\s/)[0])) {
-        return match[1].trim();
+      if (match) {
+        // Remove any remaining leading / or # or - characters and trim
+        let comment = match[1].replace(/^[\/\#\-]+\s*/, '').trim();
+        if (comment.length > 0) {
+          return comment;
+        }
       }
     }
     
-    // Multi-line comment start: /*, <!--, {-
+    // Multi-line comment start: /*, /**, <!--, {-
     if (trimmed.match(/^\/\*\*?\s*(.*)/) || 
         trimmed.match(/^<!--\s*(.*)/) ||
         trimmed.match(/^\{-\s*(.*)/)) {
       const commentMatch = trimmed.match(/^(?:\/\*\*?|<!--|\{-)\s*(.*?)(?:\*\/|-->|-\})?$/);
       if (commentMatch && commentMatch[1]) {
-        return commentMatch[1].trim();
+        // Remove any leading * characters (common in JSDoc style)
+        let comment = commentMatch[1].replace(/^\*+\s*/, '').trim();
+        if (comment.length > 0) {
+          return comment;
+        }
       }
     }
     

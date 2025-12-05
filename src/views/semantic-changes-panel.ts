@@ -1524,7 +1524,8 @@ export class SemanticChangesPanel {
         const group = fileGroups.get(filePath);
         if (!group) return;
 
-        const containerHeight = parseInt(group.container.style.height) || 200;
+        // Get the actual current height of the container
+        const containerHeight = group.container.offsetHeight || parseInt(group.container.style.height) || 200;
         
         // Determine which column this file goes in
         // Fill columns top-to-bottom: first filesPerColumn files go to col 0, next to col 1, etc.
@@ -1534,7 +1535,7 @@ export class SemanticChangesPanel {
         const x = START_X + (col * (FILE_WIDTH + FILE_SPACING));
         const y = columnYPositions[col];
 
-        console.log('File ' + index + ' (' + filePath + '): col=' + col + ', x=' + x + ', y=' + y);
+        console.log('File ' + index + ' (' + filePath + '): col=' + col + ', x=' + x + ', y=' + y + ', height=' + containerHeight);
 
         // Update group position
         group.x = x;
@@ -1730,6 +1731,9 @@ export class SemanticChangesPanel {
         
         const totalHeight = headerHeight + contentHeight + spacing + padding;
         group.container.style.height = totalHeight + 'px';
+        
+        // Reposition all files after height is updated
+        repositionAllFiles();
       });
       
       // Update stats
@@ -1751,9 +1755,6 @@ export class SemanticChangesPanel {
           statsContainer.appendChild(delSpan);
         }
       }
-
-      // Reposition all files
-      repositionAllFiles();
 
       // Auto-focus on the file container
       setTimeout(() => {
@@ -1847,6 +1848,7 @@ export class SemanticChangesPanel {
         
         let tooltip = null;
         let hideTimeout = null;
+        let showTimeout = null;
         
         const showTooltip = () => {
           if (hideTimeout) {
@@ -1927,6 +1929,10 @@ export class SemanticChangesPanel {
         };
         
         const hideTooltip = () => {
+          if (showTimeout) {
+            clearTimeout(showTimeout);
+            showTimeout = null;
+          }
           hideTimeout = setTimeout(() => {
             if (tooltip) {
               tooltip.remove();
@@ -1937,7 +1943,10 @@ export class SemanticChangesPanel {
         
         diffIcon.addEventListener('mouseenter', (e) => {
           e.stopPropagation();
-          showTooltip();
+          showTimeout = setTimeout(() => {
+            showTooltip();
+            showTimeout = null;
+          }, 400);
         });
         
         diffIcon.addEventListener('mouseleave', (e) => {
@@ -2046,6 +2055,7 @@ export class SemanticChangesPanel {
           
           let tooltip = null;
           let hideTimeout = null;
+          let showTimeout = null;
           
           const showTooltip = () => {
             if (hideTimeout) {
@@ -2126,6 +2136,10 @@ export class SemanticChangesPanel {
           };
           
           const hideTooltip = () => {
+            if (showTimeout) {
+              clearTimeout(showTimeout);
+              showTimeout = null;
+            }
             hideTimeout = setTimeout(() => {
               if (tooltip) {
                 tooltip.remove();
@@ -2136,7 +2150,10 @@ export class SemanticChangesPanel {
           
           diffIcon.addEventListener('mouseenter', (e) => {
             e.stopPropagation();
-            showTooltip();
+            showTimeout = setTimeout(() => {
+              showTooltip();
+              showTimeout = null;
+            }, 400);
           });
           
           diffIcon.addEventListener('mouseleave', (e) => {

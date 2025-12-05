@@ -5,6 +5,22 @@ All notable changes to the Radium extension will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Function Detection Tests**: Comprehensive unit tests for function detection in semantic changes view
+  - Tests for TypeScript function detection (declarations, arrow functions, async functions, class methods, getters/setters)
+  - Tests for C# function detection (methods, async methods, static/virtual/override methods)
+  - Tests for function context extraction from diff hunk headers
+  - Tests for both function additions and deletions
+  - Tests for edge cases (nested functions, generics, function replacements)
+  - All tests verify that function names are correctly extracted and tracked
+
+### Fixed
+- **Semantic Changes Layout**: Fixed issue where file boxes could overlap when their height increases
+  - File boxes now properly reposition when content changes cause height adjustments
+  - Uses actual rendered height (`offsetHeight`) instead of style height for accurate positioning
+  - Repositioning happens after DOM updates complete to ensure correct measurements
+  - Boxes in the same column shift down appropriately to maintain proper spacing
+
+### Added
 - **Comment Display for XAML/XAML.cs Files**: Comments are now shown even when symbols cannot be extracted
   - Comments from XAML files (HTML-style `<!-- -->`) are extracted and displayed
   - Comments from XAML.cs files (C# style `//` and `/* */`) are extracted and displayed

@@ -902,7 +902,7 @@ export class SemanticChangesPanel {
       box-sizing: border-box;
       min-width: 300px;
       overflow: visible;
-      transition: height 0.3s ease;
+      transition: height 0.3s ease, top 0.3s ease, left 0.3s ease;
     }
 
     .file-path-label {
@@ -1501,6 +1501,29 @@ export class SemanticChangesPanel {
       return { directory, filename };
     }
 
+    function updateContainerHeight(container) {
+      // Use requestAnimationFrame to ensure we measure after DOM updates
+      requestAnimationFrame(() => {
+        let maxBottom = 85; // Minimum height (header space)
+        
+        Array.from(container.children).forEach(child => {
+          // Check if element is visible/rendered
+          // We include all children to handle absolute positioned elements correctly
+          if (child.offsetHeight > 0) {
+            const bottom = child.offsetTop + child.offsetHeight;
+            if (bottom > maxBottom) {
+              maxBottom = bottom;
+            }
+          }
+        });
+
+        const totalHeight = maxBottom + 15; // Bottom padding
+        container.style.height = totalHeight + 'px';
+        
+        repositionAllFiles();
+      });
+    }
+
     function repositionAllFiles() {
       const FILE_WIDTH = 320; // Fixed width for all file containers
       const VERTICAL_GAP = FILE_SPACING; // Same gap as horizontal spacing between columns
@@ -1525,7 +1548,10 @@ export class SemanticChangesPanel {
         if (!group) return;
 
         // Get the actual current height of the container
-        const containerHeight = group.container.offsetHeight || parseInt(group.container.style.height) || 200;
+        // Prioritize style.height because offsetHeight might be animating (transition)
+        // and we want the target height for layout calculations
+        const styleHeight = parseInt(group.container.style.height);
+        const containerHeight = !isNaN(styleHeight) && styleHeight > 0 ? styleHeight : (group.container.offsetHeight || 200);
         
         // Determine which column this file goes in
         // Fill columns top-to-bottom: first filesPerColumn files go to col 0, next to col 1, etc.
@@ -1719,22 +1745,7 @@ export class SemanticChangesPanel {
       }
 
       // Update container size based on actual content
-      // Wait for DOM to update, then measure actual height
-      requestAnimationFrame(() => {
-        const contentHeight = Array.from(group.container.children)
-          .filter(child => child.classList.contains('change-card') || child.classList.contains('previous-changes-section'))
-          .reduce((total, child) => total + child.offsetHeight, 0);
-        
-        const headerHeight = 85; // File path label and stats
-        const padding = 10; // Bottom padding
-        const spacing = 6 * (recentChanges.length + (previousChanges.length > 0 ? 1 : 0) - 1); // margin-bottom between cards
-        
-        const totalHeight = headerHeight + contentHeight + spacing + padding;
-        group.container.style.height = totalHeight + 'px';
-        
-        // Reposition all files after height is updated
-        repositionAllFiles();
-      });
+      updateContainerHeight(group.container);
       
       // Update stats
       const statsContainer = group.container.querySelector('.file-stats');
@@ -2183,6 +2194,11 @@ export class SemanticChangesPanel {
         e.stopPropagation();
         list.classList.toggle('expanded');
         toggleIcon.classList.toggle('expanded');
+        
+        // Update container height when toggled
+        if (section.parentElement) {
+          updateContainerHeight(section.parentElement);
+        }
       };
 
       section.appendChild(toggle);

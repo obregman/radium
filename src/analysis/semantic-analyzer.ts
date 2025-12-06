@@ -62,8 +62,10 @@ export class SemanticAnalyzer {
     // Python
     /^\+.*\bdef\s+\w+\s*\(/,
     /^\+.*\basync\s+def\s+\w+\s*\(/,
-    // Java/C#/C++
-    /^\+.*\b(public|private|protected|internal|static|async|virtual|override)\s+\w+\s+\w+\s*\(/,
+    // Java/C#/C++ - Enhanced to support multiple modifiers and generic return types
+    // Matches: [modifiers...] returnType methodName(
+    // Where returnType can include generics like Task<T> or List<Item>
+    /^\+.*\b(public|private|protected|internal|static|async|virtual|override|sealed|abstract|readonly|extern)(?:\s+(?:public|private|protected|internal|static|async|virtual|override|sealed|abstract|readonly|extern))*\s+[\w<>[\],]+\s+\w+\s*\(/,
     // Go
     /^\+.*\bfunc\s+(\(\w+\s+\*?\w+\)\s+)?\w+\s*\(/,
     // Ruby
@@ -80,8 +82,10 @@ export class SemanticAnalyzer {
     // Python
     /^-.*\bdef\s+\w+\s*\(/,
     /^-.*\basync\s+def\s+\w+\s*\(/,
-    // Java/C#/C++
-    /^-.*\b(public|private|protected|internal|static|async|virtual|override)\s+\w+\s+\w+\s*\(/,
+    // Java/C#/C++ - Enhanced to support multiple modifiers and generic return types
+    // Matches: [modifiers...] returnType methodName(
+    // Where returnType can include generics like Task<T> or List<Item>
+    /^-.*\b(public|private|protected|internal|static|async|virtual|override|sealed|abstract|readonly|extern)(?:\s+(?:public|private|protected|internal|static|async|virtual|override|sealed|abstract|readonly|extern))*\s+[\w<>[\],]+\s+\w+\s*\(/,
     // Go
     /^-.*\bfunc\s+(\(\w+\s+\*?\w+\)\s+)?\w+\s*\(/,
     // Ruby
@@ -585,8 +589,9 @@ export class SemanticAnalyzer {
     match = trimmed.match(/\bdef\s+(\w+)/);
     if (match) return match[1];
     
-    // Java/C#/C++ methods
-    match = trimmed.match(/\b(?:public|private|protected|internal|static|async|virtual|override)\s+\w+\s+(\w+)\s*\(/);
+    // Java/C#/C++ methods - Enhanced to support multiple modifiers and generic return types
+    // Matches: [modifiers...] returnType methodName(
+    match = trimmed.match(/\b(?:public|private|protected|internal|static|async|virtual|override|sealed|abstract|readonly|extern)(?:\s+(?:public|private|protected|internal|static|async|virtual|override|sealed|abstract|readonly|extern))*\s+[\w<>[\],]+\s+(\w+)\s*\(/);
     if (match) return match[1];
     
     // Go functions
@@ -641,7 +646,8 @@ export class SemanticAnalyzer {
     if (match) return match[1];
     
     // Java/C#/C++: access_modifier return_type methodName(
-    match = trimmed.match(/\b(?:public|private|protected|internal|static|async|virtual|override|final|abstract)\s+(?:\w+\s+)?(\w+)\s*\(/);
+    // Enhanced to support multiple modifiers and generic return types
+    match = trimmed.match(/\b(?:public|private|protected|internal|static|async|virtual|override|final|abstract|sealed|readonly|extern)(?:\s+(?:public|private|protected|internal|static|async|virtual|override|final|abstract|sealed|readonly|extern))*\s+[\w<>[\],]+\s+(\w+)\s*\(/);
     if (match && !skipKeywords.includes(match[1])) return match[1];
     
     // Ruby: def method_name

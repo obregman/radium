@@ -593,7 +593,7 @@ export class SemanticChangesPanel {
       /^\s*(?:public|private|protected|static|async|readonly|\s)*(\w+)\s*\([^)]*\)\s*[:{]/,
       /^\s*(?:public|private|protected|static|async|readonly|\s)*(?:get|set)\s+(\w+)\s*\(/,
       // C#
-      /^\s*(?:public|private|protected|internal|static|virtual|override|async|readonly|\s)+\w+\s+(\w+)\s*\(/,
+      /^\s*(?:public|private|protected|internal|static|virtual|override|sealed|abstract|async|readonly|extern)(?:\s+(?:public|private|protected|internal|static|virtual|override|sealed|abstract|async|readonly|extern))*\s+(.+?)\s+(\w+)\s*\(/,
       // Python
       /^\s*(?:async\s+)?def\s+(\w+)/,
       // Go

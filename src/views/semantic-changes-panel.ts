@@ -383,6 +383,17 @@ export class SemanticChangesPanel {
       });
       this.changeHistory.set(relativePath, history);
 
+      // Calculate file line count
+      let fileLineCount = 0;
+      try {
+        if (fs.existsSync(fullPath)) {
+          const currentContent = fs.readFileSync(fullPath, 'utf8');
+          fileLineCount = currentContent.split('\n').length;
+        }
+      } catch (error) {
+        this.log(`Failed to count lines in ${relativePath}: ${error}`);
+      }
+
       // Send to webview
       this.log(`📤 Sending consolidated change to webview for ${relativePath}`);
       this.panel.webview.postMessage({
@@ -393,7 +404,8 @@ export class SemanticChangesPanel {
           timestamp: Date.now(),
           isNew: isNew,
           diff: diff,
-          history: history.slice(0, -1) // All previous changes except the latest
+          history: history.slice(0, -1), // All previous changes except the latest
+          fileLineCount: fileLineCount
         }
       });
 
@@ -959,17 +971,17 @@ export class SemanticChangesPanel {
 
     .file-stats {
       position: absolute;
-      top: 6px;
+      top: 8px;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       font-family: 'Courier New', monospace;
       background: rgba(0, 0, 0, 0.3);
-      padding: 4px 8px;
+      padding: 3px 7px;
       border-radius: 3px;
       z-index: 5;
     }
@@ -980,6 +992,22 @@ export class SemanticChangesPanel {
 
     .stat-deletions {
       color: #FF0000;
+    }
+
+    .file-size-label {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      color: #FFFFFF;
+      opacity: 0.7;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 3px 7px;
+      border-radius: 3px;
+      z-index: 5;
+      white-space: nowrap;
     }
 
     .change-card {
@@ -1208,6 +1236,7 @@ export class SemanticChangesPanel {
       border: 1px solid var(--vscode-panel-border);
       position: relative;
       z-index: 999;
+      margin-bottom: 0;
     }
 
     .previous-changes-toggle {
@@ -1238,23 +1267,29 @@ export class SemanticChangesPanel {
     .previous-changes-list {
       max-height: 0;
       overflow: hidden;
-      margin-top: 0;
-      padding-top: 0;
       background-color: transparent;
-      transition: max-height 0.3s ease, margin-top 0.3s ease, padding-top 0.3s ease, background-color 0.3s ease;
+      transition: max-height 0.3s ease;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 100%;
+      z-index: 1001;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .previous-changes-list.expanded {
       max-height: 500px;
       overflow-y: auto;
-      margin-top: 8px;
-      padding-top: 8px;
       border-top: 1px solid var(--vscode-panel-border);
       background-color: var(--vscode-editor-background);
       padding: 8px;
       border-radius: 3px;
-      position: relative;
-      z-index: 1000;
+      margin-top: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--vscode-panel-border);
+      opacity: 1;
+      pointer-events: auto;
     }
 
     .previous-change-item {
@@ -1595,9 +1630,9 @@ export class SemanticChangesPanel {
 
     function handleSemanticChange(data) {
       console.log('handleSemanticChange called with data:', data);
-      const { filePath, changes, timestamp, isNew, history, diff } = data;
+      const { filePath, changes, timestamp, isNew, history, diff, fileLineCount } = data;
       
-      console.log('Changes:', changes, 'History:', history);
+      console.log('Changes:', changes, 'History:', history, 'File line count:', fileLineCount);
       
       // Calculate diff stats
       const diffStats = calculateDiffStats(diff);
@@ -1684,12 +1719,19 @@ export class SemanticChangesPanel {
 
         fileContainer.appendChild(statsContainer);
 
+        // Create file size label
+        const fileSizeLabel = document.createElement('div');
+        fileSizeLabel.className = 'file-size-label';
+        fileSizeLabel.textContent = fileLineCount ? fileLineCount + ' lines' : '';
+        fileContainer.appendChild(fileSizeLabel);
+
         const newGroup = {
           container: fileContainer,
           changes: [],
           x: START_X,
           y: START_Y,
-          width: 320
+          width: 320,
+          fileSizeLabel: fileSizeLabel
         };
         fileGroups.set(filePath, newGroup);
         fileOrder.push(filePath);
@@ -1767,6 +1809,11 @@ export class SemanticChangesPanel {
         }
       }
 
+      // Update file size label
+      if (group.fileSizeLabel && fileLineCount) {
+        group.fileSizeLabel.textContent = fileLineCount + ' lines';
+      }
+
       // Auto-focus on the file container
       setTimeout(() => {
         focusOnElement(group.container);
@@ -1817,7 +1864,8 @@ export class SemanticChangesPanel {
 
       const location = document.createElement('div');
       location.className = 'change-location';
-      location.textContent = \`\${filePath}:\${change.lineNumber}\`;
+      const filename = filePath.split('/').pop();
+      location.textContent = \`\${filename}:\${change.lineNumber}\`;
       location.onclick = () => {
         vscode.postMessage({
           type: 'openFile',
@@ -2194,11 +2242,6 @@ export class SemanticChangesPanel {
         e.stopPropagation();
         list.classList.toggle('expanded');
         toggleIcon.classList.toggle('expanded');
-        
-        // Update container height when toggled
-        if (section.parentElement) {
-          updateContainerHeight(section.parentElement);
-        }
       };
 
       section.appendChild(toggle);

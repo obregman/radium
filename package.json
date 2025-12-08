@@ -32,6 +32,11 @@
         "icon": "$(symbol-namespace)"
       },
       {
+        "command": "radium.openFilesMap",
+        "title": "Radium: Files Map",
+        "icon": "$(files)"
+      },
+      {
         "command": "radium.reindex",
         "title": "Radium: Re-index Workspace",
         "icon": "$(sync)"

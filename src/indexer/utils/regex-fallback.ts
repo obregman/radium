@@ -77,16 +77,33 @@ export function extractSymbolsWithRegex(code: string, filePath: string): ParsedS
       });
     }
   } else if (isTypeScript) {
-    // TypeScript/JavaScript functions
+    console.log(`[Radium Regex] Extracting TypeScript symbols from ${filePath}`);
+    
+    // TypeScript/JavaScript functions (including arrow functions assigned to const/let/var)
     const functionRegex = /(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/g;
     while ((match = functionRegex.exec(code)) !== null) {
       const name = match[1];
       const startIndex = match.index;
+      const endIndex = findBlockEnd(code, startIndex);
       symbols.push({
         kind: 'function',
         name,
         fqname: name,
-        range: { start: startIndex, end: startIndex + match[0].length }
+        range: { start: startIndex, end: endIndex }
+      });
+    }
+    
+    // Arrow functions and function expressions: export const funcName = ...
+    const arrowFunctionRegex = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*[:=]\s*(?:async\s+)?\([^)]*\)\s*=>/g;
+    while ((match = arrowFunctionRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      const endIndex = findBlockEnd(code, startIndex);
+      symbols.push({
+        kind: 'function',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: endIndex }
       });
     }
     
@@ -95,11 +112,12 @@ export function extractSymbolsWithRegex(code: string, filePath: string): ParsedS
     while ((match = classRegex.exec(code)) !== null) {
       const name = match[1];
       const startIndex = match.index;
+      const endIndex = findBlockEnd(code, startIndex);
       symbols.push({
         kind: 'class',
         name,
         fqname: name,
-        range: { start: startIndex, end: startIndex + match[0].length }
+        range: { start: startIndex, end: endIndex }
       });
     }
     
@@ -108,12 +126,58 @@ export function extractSymbolsWithRegex(code: string, filePath: string): ParsedS
     while ((match = interfaceRegex.exec(code)) !== null) {
       const name = match[1];
       const startIndex = match.index;
+      const endIndex = findBlockEnd(code, startIndex);
       symbols.push({
         kind: 'interface',
         name,
         fqname: name,
-        range: { start: startIndex, end: startIndex + match[0].length }
+        range: { start: startIndex, end: endIndex }
       });
+    }
+    
+    // Type aliases
+    const typeRegex = /(?:export\s+)?type\s+(\w+)\s*=/g;
+    while ((match = typeRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      symbols.push({
+        kind: 'type',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: startIndex + match[0].length + 50 }
+      });
+    }
+    
+    // Enums
+    const enumRegex = /(?:export\s+)?enum\s+(\w+)/g;
+    while ((match = enumRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      const endIndex = findBlockEnd(code, startIndex);
+      symbols.push({
+        kind: 'enum',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: endIndex }
+      });
+    }
+    
+    // Const/let/var declarations (top-level only, not inside functions)
+    // This is tricky with regex, so we'll be conservative
+    const varRegex = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*[:=]\s*(?!.*=>)/g;
+    while ((match = varRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      // Check if this is not an arrow function (already captured above)
+      const snippet = code.slice(startIndex, Math.min(startIndex + 100, code.length));
+      if (!snippet.includes('=>')) {
+        symbols.push({
+          kind: 'variable',
+          name,
+          fqname: name,
+          range: { start: startIndex, end: startIndex + match[0].length + 50 }
+        });
+      }
     }
   } else if (isPython) {
     // Python functions: def function_name(

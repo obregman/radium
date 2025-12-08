@@ -1,6 +1,4 @@
--- not started        >> in progress         $$ completed
+-- not started        >> in progress         $$ completedw
 
-
-Symbol visualization view tasks:
 
 -- 

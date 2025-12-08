@@ -41,6 +41,7 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 
 - `Radium: Codebase Map` - Show the codebase graph
 - `Radium: Features Map` - Visualize features and their relationships
+- `Radium: Files Map` - View files as size-weighted rectangles with relationship arrows
 - `Radium: Real-time File Changes` - Monitor file changes in real-time with visual diff display
 - `Radium: Real-time Symbol Visualization` - Visualize code changes as symbols (functions, classes) with call relationships
 - `Radium: Non-committed Git Changes` - Visualize all uncommitted git changes as symbols
@@ -61,6 +62,49 @@ The Real-time File Changes view monitors your workspace for file modifications a
 - Displays git diffs for each change
 
 To use: Run `Radium: Real-time File Changes` from the command palette.
+
+### Files Map
+
+The Files Map provides a bird's-eye view of your entire codebase structure, showing files as rectangles sized by their line count and organized by directory:
+
+**Visual Elements:**
+- **File Rectangles**: Size proportional to line count (100-300px width, 2:1 aspect ratio, 3000 lines = 300px)
+  - Color-coded by exported symbols (symbols used by other files):
+    - Grey: 0 exports (isolated files)
+    - Yellow: 1-2 exports (lightly connected)
+    - Yellow-green: 3-5 exports (moderately connected)
+    - Light green: 5-8 exports (well connected)
+    - Green: 8+ exports (highly connected, potential core modules)
+  - Shows filename and line count in a rounded badge
+  - Click to open file in editor
+  - Drag to reposition
+- **Directory Boxes**: White rectangles with gray borders
+  - Show full directory path
+  - Connected to their files with solid gray lines
+  - Movable to organize the layout
+
+**Layout:**
+- Force-directed physics simulation clusters files around their directories
+- Directory groups are well-separated with distinct spacing
+- Automatic collision detection prevents overlap
+- Files are pulled toward their parent directory
+- Pan and zoom to navigate large codebases
+- Drag nodes to reposition (simulation continues)
+
+**Interactions:**
+- **Hover to zoom**: Hover over any file or directory box to zoom it to 2x size
+- **Click to open**: Click on file boxes to open them in the editor
+- **Drag to move**: Drag any node to reposition it manually
+- **Pan and zoom**: Use mouse drag and scroll wheel to navigate
+
+**Use Cases:**
+- Understand project structure at a glance
+- Identify highly connected files (green) as potential core modules
+- Find isolated or orphaned files (grey) that might need better integration
+- Compare relative file sizes across the project
+- Visualize directory organization and file distribution
+
+To use: Run `Radium: Files Map` from the command palette.
 
 ### Symbol Changes
 
@@ -202,21 +246,22 @@ If changes in your code are not being detected in the Symbol Changes view:
 
 If you see "Tree-sitter parse failed" errors in the output:
 
-1. **Check the detailed logs** - The extension now provides comprehensive diagnostics:
-   - File size and line count
-   - Line ending type (CRLF vs LF)
-   - Presence of BOM (Byte Order Mark)
-   - Unicode character detection
-   - First and last 100 characters of the file
-   
-2. **Automatic retry** - The parser automatically retries with a fresh instance if the first parse fails
+1. **Automatic fallback** - The extension automatically falls back to regex-based symbol extraction when tree-sitter fails
 
-3. **Fallback extraction** - If tree-sitter parsing fails completely, the extension falls back to regex-based symbol extraction
+2. **Fresh parser instances** - Each file is parsed with a fresh parser instance to avoid state corruption issues
+
+3. **Enhanced regex extraction** - The fallback parser detects:
+   - Functions (including arrow functions)
+   - Classes and interfaces
+   - Type aliases and enums
+   - Variables and constants
+   - Exported symbols
 
 4. **Common issues**:
-   - **Large files (>150KB)**: May cause tree-sitter issues on some systems
+   - **Large files (>1MB)**: Automatically skipped to avoid memory issues
    - **BOM in UTF-8 files**: Automatically detected and removed
    - **Mixed line endings**: Handled correctly on both Windows and Unix systems
+   - **Parser state corruption**: Fixed by creating fresh parser instances for each file
 
 See [docs/lambda-detection-investigation.md](docs/lambda-detection-investigation.md) for detailed information about lambda expression detection in C#.
 

@@ -108,49 +108,14 @@ export abstract class BaseParser {
     try {
       console.log(`[Radium Parser] Attempting parse with ${this.languageName} parser...`);
       tree = this.parser.parse(code);
-      console.log(`[Radium Parser] Parse succeeded on first attempt`);
+      console.log(`[Radium Parser] ✓ Parse succeeded for ${filePath}`);
     } catch (parseError) {
-      console.error(`[Radium] Tree-sitter parse failed for ${filePath}`);
+      console.warn(`[Radium] Tree-sitter parse failed for ${filePath}, will use regex fallback`);
       console.error(`[Radium] Parse error:`, parseError);
-      console.error(`[Radium] Code type: ${typeof code}, length: ${code.length}`);
-      console.error(`[Radium] First 100 chars: ${code.substring(0, 100)}`);
-      console.error(`[Radium] Last 100 chars: ${code.substring(code.length - 100)}`);
-      console.error(`[Radium] Has null bytes: ${code.includes('\0')}`);
-      console.error(`[Radium] Had BOM: ${hadBOM}`);
-      console.error(`[Radium] Line endings: CRLF=${hasCRLF}, LF=${hasLF}`);
       
-      // Try one more time with a fresh parser instance
-      // Sometimes tree-sitter gets into a bad state
-      try {
-        console.warn(`[Radium] Retrying parse with fresh parser instance`);
-        const freshParser = new Parser();
-        console.log(`[Radium] Fresh parser language set: ${language ? 'yes' : 'no'}`);
-        freshParser.setLanguage(language);
-        tree = freshParser.parse(code);
-        console.log(`[Radium] ✓ Retry succeeded for ${filePath}`);
-      } catch (retryError) {
-        console.error(`[Radium] Retry also failed:`, retryError);
-        console.error(`[Radium] Error name: ${(retryError as Error).name}`);
-        console.error(`[Radium] Error message: ${(retryError as Error).message}`);
-        console.error(`[Radium] Error stack: ${(retryError as Error).stack}`);
-        
-        // Last resort: try parsing just the first 50KB to see if it's a size issue
-        if (code.length > 50000) {
-          try {
-            console.warn(`[Radium] Attempting to parse first 50KB only as diagnostic...`);
-            const truncated = code.substring(0, 50000);
-            const testParser = new Parser();
-            testParser.setLanguage(language);
-            const testTree = testParser.parse(truncated);
-            console.log(`[Radium] Truncated parse succeeded - file size might be the issue`);
-          } catch (truncError) {
-            console.error(`[Radium] Even truncated parse failed - likely a parser/language issue`);
-          }
-        }
-        
-        // Fallback will be handled by the caller
-        return null;
-      }
+      // Return null to trigger regex fallback in the caller
+      // Don't retry here as it rarely helps and adds overhead
+      return null;
     }
 
     if (!tree || !tree.rootNode) {

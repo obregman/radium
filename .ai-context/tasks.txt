@@ -4,3 +4,6 @@
 --  The file indexing should ignore paths in the Radiumignore
 
 -- in the semantic changes view, change the labels from "Logic change" to "Code change", e.g. "Added code", "Deleted code", etc.. and the description should be "Added 4 lines" or "2 lines changed"
+
+-- when clicking on the file name in the file box - open the file
+

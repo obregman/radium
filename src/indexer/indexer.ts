@@ -24,6 +24,10 @@ export class Indexer {
 
   async start(): Promise<void> {
     console.log('INDEXER: start() called');
+    
+    // Clear existing index before starting fresh
+    this.store.clearIndex();
+    
     // Initial index
     await this.indexWorkspace();
 

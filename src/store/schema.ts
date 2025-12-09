@@ -381,5 +381,16 @@ export class GraphStore {
   rollback(): void {
     this.db.prepare('ROLLBACK').run();
   }
+
+  clearIndex(): void {
+    console.log('GraphStore: Clearing all index data...');
+    this.db.exec(`
+      DELETE FROM edge;
+      DELETE FROM node;
+      DELETE FROM file;
+    `);
+    this.db.save();
+    console.log('GraphStore: Index cleared successfully');
+  }
 }
 

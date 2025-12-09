@@ -4,6 +4,12 @@ All notable changes to the Radium extension will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Index Clearing on Reindex**: When indexing begins (either on extension load or manual reindex), the index is now completely cleared first before regenerating from scratch
+  - Ensures a clean slate for each indexing operation
+  - Prevents stale data from previous indexes
+  - Applies to both automatic indexing on startup and manual reindex command
+
 ### Fixed
 - **Exported Class Usage Detection**: Fixed Files Map to correctly detect and count exported class usage across files
   - Constructor calls (`new ClassName()`) are now properly tracked as references to the class

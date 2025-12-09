@@ -770,36 +770,33 @@ export class SemanticChangesPanel {
       }
     });
 
-    // Build description
-    const categoryDescriptions: string[] = [];
-    const categoryOrder: SemanticChangeCategory[] = [
-      'add_function',
-      'delete_function',
-      'add_logic',
-      'logic_change',
-      'delete_code',
-      'call_api',
-      'expose_api',
-      'read_external'
-    ];
-
-    categoryOrder.forEach(cat => {
-      const count = categoryCounts.get(cat);
-      if (count) {
-        const names: { [key: string]: string } = {
-          'logic_change': 'logic change',
-          'add_logic': 'logic addition',
-          'delete_code': 'code deletion',
-          'read_external': 'external read',
-          'call_api': 'API call',
-          'expose_api': 'API exposure',
-          'add_function': 'function addition',
-          'delete_function': 'function deletion'
-        };
-        const name = names[cat] || cat;
-        categoryDescriptions.push(`${count} ${name}${count > 1 ? 's' : ''}`);
+    // Count line changes from the changes array
+    let totalAddedLines = 0;
+    let totalDeletedLines = 0;
+    let totalChangedLines = 0;
+    
+    changes.forEach(change => {
+      if (change.category === 'add_logic' || change.category === 'add_function') {
+        totalAddedLines++;
+      } else if (change.category === 'delete_code' || change.category === 'delete_function') {
+        totalDeletedLines++;
+      } else {
+        totalChangedLines++;
       }
     });
+
+    // Build description based on line counts
+    const categoryDescriptions: string[] = [];
+    
+    if (totalAddedLines > 0) {
+      categoryDescriptions.push(`${totalAddedLines} line${totalAddedLines > 1 ? 's' : ''} added`);
+    }
+    if (totalDeletedLines > 0) {
+      categoryDescriptions.push(`${totalDeletedLines} line${totalDeletedLines > 1 ? 's' : ''} deleted`);
+    }
+    if (totalChangedLines > 0) {
+      categoryDescriptions.push(`${totalChangedLines} line${totalChangedLines > 1 ? 's' : ''} changed`);
+    }
 
     // Build description with function names if available
     let description = categoryDescriptions.join(', ');
@@ -919,18 +916,23 @@ export class SemanticChangesPanel {
 
     .file-path-label {
       position: absolute;
-      top: 35px;
+      top: 32px;
       left: 8px;
       right: 8px;
       font-family: var(--vscode-font-family);
       color: #FFFFFF;
       text-align: center;
-      cursor: default;
+      cursor: pointer;
       max-height: 50px;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 2px;
+      transition: opacity 0.2s ease;
+    }
+
+    .file-path-label:hover {
+      opacity: 0.8;
     }
     
     .file-directory-path {
@@ -972,8 +974,7 @@ export class SemanticChangesPanel {
     .file-stats {
       position: absolute;
       top: 8px;
-      left: 50%;
-      transform: translateX(-50%);
+      right: 8px;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -1176,15 +1177,15 @@ export class SemanticChangesPanel {
     }
 
     .category-add_function {
-      background-color: rgba(150, 255, 100, 0.2);
-      color: #96ff64;
-      border: 1px solid #96ff64;
+      background-color: rgba(100, 255, 150, 0.2);
+      color: #64ff96;
+      border: 1px solid #64ff96;
     }
 
     .category-delete_function {
-      background-color: rgba(255, 150, 100, 0.2);
-      color: #ff9664;
-      border: 1px solid #ff9664;
+      background-color: rgba(255, 100, 100, 0.2);
+      color: #ff6464;
+      border: 1px solid #ff6464;
     }
 
     .change-description {
@@ -1491,14 +1492,14 @@ export class SemanticChangesPanel {
 
     // Category display names
     const categoryNames = {
-      'logic_change': 'Logic Change',
-      'add_logic': 'Add Logic',
-      'delete_code': 'Delete Code',
+      'logic_change': 'Changed Code',
+      'add_logic': 'Added Code',
+      'delete_code': 'Deleted Code',
       'read_external': 'Read External',
       'call_api': 'Call API',
       'expose_api': 'Expose API',
-      'add_function': 'Add Function',
-      'delete_function': 'Delete Function'
+      'add_function': 'Added Code',
+      'delete_function': 'Deleted Code'
     };
 
     // Format relative time
@@ -1696,6 +1697,15 @@ export class SemanticChangesPanel {
         filenameElement.className = 'file-name';
         filenameElement.textContent = filename + (isNew ? ' (new)' : '');
         fileLabel.appendChild(filenameElement);
+
+        // Add click handler to open file
+        fileLabel.addEventListener('click', () => {
+          vscode.postMessage({
+            type: 'openFile',
+            filePath: filePath,
+            line: 1
+          });
+        });
 
         fileContainer.appendChild(fileLabel);
 

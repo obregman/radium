@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { GraphStore, Node, Edge } from '../store/schema';
 import { RadiumConfigLoader } from '../config/radium-config';
 import { GitDiffTracker } from '../git/git-diff-tracker';
+import { RadiumIgnore } from '../config/radium-ignore';
 import * as path from 'path';
 
 export class MapPanel {
@@ -13,6 +14,8 @@ export class MapPanel {
   private readonly CHANGE_CHECK_INTERVAL = 60000; // 1 minute in milliseconds
   private newFilePaths: Set<string> = new Set(); // Track new files to display in "New Files" component
   private fileWatcher?: vscode.FileSystemWatcher;
+  private radiumIgnore: RadiumIgnore;
+  private workspaceRoot: string;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -22,6 +25,11 @@ export class MapPanel {
     private gitDiffTracker?: GitDiffTracker
   ) {
     this.panel = panel;
+    
+    // Get workspace root from config loader
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    this.workspaceRoot = workspaceFolders ? workspaceFolders[0].uri.fsPath : '';
+    this.radiumIgnore = new RadiumIgnore(this.workspaceRoot);
     
     // Listen for messages from webview BEFORE setting HTML
     MapPanel.outputChannel.appendLine('Registering message handler');
@@ -412,7 +420,10 @@ export class MapPanel {
   public updateGraph() {
     const allNodes = this.store.getAllNodes();
     const allEdges = this.store.getAllEdges();
-    const allFiles = this.store.getAllFiles();
+    const allFilesRaw = this.store.getAllFiles();
+    
+    // Filter out ignored files
+    const allFiles = allFilesRaw.filter(file => !this.radiumIgnore.shouldIgnore(file.path));
 
     // Build hierarchical structure
     const graphData = this.buildHierarchicalGraph(allNodes, allEdges, allFiles);
@@ -899,7 +910,10 @@ export class MapPanel {
   private updateGraphWithChangesOnly(changedFilePaths: string[], newFilePaths: string[] = []) {
     const allNodes = this.store.getAllNodes();
     const allEdges = this.store.getAllEdges();
-    const allFiles = this.store.getAllFiles();
+    const allFilesRaw = this.store.getAllFiles();
+    
+    // Filter out ignored files
+    const allFiles = allFilesRaw.filter(file => !this.radiumIgnore.shouldIgnore(file.path));
 
     console.log(`[Radium] updateGraphWithChangesOnly: ${changedFilePaths.length} changed files, ${newFilePaths.length} new files`);
 

@@ -4,6 +4,25 @@ All notable changes to the Radium extension will be documented in this file.
 
 ## [Unreleased]
 
+### Enhanced
+- **Improved Radiumignore Integration**: Enhanced directory and file exclusion from indexing and visualization
+  - Added `shouldIgnoreDirectory()` method for efficient directory-level filtering
+  - Improved directory pattern matching to catch all nested files within ignored directories
+  - File watcher now uses radiumignore patterns in addition to base ignore patterns
+  - VS Code's `findFiles` now uses radiumignore patterns for more efficient initial scanning
+  - Files Map view now filters out ignored directories in addition to ignored files
+  - Double-check filtering ensures no ignored files slip through different matching algorithms
+  - Added comprehensive tests for directory ignoring functionality
+
+### Added
+- **Radiumignore Integration with Indexer and File Map**: Files matching patterns in `.radium/radiumignore` are now completely excluded from:
+  - File indexing during initial workspace scan
+  - File watcher queue (prevents indexing of ignored files on change)
+  - Files Map visualization
+  - Codebase Map visualization
+  - All other views that display file information
+  - This ensures ignored files (e.g., generated files, build artifacts) are not processed or displayed anywhere in the extension
+
 ### Added
 - **Function Detection Tests**: Comprehensive unit tests for function detection in semantic changes view
   - Tests for TypeScript function detection (declarations, arrow functions, async functions, class methods, getters/setters)

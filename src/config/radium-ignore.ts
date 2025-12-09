@@ -60,9 +60,14 @@ export class RadiumIgnore {
       if (pattern.endsWith('/')) {
         const dirPattern = pattern.slice(0, -1);
         // Check if path starts with directory or is inside it
-        if (normalizedPath.startsWith(dirPattern + '/') || normalizedPath === dirPattern) {
-          console.log(`[Radium Ignore] Ignoring ${filePath} (matches directory pattern: ${pattern})`);
-          return true;
+        // Also check each path segment to catch nested directories
+        const pathParts = normalizedPath.split('/');
+        for (let i = 0; i < pathParts.length; i++) {
+          const partialPath = pathParts.slice(0, i + 1).join('/');
+          if (partialPath === dirPattern || normalizedPath.startsWith(dirPattern + '/')) {
+            console.log(`[Radium Ignore] Ignoring ${filePath} (matches directory pattern: ${pattern})`);
+            return true;
+          }
         }
       }
       // Handle glob patterns (with wildcards)
@@ -99,6 +104,42 @@ export class RadiumIgnore {
    */
   hasPatterns(): boolean {
     return this.patterns.length > 0;
+  }
+
+  /**
+   * Check if a directory path should be ignored
+   * This is useful for optimizing directory traversal
+   * @param dirPath - Relative directory path from workspace root (without trailing slash)
+   */
+  shouldIgnoreDirectory(dirPath: string): boolean {
+    if (this.patterns.length === 0) {
+      return false;
+    }
+
+    // Normalize path to use forward slashes
+    const normalizedPath = dirPath.replace(/\\/g, '/');
+
+    for (const pattern of this.patterns) {
+      // Handle directory patterns (ending with /)
+      if (pattern.endsWith('/')) {
+        const dirPattern = pattern.slice(0, -1);
+        // Check if this directory matches the pattern or is a subdirectory of it
+        if (normalizedPath === dirPattern || normalizedPath.startsWith(dirPattern + '/')) {
+          console.log(`[Radium Ignore] Ignoring directory ${dirPath} (matches pattern: ${pattern})`);
+          return true;
+        }
+      }
+      // Handle glob patterns that might match directories
+      else if (pattern.includes('*')) {
+        const globPattern = pattern.startsWith('**/') ? pattern : `**/${pattern}`;
+        if (minimatch(normalizedPath, globPattern) || minimatch(normalizedPath + '/', globPattern)) {
+          console.log(`[Radium Ignore] Ignoring directory ${dirPath} (matches glob pattern: ${pattern})`);
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 }
 

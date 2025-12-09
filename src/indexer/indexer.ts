@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { watch, FSWatcher } from 'chokidar';
 import { GraphStore, Node, Edge, FileRecord } from '../store/schema';
 import { CodeParser, ParseResult } from './parser';
+import { RadiumIgnore } from '../config/radium-ignore';
 
 export class Indexer {
   private store: GraphStore;
@@ -12,11 +13,13 @@ export class Indexer {
   private indexQueue: Set<string> = new Set();
   private isIndexing = false;
   private workspaceRoot: string;
+  private radiumIgnore: RadiumIgnore;
 
   constructor(store: GraphStore, workspaceRoot: string) {
     this.store = store;
     this.parser = new CodeParser();
     this.workspaceRoot = workspaceRoot;
+    this.radiumIgnore = new RadiumIgnore(workspaceRoot);
   }
 
   async start(): Promise<void> {
@@ -39,7 +42,8 @@ export class Indexer {
       '**/*.cs'
     ];
 
-    const ignored = [
+    // Base ignore patterns (always ignored)
+    const baseIgnored = [
       '**/node_modules/**',
       '**/out/**',
       '**/dist/**',
@@ -49,6 +53,24 @@ export class Indexer {
       '**/.venv/**',
       '**/venv/**'
     ];
+
+    // Add radiumignore patterns to the watcher's ignore list
+    const radiumPatterns = this.radiumIgnore.getPatterns().map(pattern => {
+      // Convert radiumignore patterns to chokidar format
+      if (pattern.endsWith('/')) {
+        // Directory pattern: convert "debug/" to "**/debug/**"
+        return `**/${pattern.slice(0, -1)}/**`;
+      } else if (pattern.includes('*')) {
+        // Already a glob pattern, ensure it has ** prefix
+        return pattern.startsWith('**/') ? pattern : `**/${pattern}`;
+      } else {
+        // File pattern: convert "file.txt" to "**/file.txt"
+        return `**/${pattern}`;
+      }
+    });
+
+    const ignored = [...baseIgnored, ...radiumPatterns];
+    console.log(`INDEXER: Watching with ${ignored.length} ignore patterns (${baseIgnored.length} base + ${radiumPatterns.length} from radiumignore)`);
 
     this.watcher = watch(patterns, {
       cwd: this.workspaceRoot,
@@ -67,6 +89,11 @@ export class Indexer {
   }
 
   private queueFile(relativePath: string): void {
+    // Check if file should be ignored before queueing
+    if (this.radiumIgnore.shouldIgnore(relativePath)) {
+      console.log(`INDEXER: Skipping ignored file from queue: ${relativePath}`);
+      return;
+    }
     this.indexQueue.add(relativePath);
     this.processQueue();
   }
@@ -169,7 +196,8 @@ export class Indexer {
       '**/*.cs'
     ];
 
-    const excludePatterns = [
+    // Base exclude patterns (always excluded)
+    const baseExcludePatterns = [
       '**/node_modules/**',
       '**/out/**',
       '**/dist/**',
@@ -181,9 +209,25 @@ export class Indexer {
       '**/venv/**'
     ];
 
+    // Add radiumignore patterns to VS Code's exclude list
+    const radiumPatterns = this.radiumIgnore.getPatterns().map(pattern => {
+      if (pattern.endsWith('/')) {
+        // Directory pattern: convert "debug/" to "**/debug/**"
+        return `**/${pattern.slice(0, -1)}/**`;
+      } else if (pattern.includes('*')) {
+        // Already a glob pattern, ensure it has ** prefix
+        return pattern.startsWith('**/') ? pattern : `**/${pattern}`;
+      } else {
+        // File pattern: convert "file.txt" to "**/file.txt"
+        return `**/${pattern}`;
+      }
+    });
+
+    const excludePatterns = [...baseExcludePatterns, ...radiumPatterns];
+
     const files: string[] = [];
     console.log('INDEXER: Searching for files with patterns:', patterns);
-    console.log('INDEXER: Excluding patterns:', excludePatterns);
+    console.log(`INDEXER: Excluding ${excludePatterns.length} patterns (${baseExcludePatterns.length} base + ${radiumPatterns.length} from radiumignore)`);
 
     for (const pattern of patterns) {
       const found = await vscode.workspace.findFiles(pattern, `{${excludePatterns.join(',')}}`);
@@ -191,14 +235,37 @@ export class Indexer {
       files.push(...found.map(uri => uri.fsPath));
     }
 
-    console.log(`INDEXER: Total unique files found: ${files.length}`);
-    return files;
+    console.log(`INDEXER: Total unique files found before additional radiumignore filter: ${files.length}`);
+    
+    // Double-check with radiumignore (in case VS Code's glob matching differs)
+    const filteredFiles = files.filter(filePath => {
+      const relativePath = path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
+      const shouldIgnore = this.radiumIgnore.shouldIgnore(relativePath);
+      if (shouldIgnore) {
+        console.log(`INDEXER: Additional filter caught: ${relativePath}`);
+      }
+      return !shouldIgnore;
+    });
+    
+    console.log(`INDEXER: Files after radiumignore double-check: ${filteredFiles.length}`);
+    if (files.length !== filteredFiles.length) {
+      console.log(`INDEXER: Additional filter removed ${files.length - filteredFiles.length} files`);
+    }
+    
+    return filteredFiles;
   }
 
   private async indexFile(filePath: string): Promise<void> {
     try {
       // Normalize path to use forward slashes (cross-platform)
       const relativePath = path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
+      
+      // Check if file should be ignored
+      if (this.radiumIgnore.shouldIgnore(relativePath)) {
+        console.log(`INDEXER: Skipping ignored file: ${relativePath}`);
+        return;
+      }
+      
       const lang = this.parser.getLanguage(filePath);
       if (!lang) return;
 

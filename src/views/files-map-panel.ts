@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { GraphStore, Node, Edge, FileRecord, EdgeKind } from '../store/schema';
 import * as path from 'path';
 import * as fs from 'fs';
+import { RadiumIgnore } from '../config/radium-ignore';
 
 interface FileNode {
   id: string;
@@ -44,6 +45,7 @@ export class FilesMapPanel {
   public static currentPanel: FilesMapPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
+  private radiumIgnore: RadiumIgnore;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -52,6 +54,7 @@ export class FilesMapPanel {
     private workspaceRoot: string
   ) {
     this.panel = panel;
+    this.radiumIgnore = new RadiumIgnore(workspaceRoot);
     
     this.panel.webview.onDidReceiveMessage(
       message => this.handleMessage(message),
@@ -148,7 +151,13 @@ export class FilesMapPanel {
     const edges: (FileEdge | DirectoryEdge)[] = [];
     
     // Get all files from the store
-    const files = this.store.getAllFiles();
+    const allFiles = this.store.getAllFiles();
+    
+    // Filter out ignored files
+    const files = allFiles.filter(file => !this.radiumIgnore.shouldIgnore(file.path));
+    
+    console.log(`[Files Map] Total files in store: ${allFiles.length}, after radiumignore filter: ${files.length}`);
+    
     const allNodes = this.store.getAllNodes();
     const allEdges = this.store.getAllEdges();
     
@@ -238,9 +247,15 @@ export class FilesMapPanel {
       directories.get(dirPath)!.add(file.path);
     }
     
-    // Create directory nodes
+    // Create directory nodes (only for directories that aren't ignored)
     for (const [dirPath, fileSet] of directories.entries()) {
       if (dirPath === '.' || dirPath === '') {
+        continue;
+      }
+      
+      // Check if directory should be ignored
+      if (this.radiumIgnore.shouldIgnoreDirectory(dirPath)) {
+        console.log(`[Files Map] Skipping ignored directory: ${dirPath}`);
         continue;
       }
       
@@ -618,6 +633,36 @@ export class FilesMapPanel {
         .style('stroke', '#666')
         .style('stroke-width', 2);
       
+      // Add line count badge for files (at the top)
+      const fileNodes = nodeElements.filter(d => d.type === 'file');
+      
+      // Add background rectangle for line count
+      fileNodes.append('rect')
+        .attr('class', 'line-count-badge')
+        .attr('width', d => {
+          const text = String(d.lines);
+          return Math.max(30, text.length * 7 + 10);
+        })
+        .attr('height', 16)
+        .attr('x', d => {
+          const text = String(d.lines);
+          const badgeWidth = Math.max(30, text.length * 7 + 10);
+          return -badgeWidth / 2;
+        })
+        .attr('y', d => -d.size / 4 + 2) // Position at top of file box
+        .attr('rx', 8)
+        .attr('ry', 8)
+        .style('fill', 'rgba(0, 0, 0, 0.6)')
+        .style('stroke', 'rgba(255, 255, 255, 0.3)')
+        .style('stroke-width', 1);
+      
+      // Add line count text
+      fileNodes.append('text')
+        .attr('class', 'node-sublabel')
+        .attr('x', 0)
+        .attr('y', d => -d.size / 4 + 14) // Position at top of file box
+        .text(d => \`\${d.lines}\`);
+      
       // Add labels
       nodeElements.append('text')
         .attr('class', d => d.type === 'directory' ? 'node-label directory' : 'node-label')
@@ -626,11 +671,11 @@ export class FilesMapPanel {
           if (d.type === 'directory') {
             return 0; // Vertically centered
           }
-          // Position at top of file box with margin
-          return -d.size / 4 + 18;
+          // Center vertically in file box
+          return 0;
         })
         .attr('text-anchor', 'middle') // Center horizontally
-        .attr('dominant-baseline', d => d.type === 'directory' ? 'middle' : 'auto') // Center vertically for directories
+        .attr('dominant-baseline', 'middle') // Center vertically
         .style('font-size', d => {
           if (d.type === 'directory') {
             return '20px'; // Increased from 16px
@@ -656,35 +701,6 @@ export class FilesMapPanel {
           const maxChars = Math.floor(availableWidth / avgCharWidth);
           return d.label.length > maxChars ? d.label.substring(0, Math.max(1, maxChars - 3)) + '...' : d.label;
         });
-      
-      // Add line count badge for files
-      const fileNodes = nodeElements.filter(d => d.type === 'file');
-      
-      // Add background rectangle for line count
-      fileNodes.append('rect')
-        .attr('class', 'line-count-badge')
-        .attr('width', d => {
-          const text = String(d.lines);
-          return Math.max(30, text.length * 7 + 10);
-        })
-        .attr('height', 16)
-        .attr('x', d => {
-          const text = String(d.lines);
-          const badgeWidth = Math.max(30, text.length * 7 + 10);
-          return -badgeWidth / 2;
-        })
-        .attr('y', 2)
-        .attr('rx', 8)
-        .attr('ry', 8)
-        .style('fill', 'rgba(0, 0, 0, 0.6)')
-        .style('stroke', 'rgba(255, 255, 255, 0.3)')
-        .style('stroke-width', 1);
-      
-      // Add line count text
-      fileNodes.append('text')
-        .attr('class', 'node-sublabel')
-        .attr('dy', 14)
-        .text(d => \`\${d.lines}\`);
       
       // Update positions on tick
       simulation.on('tick', () => {

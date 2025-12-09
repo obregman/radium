@@ -203,7 +203,7 @@ To use: Run `Radium: Semantic Changes` from the command palette.
 
 #### Ignoring Files
 
-You can exclude files and directories from both the Real-time File Changes and Symbol Changes views by creating a `radiumignore` file in the `.radium` directory:
+You can exclude files and directories from indexing and all views (Real-time File Changes, Symbol Changes, Files Map, etc.) by creating a `radiumignore` file in the `.radium` directory:
 
 ```
 # .radium/radiumignore
@@ -227,6 +227,12 @@ Patterns supported:
 - **Specific files**: `config.local.json` - ignores this exact file
 - **Comments**: Lines starting with `#` are ignored
 - **Glob patterns**: Supports wildcards like `**/*.test.ts`
+
+Files matching these patterns will be completely excluded from:
+- File indexing
+- Symbol tracking
+- All visualization views (Files Map, Codebase Map, etc.)
+- Change detection panels
 
 ## Troubleshooting
 

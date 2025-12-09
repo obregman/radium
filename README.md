@@ -42,26 +42,8 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 - `Radium: Codebase Map` - Show the codebase graph
 - `Radium: Features Map` - Visualize features and their relationships
 - `Radium: Files Map` - View files as size-weighted rectangles with relationship arrows
-- `Radium: Real-time File Changes` - Monitor file changes in real-time with visual diff display
 - `Radium: Real-time Symbol Visualization` - Visualize code changes as symbols (functions, classes) with call relationships
-- `Radium: Non-committed Git Changes` - Visualize all uncommitted git changes as symbols
 - `Radium: Semantic Changes` - Track semantic changes by category (logic, API calls, file I/O, etc.)
-
-### Real-time File Changes
-
-The Real-time File Changes view monitors your workspace for file modifications and displays them visually:
-
-- **File boxes** appear when a file changes, highlighted for 5 seconds
-- **New files** are marked with an asterisk (*) after the filename
-- **Diff boxes** show the actual code changes with syntax highlighting
-- **Auto-focus on changes**: Automatically scrolls to and highlights the latest change with animated indicators
-- **Connection lines** link the file to its diff display
-- **Hover to keep open**: Diff boxes stay visible when you hover over them
-- **Pan and zoom**: Navigate the view with mouse drag and scroll wheel
-- Automatically tracks source files (TypeScript, JavaScript, Python, etc.)
-- Displays git diffs for each change
-
-To use: Run `Radium: Real-time File Changes` from the command palette.
 
 ### Files Map
 
@@ -146,25 +128,6 @@ Each symbol box displays the symbol type (FUNCTION, CLASS, etc.) at the top for 
 This mode makes complex changes easy to understand at a glance by showing the structural changes to your code rather than line-by-line diffs.
 
 To use: Run `Radium: Symbol Changes` from the command palette.
-
-### Non-committed Git Changes
-
-The Non-committed Git Changes view works exactly like Symbol Changes but shows all uncommitted changes in your git repository:
-
-**What it shows:**
-- All modified files (staged and unstaged)
-- New files that haven't been committed
-- Symbol-level changes compared to the last commit (HEAD)
-
-**How it works:**
-- Compares current working directory against git HEAD
-- Displays changes using the same symbol visualization as Symbol Changes
-- Shows functions, classes, methods, variables, and other symbols that were added or modified
-- Includes visual call relationships between symbols
-
-This is useful for reviewing all your work before committing, understanding the scope of changes across multiple files, or getting a high-level overview of your current work in progress.
-
-To use: Run `Radium: Non-committed Git Changes` from the command palette.
 
 ### Semantic Changes
 

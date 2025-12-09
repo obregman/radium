@@ -1,14 +1,10 @@
 import * as vscode from 'vscode';
 import * as chokidar from 'chokidar';
-import * as cp from 'child_process';
-import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as Diff from 'diff';
 import { RadiumIgnore } from '../config/radium-ignore';
 import { CodeParser } from '../indexer/parser';
-
-const exec = promisify(cp.exec);
 
 interface SymbolChange {
   type: 'function' | 'class' | 'method' | 'interface' | 'type' | 'struct' | 'variable' | 'constant' | 'constructor' | 'file';
@@ -41,7 +37,6 @@ interface FileSymbolChanges {
 
 export class SymbolChangesPanel {
   public static currentPanel: SymbolChangesPanel | undefined;
-  public static gitChangesPanel: SymbolChangesPanel | undefined;
   private static outputChannel: vscode.OutputChannel;
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
@@ -58,19 +53,16 @@ export class SymbolChangesPanel {
   private parser: CodeParser;
   private readonly DEBOUNCE_DELAY = 100;
   private readonly CACHE_TTL = 2000;
-  private mode: 'realtime' | 'git';
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
-    workspaceRoot: string,
-    mode: 'realtime' | 'git' = 'realtime'
+    workspaceRoot: string
   ) {
     this.panel = panel;
     this.workspaceRoot = workspaceRoot;
     this.radiumIgnore = new RadiumIgnore(workspaceRoot);
     this.parser = new CodeParser();
-    this.mode = mode;
 
     this.panel.webview.html = this.getHtmlContent();
 
@@ -83,13 +75,8 @@ export class SymbolChangesPanel {
             this.lastKnownFileStates.clear();
             this.baselineFileStates.clear();
             this.log('Cleared session tracking and file states');
-            // Re-snapshot all files after clearing (realtime mode)
-            if (this.mode === 'realtime') {
-              await this.snapshotAllSourceFiles();
-            } else {
-              // Refresh git changes (git mode)
-              await this.analyzeGitChanges();
-            }
+            // Re-snapshot all files after clearing
+            await this.snapshotAllSourceFiles();
             break;
           case 'openFile':
             // Open the file at the specified line
@@ -129,41 +116,34 @@ export class SymbolChangesPanel {
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     
-    // Listen for when files are opened to store their initial state (only in realtime mode)
-    if (this.mode === 'realtime') {
-      vscode.workspace.onDidOpenTextDocument((document) => {
-        const filePath = document.uri.fsPath;
-        if (this.isSourceFile(filePath) && filePath.startsWith(this.workspaceRoot)) {
-          const relativePath = path.relative(this.workspaceRoot, filePath);
-          if (!this.radiumIgnore.shouldIgnore(relativePath)) {
-            try {
-              const content = document.getText();
-              // Store as baseline if we don't have one yet
-              if (!this.baselineFileStates.has(relativePath)) {
-                this.baselineFileStates.set(relativePath, content);
-                this.log(`Stored baseline state for: ${relativePath}`);
-              }
-              // Always update last known state
-              if (!this.lastKnownFileStates.has(relativePath)) {
-                this.lastKnownFileStates.set(relativePath, content);
-                this.log(`Stored initial state for newly opened file: ${relativePath}`);
-              }
-            } catch (error) {
-              this.log(`Failed to store initial state for ${relativePath}: ${error}`);
+    // Listen for when files are opened to store their initial state
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      const filePath = document.uri.fsPath;
+      if (this.isSourceFile(filePath) && filePath.startsWith(this.workspaceRoot)) {
+        const relativePath = path.relative(this.workspaceRoot, filePath);
+        if (!this.radiumIgnore.shouldIgnore(relativePath)) {
+          try {
+            const content = document.getText();
+            // Store as baseline if we don't have one yet
+            if (!this.baselineFileStates.has(relativePath)) {
+              this.baselineFileStates.set(relativePath, content);
+              this.log(`Stored baseline state for: ${relativePath}`);
             }
+            // Always update last known state
+            if (!this.lastKnownFileStates.has(relativePath)) {
+              this.lastKnownFileStates.set(relativePath, content);
+              this.log(`Stored initial state for newly opened file: ${relativePath}`);
+            }
+          } catch (error) {
+            this.log(`Failed to store initial state for ${relativePath}: ${error}`);
           }
         }
-      }, null, this.disposables);
-    }
+      }
+    }, null, this.disposables);
     
-    this.log(`Initializing panel (${this.mode} mode), workspace root: ${this.workspaceRoot}`);
+    this.log(`Initializing panel, workspace root: ${this.workspaceRoot}`);
     
-    if (this.mode === 'realtime') {
-      this.startWatching();
-    } else {
-      // Git mode: analyze git changes immediately
-      this.analyzeGitChanges();
-    }
+    this.startWatching();
     
     this.log(`Panel initialization complete`);
   }
@@ -194,36 +174,7 @@ export class SymbolChangesPanel {
       }
     );
 
-    SymbolChangesPanel.currentPanel = new SymbolChangesPanel(panel, extensionUri, workspaceRoot, 'realtime');
-  }
-
-  public static createOrShowGitChanges(extensionUri: vscode.Uri, workspaceRoot: string) {
-    // Initialize output channel if not already created
-    if (!SymbolChangesPanel.outputChannel) {
-      SymbolChangesPanel.outputChannel = vscode.window.createOutputChannel('Radium Symbol Visualization');
-    }
-    
-    const column = vscode.window.activeTextEditor
-      ? vscode.window.activeTextEditor.viewColumn
-      : undefined;
-
-    if (SymbolChangesPanel.gitChangesPanel) {
-      SymbolChangesPanel.gitChangesPanel.panel.reveal(column);
-      return;
-    }
-
-    const panel = vscode.window.createWebviewPanel(
-      'gitChanges',
-      'Radium: Non-committed Git Changes',
-      column || vscode.ViewColumn.Two,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [extensionUri]
-      }
-    );
-
-    SymbolChangesPanel.gitChangesPanel = new SymbolChangesPanel(panel, extensionUri, workspaceRoot, 'git');
+    SymbolChangesPanel.currentPanel = new SymbolChangesPanel(panel, extensionUri, workspaceRoot);
   }
 
   private log(message: string) {
@@ -394,198 +345,6 @@ export class SymbolChangesPanel {
     }
   }
 
-  private async analyzeGitChanges() {
-    this.log('Analyzing non-committed git changes...');
-    
-    try {
-      // Get git status
-      const { stdout: statusOutput } = await exec('git status --porcelain', {
-        cwd: this.workspaceRoot
-      });
-
-      if (!statusOutput.trim()) {
-        this.log('No git changes found');
-        this.panel.webview.postMessage({
-          type: 'info',
-          message: 'No uncommitted changes found'
-        });
-        return;
-      }
-
-      const lines = statusOutput.split('\n').filter(l => l.trim());
-      this.log(`Found ${lines.length} changed files in git`);
-
-      for (const line of lines) {
-        if (line.length < 4) continue;
-
-        const statusCode = line.substring(0, 2).trim();
-        let filePath = line.substring(3).trim();
-        
-        // Normalize path to use forward slashes
-        filePath = filePath.replace(/\\/g, '/');
-        
-        if (!this.isSourceFile(filePath)) {
-          this.log(`Skipping non-source file: ${filePath}`);
-          continue;
-        }
-
-        if (this.radiumIgnore.shouldIgnore(filePath)) {
-          this.log(`Ignoring file per radiumignore: ${filePath}`);
-          continue;
-        }
-
-        this.log(`Processing git change: ${filePath} (status: ${statusCode})`);
-
-        // Handle different status codes
-        if (statusCode === 'D') {
-          // File deleted
-          this.log(`File deleted: ${filePath}`);
-          continue;
-        }
-
-        // Get the diff for this file
-        let diffContent = '';
-        let oldContent = '';
-        let newContent = '';
-
-        const fullPath = path.join(this.workspaceRoot, filePath);
-
-        if (statusCode === 'A' || statusCode === '??') {
-          // New file
-          this.filesCreatedThisSession.add(filePath);
-          if (fs.existsSync(fullPath)) {
-            newContent = fs.readFileSync(fullPath, 'utf8');
-            oldContent = '';
-          }
-        } else {
-          // Modified file - get the committed version
-          try {
-            const { stdout: gitContent } = await exec(`git show HEAD:"${filePath}"`, {
-              cwd: this.workspaceRoot
-            });
-            oldContent = gitContent;
-          } catch (error) {
-            this.log(`Could not get git HEAD version of ${filePath}: ${error}`);
-            oldContent = '';
-          }
-
-          // Get current content
-          if (fs.existsSync(fullPath)) {
-            newContent = fs.readFileSync(fullPath, 'utf8');
-          }
-        }
-
-        // Store states
-        this.baselineFileStates.set(filePath, oldContent);
-        this.lastKnownFileStates.set(filePath, newContent);
-
-        // Process the change
-        await this.processGitFileChange(filePath, oldContent, newContent);
-      }
-
-      this.log('Git changes analysis complete');
-    } catch (error) {
-      this.log(`Error analyzing git changes: ${error}`);
-      vscode.window.showErrorMessage(`Failed to analyze git changes: ${error}`);
-    }
-  }
-
-  private async processGitFileChange(relativePath: string, oldContent: string, newContent: string) {
-    try {
-      // Generate a diff between old and new content
-      const patches = Diff.createPatch(relativePath, oldContent, newContent, '', '');
-      
-      const isNew = this.filesCreatedThisSession.has(relativePath);
-      
-      // Analyze the diff to extract symbol changes
-      const symbolChanges = await this.analyzeDiffForSymbols(relativePath, patches, isNew);
-      this.log(`Found ${symbolChanges.symbols.length} symbols in ${relativePath}`);
-
-      // If no symbols detected, send a fallback "file changed" box ONLY if this file has never had symbols
-      if (symbolChanges.symbols.length === 0) {
-        if (!this.filesWithSymbols.has(relativePath)) {
-          this.log(`No symbols detected in ${relativePath}, sending file changed fallback`);
-          const fileName = path.basename(relativePath);
-          this.panel.webview.postMessage({
-            type: 'symbol:changed',
-            data: {
-              filePath: relativePath,
-              symbol: {
-                type: 'file',
-                name: fileName,
-                changeType: isNew ? 'added' : 'modified',
-                filePath: relativePath,
-                startLine: 1,
-                endLine: 1,
-                changeAmount: 1
-              },
-              calls: [],
-              timestamp: Date.now(),
-              isNew: isNew,
-              diff: patches,
-              comments: symbolChanges.comments || [],
-              additions: symbolChanges.additions || 0,
-              deletions: symbolChanges.deletions || 0
-            }
-          });
-        } else {
-          // Even if we skip the FILE fallback, still show comments if they exist
-          if (symbolChanges.comments && symbolChanges.comments.length > 0) {
-            this.log(`No symbols in current change for ${relativePath}, but found ${symbolChanges.comments.length} comments - sending them`);
-            const fileName = path.basename(relativePath);
-            this.panel.webview.postMessage({
-              type: 'symbol:changed',
-              data: {
-                filePath: relativePath,
-                symbol: {
-                  type: 'file',
-                  name: fileName,
-                  changeType: isNew ? 'added' : 'modified',
-                  filePath: relativePath,
-                  startLine: 1,
-                  endLine: 1,
-                  changeAmount: 1
-                },
-                calls: [],
-                timestamp: Date.now(),
-                isNew: isNew,
-                diff: patches,
-                comments: symbolChanges.comments,
-                additions: symbolChanges.additions || 0,
-                deletions: symbolChanges.deletions || 0
-              }
-            });
-          } else {
-            this.log(`No symbols in current change for ${relativePath}, but file has symbols from previous changes - skipping FILE fallback`);
-          }
-        }
-      } else {
-        // Mark this file as having symbols
-        this.filesWithSymbols.add(relativePath);
-        
-        // Send each symbol change individually so they get their own boxes
-        for (const symbol of symbolChanges.symbols) {
-          this.log(`Sending symbol: ${symbol.name} (${symbol.type})`);
-          this.panel.webview.postMessage({
-            type: 'symbol:changed',
-            data: {
-              filePath: relativePath,
-              symbol: symbol,
-              calls: symbolChanges.calls.filter(c => c.from === symbol.name || c.to === symbol.name),
-              timestamp: Date.now(),
-              isNew: isNew,
-              diff: patches,
-              comments: symbolChanges.comments || [],
-              additions: symbolChanges.additions || 0,
-              deletions: symbolChanges.deletions || 0
-            }
-          });
-        }
-      }
-    } catch (error) {
-      this.log(`Error processing git file change for ${relativePath}: ${error}`);
-    }
-  }
 
   private async handleFileChange(absolutePath: string, isNewFile: boolean) {
     const changeDetectedTime = Date.now();
@@ -1838,107 +1597,18 @@ export class SymbolChangesPanel {
         }
       }
       
-      // Check if this is a git repository first
-      let isGitRepo = false;
-      try {
-        await exec('git rev-parse --git-dir', { cwd: this.workspaceRoot });
-        isGitRepo = true;
-      } catch {
-        this.log(`Not a git repository, will treat all files as new`);
-      }
-      
-      // If not a git repo, generate full-file diff for all files
-      if (!isGitRepo) {
-        if (fs.existsSync(fullPath)) {
-          const content = fs.readFileSync(fullPath, 'utf8');
-          const lines = content.split('\n');
-          const diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n` + 
-                       lines.map(line => `+${line}`).join('\n') + '\n';
-          
-          this.diffCache.set(filePath, { diff, timestamp: Date.now() });
-          return diff;
-        } else {
-          return 'No diff available';
-        }
-      }
-      
-      // Try git diff HEAD first
-      let diff: string = '';
-      try {
-        const { stdout } = await exec(`git diff HEAD -- "${filePath}"`, {
-          cwd: this.workspaceRoot
-        });
-        if (stdout) {
-          this.log(`Got diff from HEAD for ${filePath}`);
-          diff = stdout;
-        }
-      } catch (headError: any) {
-        this.log(`git diff HEAD failed for ${filePath}: ${headError.message}`);
-      }
-
-      // If no diff from HEAD, try unstaged diff
-      if (!diff) {
-        try {
-          const { stdout: unstagedDiff } = await exec(`git diff -- "${filePath}"`, {
-            cwd: this.workspaceRoot
-          });
-          
-          if (unstagedDiff) {
-            this.log(`Got unstaged diff for ${filePath}`);
-            diff = unstagedDiff;
-          }
-        } catch (unstagedError: any) {
-          this.log(`git diff unstaged failed for ${filePath}: ${unstagedError.message}`);
-        }
-      }
-      
-      // If still no diff, check if file is tracked
-      if (!diff) {
-        let isTracked = false;
-        try {
-          await exec(`git ls-files --error-unmatch "${filePath}"`, {
-            cwd: this.workspaceRoot
-          });
-          isTracked = true;
-          this.log(`File ${filePath} is tracked but has no diff`);
-        } catch {
-          isTracked = false;
-          this.log(`File ${filePath} is not tracked`);
-        }
+      // If no baseline, treat as new file
+      if (fs.existsSync(fullPath)) {
+        const content = fs.readFileSync(fullPath, 'utf8');
+        const lines = content.split('\n');
+        const diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n` + 
+                     lines.map(line => `+${line}`).join('\n') + '\n';
         
-        // If not tracked, generate a full-file diff
-        if (!isTracked) {
-          try {
-            const fullPath = path.join(this.workspaceRoot, filePath);
-            if (fs.existsSync(fullPath)) {
-              const content = fs.readFileSync(fullPath, 'utf8');
-              const lines = content.split('\n');
-              // Generate proper git-style diff format with hunk header
-              diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n`;
-              lines.forEach((line: string) => {
-                diff += `+${line}\n`;
-              });
-              this.log(`Generated full-file diff for untracked ${filePath}`);
-            } else {
-              this.log(`File does not exist: ${fullPath}`);
-              diff = 'No diff available';
-            }
-          } catch (error) {
-            this.log(`Failed to read new file ${filePath}: ${error}`);
-            diff = 'No diff available';
-          }
-        } else {
-          // File is tracked but has no changes
-          diff = '';
-        }
+        this.diffCache.set(filePath, { diff, timestamp: Date.now() });
+        return diff;
+      } else {
+        return 'No diff available';
       }
-
-      this.diffCache.set(filePath, {
-        diff: diff,
-        timestamp: Date.now()
-      });
-
-      return diff;
     } catch (error: any) {
       this.log(`Failed to get diff for ${filePath}: ${error.message || error}`);
       return 'Error getting diff';
@@ -2025,9 +1695,8 @@ export class SymbolChangesPanel {
   }
 
   private getHtmlContent(): string {
-    const isRealtimeMode = this.mode === 'realtime';
-    const buttonLabel = isRealtimeMode ? '🗑️ Clear All' : '🔄 Refresh';
-    const buttonTitle = isRealtimeMode ? 'Clear all symbols' : 'Refresh git changes';
+    const buttonLabel = '🗑️ Clear All';
+    const buttonTitle = 'Clear all symbols';
     
     // Generate a nonce for the inline script
     const nonce = this.getNonce();
@@ -4354,11 +4023,7 @@ export class SymbolChangesPanel {
   }
 
   private dispose() {
-    if (this.mode === 'realtime') {
-      SymbolChangesPanel.currentPanel = undefined;
-    } else {
-      SymbolChangesPanel.gitChangesPanel = undefined;
-    }
+    SymbolChangesPanel.currentPanel = undefined;
 
     for (const timeout of this.pendingChanges.values()) {
       clearTimeout(timeout);

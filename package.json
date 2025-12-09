@@ -42,11 +42,6 @@
         "icon": "$(sync)"
       },
       {
-        "command": "radium.realtimeChanges",
-        "title": "Radium: Real-time File Changes",
-        "icon": "$(eye)"
-      },
-      {
         "command": "radium.symbolChanges",
         "title": "Radium: Real-time Symbol Visualization",
         "icon": "$(symbol-class)"
@@ -55,11 +50,6 @@
         "command": "radium.detailedCodeChanges",
         "title": "Radium: Detailed Code Changes",
         "icon": "$(symbol-class)"
-      },
-      {
-        "command": "radium.gitChanges",
-        "title": "Radium: Non-committed Git Changes",
-        "icon": "$(git-commit)"
       },
       {
         "command": "radium.semanticChanges",

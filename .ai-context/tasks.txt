@@ -1,11 +1,4 @@
 -- not started        >> in progress         $$ completedw
 
 
--- make sure the ignored directories in radiumignore are excluded from idexing and from the file map view
-
--- in the semantic changes view, change the labels from "Logic change" to "Code change", e.g. "Added code", "Deleted code", etc.. and the description should be "Added 4 lines" or "2 lines changed"
-
--- in the sematic chages view when clicking on the file name in the file box - open the file
-
--- the 
-
+-- 

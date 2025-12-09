@@ -166,6 +166,8 @@ export class FilesMapPanel {
     
     // Calculate exported symbols per file (symbols used by other files)
     const fileExportedSymbols = new Map<string, Set<number>>();
+    console.log(`[Files Map] Processing ${allEdges.length} edges to calculate exported symbols`);
+    
     for (const edge of allEdges) {
       // Count all types of cross-file references (calls, imports, inherits, etc.)
       const srcNode = allNodes.find(n => n.id === edge.src);
@@ -179,6 +181,11 @@ export class FilesMapPanel {
         continue; // Skip same-file references
       }
       
+      // Log cross-file edges for debugging
+      if (dstNode.name === 'WebContentExtractor' || dstNode.name === 'WebSearchService') {
+        console.log(`[Files Map] Cross-file edge: ${srcNode.path}:${srcNode.name} --${edge.kind}--> ${dstNode.path}:${dstNode.name}`);
+      }
+      
       // Count unique symbols in dstNode's file that are referenced from other files
       // dstNode is the symbol being imported/called/inherited from
       if (!fileExportedSymbols.has(dstNode.path)) {
@@ -188,9 +195,13 @@ export class FilesMapPanel {
     }
     
     console.log('[Files Map] Exported symbols per file:', 
-      Array.from(fileExportedSymbols.entries()).map(([path, ids]) => 
-        ({ path, count: ids.size })
-      )
+      Array.from(fileExportedSymbols.entries()).map(([path, ids]) => {
+        const symbols = Array.from(ids).map(id => {
+          const node = allNodes.find(n => n.id === id);
+          return `${node?.kind}:${node?.name}`;
+        });
+        return { path, count: ids.size, symbols };
+      })
     );
     
     // Create file nodes
@@ -593,6 +604,9 @@ export class FilesMapPanel {
           // Bring node to front by re-appending it (SVG z-order is DOM order)
           this.parentNode.appendChild(this);
           
+          // Mark node as hovered
+          d.isHovered = true;
+          
           // Zoom to 3x size on hover
           d3.select(this)
             .transition()
@@ -600,6 +614,9 @@ export class FilesMapPanel {
             .attr('transform', \`translate(\${d.x},\${d.y}) scale(3)\`);
         })
         .on('mouseleave', function(event, d) {
+          // Mark node as not hovered
+          d.isHovered = false;
+          
           // Return to normal size
           d3.select(this)
             .transition()
@@ -713,9 +730,8 @@ export class FilesMapPanel {
         
         nodeElements.each(function(d) {
           const node = d3.select(this);
-          const currentTransform = node.attr('transform');
-          // Preserve scale if hovering (check if scale is in transform)
-          if (currentTransform && currentTransform.includes('scale(3)')) {
+          // Preserve scale if node is hovered
+          if (d.isHovered) {
             node.attr('transform', \`translate(\${d.x},\${d.y}) scale(3)\`);
           } else {
             node.attr('transform', \`translate(\${d.x},\${d.y})\`);

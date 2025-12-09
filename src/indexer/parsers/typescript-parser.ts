@@ -120,6 +120,16 @@ export class TypeScriptParser extends BaseParser {
           range: { start: node.startIndex, end: node.endIndex }
         });
       }
+    } else if (node.type === 'new_expression') {
+      // Handle constructor calls: new ClassName()
+      const constructorNode = node.childForFieldName('constructor');
+      if (constructorNode) {
+        const className = code.slice(constructorNode.startIndex, constructorNode.endIndex);
+        calls.push({
+          callee: className, // Just the class name, without "new" prefix
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
     } else if (node.type === 'lexical_declaration' || node.type === 'variable_declaration') {
       // Only handle const, let, var declarations if NOT inside a function
       // This captures class-level variables, module-level variables, but not local function variables

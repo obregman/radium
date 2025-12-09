@@ -4,6 +4,13 @@ All notable changes to the Radium extension will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Exported Class Usage Detection**: Fixed Files Map to correctly detect and count exported class usage across files
+  - Constructor calls (`new ClassName()`) are now properly tracked as references to the class
+  - Static method calls (`ClassName.staticMethod()`) now create edges to both the class and the method
+  - Added support for detecting constructor calls in TypeScript, JavaScript, TSX, and C# files
+  - Exported classes now show accurate usage counts when instantiated or referenced in other files
+
 ### Enhanced
 - **Improved Radiumignore Integration**: Enhanced directory and file exclusion from indexing and visualization
   - Added `shouldIgnoreDirectory()` method for efficient directory-level filtering

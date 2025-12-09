@@ -384,18 +384,58 @@ export class Indexer {
 
         // Try to find callee in all nodes
         const allNodes = this.store.getAllNodes();
-        const calleeNode = allNodes.find(n => 
-          n.name === call.callee || n.fqname.endsWith(`.${call.callee}`)
-        );
-
-        if (calleeNode) {
-          this.store.insertEdge({
-            kind: 'calls',
-            src: callerId,
-            dst: calleeNode.id!,
-            weight: 1.0,
-            ts: now
-          });
+        
+        // For calls like "ClassName.staticMethod", create edges to both:
+        // 1. The class itself (ClassName)
+        // 2. The method (staticMethod)
+        const lastDot = call.callee.lastIndexOf('.');
+        if (lastDot !== -1) {
+          // Static method call or property access
+          const className = call.callee.substring(0, lastDot);
+          const methodName = call.callee.substring(lastDot + 1);
+          
+          // Create edge to the class
+          const classNode = allNodes.find(n => 
+            n.name === className || n.fqname.endsWith(`.${className}`)
+          );
+          if (classNode) {
+            this.store.insertEdge({
+              kind: 'calls',
+              src: callerId,
+              dst: classNode.id!,
+              weight: 1.0,
+              ts: now
+            });
+          }
+          
+          // Also create edge to the method if it exists
+          const methodNode = allNodes.find(n => 
+            n.name === methodName || n.fqname.endsWith(`.${methodName}`)
+          );
+          if (methodNode) {
+            this.store.insertEdge({
+              kind: 'calls',
+              src: callerId,
+              dst: methodNode.id!,
+              weight: 1.0,
+              ts: now
+            });
+          }
+        } else {
+          // Simple call without property access
+          const calleeNode = allNodes.find(n => 
+            n.name === call.callee || n.fqname.endsWith(`.${call.callee}`)
+          );
+          
+          if (calleeNode) {
+            this.store.insertEdge({
+              kind: 'calls',
+              src: callerId,
+              dst: calleeNode.id!,
+              weight: 1.0,
+              ts: now
+            });
+          }
         }
       }
 

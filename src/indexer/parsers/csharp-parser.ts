@@ -349,6 +349,17 @@ export class CSharpParser extends BaseParser {
         });
       }
     }
+    // Object creation expressions (constructor calls: new ClassName())
+    else if (node.type === 'object_creation_expression') {
+      const typeNode = node.childForFieldName('type');
+      if (typeNode) {
+        const className = code.slice(typeNode.startIndex, typeNode.endIndex);
+        calls.push({
+          callee: className, // Just the class name
+          range: { start: node.startIndex, end: node.endIndex }
+        });
+      }
+    }
     // Namespace declarations
     else if (node.type === 'namespace_declaration') {
       const nameNode = node.childForFieldName('name');

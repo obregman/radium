@@ -907,7 +907,7 @@ export class SemanticChangesPanel {
       border: 2px solid var(--vscode-panel-border);
       border-radius: 0;
       background-color: #4c4d4c;
-      padding: 85px 10px 5px 10px;
+      padding: 85px 10px 20px 10px;
       box-sizing: border-box;
       min-width: 300px;
       overflow: visible;
@@ -1543,17 +1543,26 @@ export class SemanticChangesPanel {
         let maxBottom = 85; // Minimum height (header space)
         
         Array.from(container.children).forEach(child => {
+          // Skip absolutely positioned dropdown lists from height calculation
+          // as they render outside the container
+          if (child.classList.contains('previous-changes-list')) {
+            return;
+          }
+          
           // Check if element is visible/rendered
           // We include all children to handle absolute positioned elements correctly
           if (child.offsetHeight > 0) {
-            const bottom = child.offsetTop + child.offsetHeight;
+            // Get computed style to include margins
+            const style = window.getComputedStyle(child);
+            const marginBottom = parseInt(style.marginBottom) || 0;
+            const bottom = child.offsetTop + child.offsetHeight + marginBottom;
             if (bottom > maxBottom) {
               maxBottom = bottom;
             }
           }
         });
 
-        const totalHeight = maxBottom + 15; // Bottom padding
+        const totalHeight = maxBottom + 10; // Bottom padding (CSS already has 20px padding)
         container.style.height = totalHeight + 'px';
         
         repositionAllFiles();
@@ -1874,7 +1883,7 @@ export class SemanticChangesPanel {
 
       const location = document.createElement('div');
       location.className = 'change-location';
-      const filename = filePath.split('/').pop();
+      const filename = filePath.replace(/\\\\/g, '/').split('/').pop();
       location.textContent = \`\${filename}:\${change.lineNumber}\`;
       location.onclick = () => {
         vscode.postMessage({

@@ -431,6 +431,27 @@ export class FilesMapPanel {
       border: 1px solid #444;
       display: flex;
       gap: 10px;
+      align-items: center;
+    }
+    
+    #search-box {
+      background: #2d2d2d;
+      color: #d4d4d4;
+      border: 1px solid #555;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      width: 250px;
+      outline: none;
+    }
+    
+    #search-box:focus {
+      border-color: #007acc;
+      background: #3d3d3d;
+    }
+    
+    #search-box::placeholder {
+      color: #888;
     }
     
     .toggle-btn {
@@ -523,6 +544,7 @@ export class FilesMapPanel {
 </head>
 <body>
   <div id="controls">
+    <input type="text" id="search-box" placeholder="Search files and directories..." />
     <button class="toggle-btn active" data-mode="directory">Color by Parent Directory</button>
     <button class="toggle-btn" data-mode="symbol">Color by Symbol Use</button>
   </div>
@@ -537,8 +559,9 @@ export class FilesMapPanel {
     let g = null;
     let zoom = null;
     let colorMode = 'directory'; // 'symbol' or 'directory'
+    let searchQuery = '';
     
-    // 20 predefined distinct colors for directories
+    // 30 predefined distinct colors for directories
     const directoryColors = [
       '#FF6B6B', // Red
       '#4ECDC4', // Teal
@@ -559,7 +582,17 @@ export class FilesMapPanel {
       '#F67280', // Coral
       '#355C7D', // Navy
       '#99B898', // Sage
-      '#FECEAB'  // Apricot
+      '#FECEAB', // Apricot
+      '#FF8C94', // Light Coral
+      '#5DADE2', // Bright Blue
+      '#F39C12', // Bright Orange
+      '#A569BD', // Medium Purple
+      '#48C9B0', // Turquoise
+      '#F4D03F', // Bright Yellow
+      '#EC7063', // Salmon
+      '#85929E', // Blue Gray
+      '#58D68D', // Light Green
+      '#AF7AC5'  // Lavender
     ];
     
     // Simple hash function for strings
@@ -664,6 +697,13 @@ export class FilesMapPanel {
       // Create container group
       g = svg.append('g');
       
+      // Setup search box
+      const searchBox = document.getElementById('search-box');
+      searchBox.addEventListener('input', (e) => {
+        searchQuery = e.target.value.toLowerCase();
+        applySearchFilter();
+      });
+      
       // Setup toggle buttons
       document.querySelectorAll('.toggle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -724,6 +764,93 @@ export class FilesMapPanel {
         .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
     }
     
+    // Check if a node matches the search query
+    function nodeMatchesSearch(node) {
+      if (!searchQuery) return true;
+      
+      // Search only in file/directory name (label), not full path
+      const label = node.label.toLowerCase();
+      
+      return label.includes(searchQuery);
+    }
+    
+    // Apply search filter to all nodes
+    function applySearchFilter() {
+      if (!graphData) return;
+      
+      // Update file rectangles
+      d3.selectAll('.file-rect')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return getFileColor(node);
+          }
+          return '#444'; // Light gray for non-matching
+        });
+      
+      // Update file labels
+      d3.selectAll('.file-label')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return getTextColor(node);
+          }
+          return '#888'; // Gray text for non-matching
+        });
+      
+      // Update directory shapes
+      d3.selectAll('.dir-rect')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return getDirBoxColor(node.path);
+          }
+          return '#444'; // Light gray for non-matching
+        });
+      
+      // Update directory name labels
+      d3.selectAll('.directory-name')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return '#000';
+          }
+          return '#888'; // Gray text for non-matching
+        });
+      
+      // Update directory path labels
+      d3.selectAll('.directory-path')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return '#000';
+          }
+          return '#888'; // Gray text for non-matching
+        });
+      
+      // Update line count badges
+      d3.selectAll('.node-sublabel')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return '#999';
+          }
+          return '#666'; // Darker gray for non-matching
+        });
+    }
+    
     // Update colors based on current mode
     function updateColors() {
       if (!graphData) return;
@@ -734,6 +861,7 @@ export class FilesMapPanel {
         .duration(300)
         .style('fill', function() {
           const node = d3.select(this.parentNode).datum();
+          if (!nodeMatchesSearch(node)) return '#444';
           return getFileColor(node);
         });
       
@@ -743,6 +871,7 @@ export class FilesMapPanel {
         .duration(300)
         .style('fill', function() {
           const node = d3.select(this.parentNode).datum();
+          if (!nodeMatchesSearch(node)) return '#888';
           return getTextColor(node);
         });
       
@@ -752,6 +881,7 @@ export class FilesMapPanel {
         .duration(300)
         .style('fill', function() {
           const node = d3.select(this.parentNode).datum();
+          if (!nodeMatchesSearch(node)) return '#444';
           return getDirBoxColor(node.path);
         });
       
@@ -761,10 +891,8 @@ export class FilesMapPanel {
         .duration(300)
         .style('fill', function() {
           const node = d3.select(this.parentNode).datum();
-          if (colorMode === 'directory') {
-            return '#000'; // Black text on colored background
-          }
-          return '#000'; // Black text on white background
+          if (!nodeMatchesSearch(node)) return '#888';
+          return '#000';
         });
       
       d3.selectAll('.directory-path')
@@ -772,10 +900,8 @@ export class FilesMapPanel {
         .duration(300)
         .style('fill', function() {
           const node = d3.select(this.parentNode).datum();
-          if (colorMode === 'directory') {
-            return 'rgba(0, 0, 0, 0.6)'; // Semi-transparent black on colored background
-          }
-          return '#666'; // Gray on white background
+          if (!nodeMatchesSearch(node)) return '#888';
+          return '#000';
         });
     }
     
@@ -1026,38 +1152,31 @@ export class FilesMapPanel {
         return maxWidth + 80; // Add padding (40px on each side)
       }
 
-      // Add rectangles for directories
+      // Add hexagonal shapes for directories (rectangle with rhombus sides)
       const dirRects = nodeElements.filter(d => d.type === 'directory')
-        .append('rect')
-        .attr('width', d => {
-          const baseSize = getDirSize(d.depth || 0);
-          const fontSize = getDirFontSize(d.depth || 0);
-          const textWidth = getTextWidth(d.label, fontSize);
-          return Math.max(baseSize, textWidth);
-        })
-        .attr('height', d => {
-          const baseSize = getDirSize(d.depth || 0);
-          return baseSize * 0.3; // Height is 30% of width
-        })
-        .attr('x', d => {
+        .append('path')
+        .attr('d', d => {
           const baseSize = getDirSize(d.depth || 0);
           const fontSize = getDirFontSize(d.depth || 0);
           const textWidth = getTextWidth(d.label, fontSize);
           const width = Math.max(baseSize, textWidth);
-          return -width / 2;
-        })
-        .attr('y', d => {
-          const baseSize = getDirSize(d.depth || 0);
           const height = baseSize * 0.3;
-          return -height / 2;
-        })
-        .attr('rx', d => {
-          const baseSize = getDirSize(d.depth || 0);
-          return Math.max(6, baseSize / 50); // Corner radius scales with size
-        })
-        .attr('ry', d => {
-          const baseSize = getDirSize(d.depth || 0);
-          return Math.max(6, baseSize / 50);
+          
+          // Create hexagon path: rectangle with angled left and right sides
+          const indent = height * 0.4; // How much the sides angle in
+          const halfWidth = width / 2;
+          const halfHeight = height / 2;
+          
+          // Start from top-left, go clockwise
+          return \`
+            M \${-halfWidth + indent},\${-halfHeight}
+            L \${halfWidth - indent},\${-halfHeight}
+            L \${halfWidth},0
+            L \${halfWidth - indent},\${halfHeight}
+            L \${-halfWidth + indent},\${halfHeight}
+            L \${-halfWidth},0
+            Z
+          \`;
         })
         .attr('class', 'dir-rect')
         .style('fill', d => getDirBoxColor(d.path))
@@ -1109,7 +1228,7 @@ export class FilesMapPanel {
           const fontSize = getDirFontSize(d.depth || 0);
           return \`\${Math.round(fontSize * 0.7)}px\`; // 70% of main font size (2x increase from 35%)
         })
-        .style('fill', '#666')
+        .style('fill', '#000')
         .style('font-weight', 'normal')
         .text(d => {
           // Extract parent path (everything except the last segment)
@@ -1137,7 +1256,7 @@ export class FilesMapPanel {
           return \`\${fontSize}px\`;
         })
         .style('fill', '#000')
-        .style('font-weight', '600')
+        .style('font-weight', 'bold')
         .text(d => {
           // Extract just the directory name (last segment)
           const parts = d.label.split('/');

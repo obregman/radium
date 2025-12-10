@@ -49,24 +49,41 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 
 The Files Map provides a bird's-eye view of your entire codebase structure, showing files as rectangles sized by their line count and organized by directory:
 
+**Color Modes:**
+Toggle between two visualization modes using the button bar at the top:
+- **Color by Symbol Use** (default): Files colored by how many symbols they export
+  - Grey: 0 exports (isolated files)
+  - Yellow: 1-3 exports (lightly connected)
+  - Yellow-green: 4-6 exports (moderately connected)
+  - Light green: 7-9 exports (well connected)
+  - Green: 9+ exports (highly connected, potential core modules)
+- **Color by Directory Level**: Each directory gets a unique color from 20 predefined colors
+  - Colors assigned based on hash of directory name (consistent across sessions)
+  - Directory boxes and their files share the same color
+  - Makes it easy to visually group files by their directory
+  - Same directory always gets the same color
+
 **Visual Elements:**
-- **File Rectangles**: Size proportional to line count (100-300px width, 2:1 aspect ratio, 3000 lines = 300px)
-  - Color-coded by exported symbols (symbols used by other files):
-    - Grey: 0 exports (isolated files)
-    - Yellow: 1-2 exports (lightly connected)
-    - Yellow-green: 3-5 exports (moderately connected)
-    - Light green: 5-8 exports (well connected)
-    - Green: 8+ exports (highly connected, potential core modules)
+- **File Rectangles**: Size proportional to line count (150-350px width, 2:1 aspect ratio, 3000 lines = 350px)
   - Shows filename and line count in a rounded badge
   - Click to open file in editor
   - Drag to reposition
 - **Directory Boxes**: White rectangles with gray borders
-  - Show full directory path
-  - Connected to their files with solid gray lines
+  - Size scales inversely with directory depth:
+    - Depth 0 (root): 600px width, 72px font
+    - Depth 1: 450px width, 48px font
+    - Depth 2: 320px width, 28px font
+    - Depth 3+: 240px width, 18px font
+  - Show full directory path with depth-scaled font size
+  - All directories in the hierarchy are shown (even those without direct files)
+  - Connected hierarchically with bright blue lines (parent → child directories)
+  - Connected to their files with gray lines
+  - Directory clusters are gathered together for better organization
   - Movable to organize the layout
 
 **Layout:**
 - Force-directed physics simulation clusters files around their directories
+- Directory hierarchies are connected and clustered together
 - Directory groups are well-separated with distinct spacing
 - Automatic collision detection prevents overlap
 - Files are pulled toward their parent directory

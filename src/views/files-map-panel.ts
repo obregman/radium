@@ -21,6 +21,7 @@ interface DirectoryNode {
   label: string;
   path: string;
   fileCount: number;
+  depth: number; // Directory depth level (0 = root, 1 = first level, etc.)
 }
 
 interface FileEdge {
@@ -258,33 +259,90 @@ export class FilesMapPanel {
       directories.get(dirPath)!.add(file.path);
     }
     
-    // Create directory nodes (only for directories that aren't ignored)
-    for (const [dirPath, fileSet] of directories.entries()) {
+    // Calculate directory depth and create hierarchy
+    const dirDepthMap = new Map<string, number>();
+    const dirHierarchy = new Map<string, string[]>(); // parent -> children
+    const allDirectories = new Set<string>(); // All directories including intermediate ones
+    
+    // First pass: collect all directories that have files
+    for (const [dirPath] of directories.entries()) {
       if (dirPath === '.' || dirPath === '') {
         continue;
       }
+      allDirectories.add(dirPath);
+    }
+    
+    // Second pass: add all parent directories in the hierarchy
+    for (const dirPath of Array.from(allDirectories)) {
+      let currentPath = dirPath;
+      while (true) {
+        const parentPath = path.dirname(currentPath);
+        if (parentPath === '.' || parentPath === '' || parentPath === currentPath) {
+          break;
+        }
+        allDirectories.add(parentPath);
+        currentPath = parentPath;
+      }
+    }
+    
+    // Calculate depth for all directories
+    for (const dirPath of allDirectories) {
+      const depth = dirPath.split(path.sep).length - 1;
+      dirDepthMap.set(dirPath, depth);
       
+      // Find parent directory
+      const parentPath = path.dirname(dirPath);
+      if (parentPath !== '.' && parentPath !== dirPath) {
+        if (!dirHierarchy.has(parentPath)) {
+          dirHierarchy.set(parentPath, []);
+        }
+        dirHierarchy.get(parentPath)!.push(dirPath);
+      }
+    }
+    
+    // Create directory nodes for all directories (including those without direct files)
+    for (const dirPath of allDirectories) {
       // Check if directory should be ignored
       if (this.radiumIgnore.shouldIgnoreDirectory(dirPath)) {
         console.log(`[Files Map] Skipping ignored directory: ${dirPath}`);
         continue;
       }
       
+      const depth = dirDepthMap.get(dirPath) || 0;
+      const fileSet = directories.get(dirPath);
+      const fileCount = fileSet ? fileSet.size : 0;
+      
       nodes.push({
         id: `dir:${dirPath}`,
         type: 'directory',
         label: dirPath,
         path: dirPath,
-        fileCount: fileSet.size
+        fileCount,
+        depth
       });
       
-      // Create directory containment edges
-      for (const filePath of fileSet) {
-        edges.push({
-          source: `dir:${dirPath}`,
-          target: filePath,
-          type: 'contains'
-        });
+      // Create directory containment edges (directory -> files)
+      if (fileSet) {
+        for (const filePath of fileSet) {
+          edges.push({
+            source: `dir:${dirPath}`,
+            target: filePath,
+            type: 'contains'
+          });
+        }
+      }
+      
+      // Create directory hierarchy edges (parent dir -> child dir)
+      const parentPath = path.dirname(dirPath);
+      if (parentPath !== '.' && parentPath !== dirPath && allDirectories.has(parentPath)) {
+        // Only create edge if parent directory exists and isn't ignored
+        if (!this.radiumIgnore.shouldIgnoreDirectory(parentPath)) {
+          edges.push({
+            source: `dir:${parentPath}`,
+            target: `dir:${dirPath}`,
+            type: 'contains'
+          });
+        }
       }
     }
     
@@ -362,6 +420,41 @@ export class FilesMapPanel {
       overflow: hidden;
     }
     
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: rgba(30, 30, 30, 0.95);
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .toggle-btn {
+      background: #2d2d2d;
+      color: #d4d4d4;
+      border: 1px solid #555;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    
+    .toggle-btn:hover {
+      background: #3d3d3d;
+      border-color: #666;
+    }
+    
+    .toggle-btn.active {
+      background: #007acc;
+      border-color: #007acc;
+      color: #fff;
+    }
+    
     #graph {
       width: 100vw;
       height: 100vh;
@@ -403,9 +496,9 @@ export class FilesMapPanel {
     
     .edge-directory {
       fill: none;
-      stroke: #666;
-      stroke-width: 1.5;
-      opacity: 0.5;
+      stroke: #4a9eff;
+      stroke-width: 3;
+      opacity: 0.8;
     }
     
     .node-label {
@@ -429,6 +522,10 @@ export class FilesMapPanel {
   </style>
 </head>
 <body>
+  <div id="controls">
+    <button class="toggle-btn active" data-mode="directory">Color by Parent Directory</button>
+    <button class="toggle-btn" data-mode="symbol">Color by Symbol Use</button>
+  </div>
   <svg id="graph"></svg>
   
   <script>
@@ -438,9 +535,67 @@ export class FilesMapPanel {
     let simulation = null;
     let svg = null;
     let g = null;
+    let zoom = null;
+    let colorMode = 'directory'; // 'symbol' or 'directory'
+    
+    // 20 predefined distinct colors for directories
+    const directoryColors = [
+      '#FF6B6B', // Red
+      '#4ECDC4', // Teal
+      '#45B7D1', // Sky Blue
+      '#FFA07A', // Light Salmon
+      '#98D8C8', // Mint
+      '#F7DC6F', // Yellow
+      '#BB8FCE', // Purple
+      '#85C1E2', // Light Blue
+      '#F8B739', // Orange
+      '#52B788', // Green
+      '#E63946', // Crimson
+      '#06FFA5', // Spring Green
+      '#FFB4A2', // Peach
+      '#B5838D', // Mauve
+      '#6C5B7B', // Dark Purple
+      '#C06C84', // Rose
+      '#F67280', // Coral
+      '#355C7D', // Navy
+      '#99B898', // Sage
+      '#FECEAB'  // Apricot
+    ];
+    
+    // Simple hash function for strings
+    function hashString(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+      }
+      return Math.abs(hash);
+    }
+    
+    // Function to get color based on directory name hash
+    function getDirectoryColor(dirPath) {
+      const hash = hashString(dirPath);
+      const colorIndex = hash % directoryColors.length;
+      return directoryColors[colorIndex];
+    }
+    
+    // Function to get file color based on parent directory
+    function getFileColorByDirectory(filePath) {
+      if (!filePath) return directoryColors[0];
+      
+      // Find the parent directory of this file
+      const lastSlashIndex = filePath.lastIndexOf('/');
+      if (lastSlashIndex === -1) return directoryColors[0]; // Root level, first color
+      
+      const dirPath = filePath.substring(0, lastSlashIndex);
+      if (!dirPath) return directoryColors[0]; // Root level, first color
+      
+      return getDirectoryColor(dirPath);
+    }
     
     // Function to get color based on exported symbols
-    function getFileColor(exportedSymbols) {
+    function getFileColorBySymbols(exportedSymbols) {
       if (exportedSymbols === 0) return '#999'; // grey
       if (exportedSymbols <= 3) return '#ffd700'; // yellow
       if (exportedSymbols <= 6) return '#adff2f'; // yellow green
@@ -448,11 +603,36 @@ export class FilesMapPanel {
       return '#4caf50'; // green
     }
     
-    // Function to get text color based on exported symbols
-    function getTextColor(exportedSymbols) {
-      if (exportedSymbols === 0) return '#d4d4d4'; // light text for grey background
-      if (exportedSymbols <= 9) return '#333'; // dark gray text for yellow/green backgrounds
-      return '#d4d4d4'; // light text for dark green
+    // Function to get color based on current mode
+    function getFileColor(node) {
+      if (colorMode === 'directory') {
+        return getFileColorByDirectory(node.path);
+      } else {
+        return getFileColorBySymbols(node.exportedSymbols);
+      }
+    }
+    
+    // Function to get directory box color
+    function getDirBoxColor(dirPath) {
+      if (colorMode === 'directory') {
+        return getDirectoryColor(dirPath);
+      } else {
+        return '#fff'; // White for symbol mode
+      }
+    }
+    
+    // Function to get text color based on current mode and node
+    function getTextColor(node) {
+      if (colorMode === 'directory') {
+        // For directory mode, use dark text on colored backgrounds
+        return '#000';
+      } else {
+        // For symbol mode, adjust based on background color
+        const exportedSymbols = node.exportedSymbols;
+        if (exportedSymbols === 0) return '#d4d4d4'; // light text for grey background
+        if (exportedSymbols <= 9) return '#333'; // dark gray text for yellow/green backgrounds
+        return '#d4d4d4'; // light text for dark green
+      }
     }
     
     // Edge type colors
@@ -473,7 +653,7 @@ export class FilesMapPanel {
       svg.attr('width', width).attr('height', height);
       
       // Add zoom behavior
-      const zoom = d3.zoom()
+      zoom = d3.zoom()
         .scaleExtent([0.1, 4])
         .on('zoom', (event) => {
           g.attr('transform', event.transform);
@@ -483,6 +663,23 @@ export class FilesMapPanel {
       
       // Create container group
       g = svg.append('g');
+      
+      // Setup toggle buttons
+      document.querySelectorAll('.toggle-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const mode = e.target.dataset.mode;
+          if (mode !== colorMode) {
+            colorMode = mode;
+            
+            // Update button states
+            document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            
+            // Update colors
+            updateColors();
+          }
+        });
+      });
       
       // Add arrow markers for each edge type
       const defs = svg.append('defs');
@@ -502,6 +699,84 @@ export class FilesMapPanel {
       }
       
       vscode.postMessage({ type: 'ready' });
+    }
+    
+    // Zoom to a specific node
+    function zoomToNode(node) {
+      if (!svg || !zoom) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      
+      // Calculate the transform to center and zoom to the node
+      const scale = 1.2; // Zoom level (1.2x)
+      const x = width / 2 - node.x * scale;
+      const y = height / 2 - node.y * scale;
+      
+      // Stop the simulation to prevent jumping and bouncing
+      if (simulation) {
+        simulation.stop();
+      }
+      
+      // Apply the transform with smooth transition
+      svg.transition()
+        .duration(750)
+        .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+    }
+    
+    // Update colors based on current mode
+    function updateColors() {
+      if (!graphData) return;
+      
+      // Update file rectangles
+      d3.selectAll('.file-rect')
+        .transition()
+        .duration(300)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          return getFileColor(node);
+        });
+      
+      // Update file labels
+      d3.selectAll('.file-label')
+        .transition()
+        .duration(300)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          return getTextColor(node);
+        });
+      
+      // Update directory rectangles
+      d3.selectAll('.dir-rect')
+        .transition()
+        .duration(300)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          return getDirBoxColor(node.path);
+        });
+      
+      // Update directory text color for better contrast
+      d3.selectAll('.directory-name')
+        .transition()
+        .duration(300)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (colorMode === 'directory') {
+            return '#000'; // Black text on colored background
+          }
+          return '#000'; // Black text on white background
+        });
+      
+      d3.selectAll('.directory-path')
+        .transition()
+        .duration(300)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (colorMode === 'directory') {
+            return 'rgba(0, 0, 0, 0.6)'; // Semi-transparent black on colored background
+          }
+          return '#666'; // Gray on white background
+        });
     }
     
     // Render graph
@@ -535,31 +810,104 @@ export class FilesMapPanel {
       // Filter only containment edges for the force simulation
       const containmentEdges = edges.filter(e => e.type === 'contains');
       
+      // Separate directory-to-directory edges from directory-to-file edges
+      const dirToDirEdges = containmentEdges.filter(e => 
+        e.source.type === 'directory' && e.target.type === 'directory' || 
+        (typeof e.source === 'string' && e.source.startsWith('dir:') && 
+         typeof e.target === 'string' && e.target.startsWith('dir:'))
+      );
+      
+      const dirToFileEdges = containmentEdges.filter(e => 
+        !dirToDirEdges.includes(e)
+      );
+      
+      // Function to get directory size based on depth
+      function getDirSize(depth) {
+        // Inverse relationship: depth 0 = largest, higher depth = smaller
+        // Base sizes: depth 0 = 600px, depth 1 = 450px, depth 2 = 320px, depth 3+ = 240px
+        const baseSizes = [600, 450, 320, 240];
+        return baseSizes[Math.min(depth, baseSizes.length - 1)];
+      }
+      
+      // Function to get directory font size based on depth
+      function getDirFontSize(depth) {
+        const fontSizes = [72, 48, 28, 18];
+        return fontSizes[Math.min(depth, fontSizes.length - 1)];
+      }
+      
+      // Function to calculate width needed for text
+      function getTextWidth(text, fontSize) {
+        // For directories, we need to account for both parent path and dir name
+        const parts = text.split('/');
+        const dirName = parts[parts.length - 1];
+        const parentPath = parts.slice(0, -1).join('/');
+        
+        // Calculate width for directory name (main text)
+        const dirNameWidth = dirName.length * fontSize * 0.6;
+        
+        // Calculate width for parent path (70% of main font size)
+        const parentFontSize = fontSize * 0.7;
+        const parentPathWidth = parentPath.length * parentFontSize * 0.6;
+        
+        // Use the larger of the two, plus padding
+        const maxWidth = Math.max(dirNameWidth, parentPathWidth);
+        return maxWidth + 80; // Add padding (40px on each side)
+      }
+      
       simulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(containmentEdges)
           .id(d => d.id)
-          .distance(120)
+          .distance(d => {
+            // Directory-to-directory connections should be very close based on depth
+            const source = d.source;
+            const target = d.target;
+            if (source.type === 'directory' && target.type === 'directory') {
+              // Child directories stay very close to parent
+              // Distance based on parent's depth: depth 0->1 = 250px, 1->2 = 200px, 2->3 = 150px
+              const parentDepth = source.depth || 0;
+              const distances = [250, 200, 150, 120];
+              return distances[Math.min(parentDepth, distances.length - 1)];
+            }
+            return 120; // Normal distance for directory-to-file
+          })
           .strength(d => {
-            // Only directories pull their files, files don't pull each other
-            if (d.source.type === 'directory') return 0.3; // Weak pull from directory to files
-            return 0; // No pull between files
+            const source = d.source;
+            const target = d.target;
+            // Directory-to-directory connections
+            if (source.type === 'directory' && target.type === 'directory') {
+              return 0.5;
+            }
+            // Strong pull from directory to files
+            if (source.type === 'directory') {
+              return 1.2;
+            }
+            return 0;
           })
         )
         .force('charge', d3.forceManyBody()
           .strength(d => {
-            // Directories repel very strongly to create distinct groups
-            if (d.type === 'directory') return -3000;
+            if (d.type === 'directory') {
+              // Reduce repulsion between directories at different depths
+              // to allow parent-child to stay close
+              const depth = d.depth || 0;
+              // Root directories repel strongly, deeper ones less so
+              const repulsions = [-4000, -2500, -1500, -1000];
+              return repulsions[Math.min(depth, repulsions.length - 1)];
+            }
             // Files repel strongly to avoid sticking together
-            return -800; // Increased from -300 to prevent stickiness
+            return -800;
           })
         )
         .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collision', d3.forceCollide()
           .radius(d => {
             if (d.type === 'directory') {
-              // Directory collision based on its actual size with extra padding
-              const width = Math.max(300, d.label.length * 12); // Updated to match new size
-              const height = 100; // Updated to match new height
+              // Directory collision based on actual width (accounting for text)
+              const baseSize = getDirSize(d.depth || 0);
+              const fontSize = getDirFontSize(d.depth || 0);
+              const textWidth = getTextWidth(d.label, fontSize);
+              const width = Math.max(baseSize, textWidth);
+              const height = baseSize * 0.3; // Height is 30% of width
               return Math.sqrt(width * width + height * height) / 2 + 50;
             }
             // File collision based on its size with generous padding to prevent overlap
@@ -567,10 +915,10 @@ export class FilesMapPanel {
             const boxHeight = d.size / 2;
             return Math.sqrt(boxWidth * boxWidth + boxHeight * boxHeight) / 2 + 30;
           })
-          .strength(1.2) // Stronger collision to prevent overlap
+          .strength(1.2)
         )
-        .force('x', d3.forceX(width / 2).strength(0.02)) // Reduced from 0.05 to allow more spreading
-        .force('y', d3.forceY(height / 2).strength(0.02)); // Reduced from 0.05 to allow more spreading
+        .force('x', d3.forceX(width / 2).strength(0.02))
+        .force('y', d3.forceY(height / 2).strength(0.02));
       
       // Create edges (only directory-to-file connections)
       const edgeGroup = g.append('g').attr('class', 'edges');
@@ -580,7 +928,31 @@ export class FilesMapPanel {
         .enter()
         .append('path')
         .attr('class', 'edge-directory')
-        .style('stroke', '#666');
+        .style('stroke', d => {
+          // Make directory-to-directory connections brighter
+          const source = d.source;
+          const target = d.target;
+          if (source.type === 'directory' && target.type === 'directory') {
+            return '#4a9eff'; // Bright blue for directory hierarchy
+          }
+          return '#888'; // Gray for directory-to-file
+        })
+        .style('stroke-width', d => {
+          const source = d.source;
+          const target = d.target;
+          if (source.type === 'directory' && target.type === 'directory') {
+            return 3; // Thicker for directory hierarchy
+          }
+          return 1.5; // Normal for directory-to-file
+        })
+        .style('opacity', d => {
+          const source = d.source;
+          const target = d.target;
+          if (source.type === 'directory' && target.type === 'directory') {
+            return 0.9; // More visible for directory hierarchy
+          }
+          return 0.5; // Less visible for directory-to-file
+        });
       
       // Create nodes
       const nodeGroup = g.append('g').attr('class', 'nodes');
@@ -595,37 +967,24 @@ export class FilesMapPanel {
           .on('drag', dragged)
           .on('end', dragEnded)
         )
-        .on('click', (event, d) => {
+        .on('click', function(event, d) {
+          // Stop simulation immediately to prevent shuffling
+          if (simulation) {
+            simulation.stop();
+          }
+          // Single click: zoom to node
+          zoomToNode(d);
+        })
+        .on('dblclick', (event, d) => {
+          // Double click: open file
           if (d.type === 'file') {
+            event.stopPropagation();
             vscode.postMessage({ type: 'file:open', filePath: d.path });
           }
         })
-        .on('mouseenter', function(event, d) {
-          // Bring node to front by re-appending it (SVG z-order is DOM order)
-          this.parentNode.appendChild(this);
-          
-          // Mark node as hovered
-          d.isHovered = true;
-          
-          // Zoom to 3x size on hover
-          d3.select(this)
-            .transition()
-            .duration(200)
-            .attr('transform', \`translate(\${d.x},\${d.y}) scale(3)\`);
-        })
-        .on('mouseleave', function(event, d) {
-          // Mark node as not hovered
-          d.isHovered = false;
-          
-          // Return to normal size
-          d3.select(this)
-            .transition()
-            .duration(200)
-            .attr('transform', \`translate(\${d.x},\${d.y}) scale(1)\`);
-        });
       
       // Add rectangles for files
-      nodeElements.filter(d => d.type === 'file')
+      const fileRects = nodeElements.filter(d => d.type === 'file')
         .append('rect')
         .attr('width', d => d.size)
         .attr('height', d => d.size / 2)
@@ -633,22 +992,77 @@ export class FilesMapPanel {
         .attr('y', d => -d.size / 4)
         .attr('rx', 4)
         .attr('ry', 4)
-        .style('fill', d => getFileColor(d.exportedSymbols))
-        .style('stroke', '#fff')
-        .style('stroke-width', 1.5);
+        .attr('class', 'file-rect')
+        .style('fill', d => getFileColor(d));
       
+      // Function to get directory size based on depth
+      function getDirSize(depth) {
+        const baseSizes = [600, 450, 320, 240];
+        return baseSizes[Math.min(depth, baseSizes.length - 1)];
+      }
+      
+      // Function to get directory font size based on depth
+      function getDirFontSize(depth) {
+        const fontSizes = [72, 48, 28, 18];
+        return fontSizes[Math.min(depth, fontSizes.length - 1)];
+      }
+      
+      // Function to calculate width needed for text
+      function getTextWidth(text, fontSize) {
+        // For directories, we need to account for both parent path and dir name
+        const parts = text.split('/');
+        const dirName = parts[parts.length - 1];
+        const parentPath = parts.slice(0, -1).join('/');
+        
+        // Calculate width for directory name (main text)
+        const dirNameWidth = dirName.length * fontSize * 0.6;
+        
+        // Calculate width for parent path (70% of main font size)
+        const parentFontSize = fontSize * 0.7;
+        const parentPathWidth = parentPath.length * parentFontSize * 0.6;
+        
+        // Use the larger of the two, plus padding
+        const maxWidth = Math.max(dirNameWidth, parentPathWidth);
+        return maxWidth + 80; // Add padding (40px on each side)
+      }
+
       // Add rectangles for directories
-      nodeElements.filter(d => d.type === 'directory')
+      const dirRects = nodeElements.filter(d => d.type === 'directory')
         .append('rect')
-        .attr('width', d => Math.max(300, d.label.length * 12)) // Increased from 200 and 10
-        .attr('height', 100) // Increased from 70
-        .attr('x', d => -Math.max(300, d.label.length * 12) / 2)
-        .attr('y', -50) // Adjusted for new height
-        .attr('rx', 8) // Larger corner radius
-        .attr('ry', 8)
-        .style('fill', '#fff')
-        .style('stroke', '#666')
-        .style('stroke-width', 2);
+        .attr('width', d => {
+          const baseSize = getDirSize(d.depth || 0);
+          const fontSize = getDirFontSize(d.depth || 0);
+          const textWidth = getTextWidth(d.label, fontSize);
+          return Math.max(baseSize, textWidth);
+        })
+        .attr('height', d => {
+          const baseSize = getDirSize(d.depth || 0);
+          return baseSize * 0.3; // Height is 30% of width
+        })
+        .attr('x', d => {
+          const baseSize = getDirSize(d.depth || 0);
+          const fontSize = getDirFontSize(d.depth || 0);
+          const textWidth = getTextWidth(d.label, fontSize);
+          const width = Math.max(baseSize, textWidth);
+          return -width / 2;
+        })
+        .attr('y', d => {
+          const baseSize = getDirSize(d.depth || 0);
+          const height = baseSize * 0.3;
+          return -height / 2;
+        })
+        .attr('rx', d => {
+          const baseSize = getDirSize(d.depth || 0);
+          return Math.max(6, baseSize / 50); // Corner radius scales with size
+        })
+        .attr('ry', d => {
+          const baseSize = getDirSize(d.depth || 0);
+          return Math.max(6, baseSize / 50);
+        })
+        .attr('class', 'dir-rect')
+        .style('fill', d => getDirBoxColor(d.path))
+        .style('stroke', '#fff')
+        .style('stroke-width', 6);
       
       // Add line count badge for files (at the top)
       const fileNodes = nodeElements.filter(d => d.type === 'file');
@@ -680,40 +1094,79 @@ export class FilesMapPanel {
         .attr('y', d => -d.size / 4 + 14) // Position at top of file box
         .text(d => \`\${d.lines}\`);
       
-      // Add labels
-      nodeElements.append('text')
-        .attr('class', d => d.type === 'directory' ? 'node-label directory' : 'node-label')
-        .attr('x', 0) // Center horizontally
+      // Add parent path label for directories (smaller, above)
+      nodeElements.filter(d => d.type === 'directory')
+        .append('text')
+        .attr('class', 'node-label directory-path')
+        .attr('x', 0)
         .attr('y', d => {
-          if (d.type === 'directory') {
-            return 0; // Vertically centered
-          }
-          // Center vertically in file box
-          return 0;
+          const fontSize = getDirFontSize(d.depth || 0);
+          return -fontSize * 0.65; // Position above the main label with more padding
         })
-        .attr('text-anchor', 'middle') // Center horizontally
-        .attr('dominant-baseline', 'middle') // Center vertically
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
         .style('font-size', d => {
-          if (d.type === 'directory') {
-            return '20px'; // Increased from 16px
-          }
+          const fontSize = getDirFontSize(d.depth || 0);
+          return \`\${Math.round(fontSize * 0.7)}px\`; // 70% of main font size (2x increase from 35%)
+        })
+        .style('fill', '#666')
+        .style('font-weight', 'normal')
+        .text(d => {
+          // Extract parent path (everything except the last segment)
+          const parts = d.label.split('/');
+          if (parts.length <= 1) return ''; // No parent path
+          return parts.slice(0, -1).join('/');
+        });
+      
+      // Add directory name label (larger, centered)
+      nodeElements.filter(d => d.type === 'directory')
+        .append('text')
+        .attr('class', 'node-label directory-name')
+        .attr('x', 0)
+        .attr('y', d => {
+          const fontSize = getDirFontSize(d.depth || 0);
+          const parts = d.label.split('/');
+          // If there's a parent path, shift down with more padding
+          return parts.length > 1 ? fontSize * 0.35 : 0;
+        })
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', d => {
+          const fontSizes = [72, 48, 28, 18];
+          const fontSize = fontSizes[Math.min(d.depth || 0, fontSizes.length - 1)];
+          return \`\${fontSize}px\`;
+        })
+        .style('fill', '#000')
+        .style('font-weight', '600')
+        .text(d => {
+          // Extract just the directory name (last segment)
+          const parts = d.label.split('/');
+          return parts[parts.length - 1];
+        });
+      
+      // Add labels for files
+      nodeElements.filter(d => d.type === 'file')
+        .append('text')
+        .attr('class', 'node-label')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', d => {
           // Scale font size based on box width (150-350px -> 10-16px)
           const minFont = 10;
           const maxFont = 16;
           const fontSize = minFont + ((d.size - 150) / (350 - 150)) * (maxFont - minFont);
           return \`\${Math.round(fontSize)}px\`;
         })
-        .style('fill', d => d.type === 'directory' ? '#000' : getTextColor(d.exportedSymbols))
-        .style('font-weight', d => d.type === 'directory' ? '600' : 'normal') // Bolder for directories
+        .attr('class', 'file-label')
+        .style('fill', d => getTextColor(d))
+        .style('font-weight', 'normal')
         .text(d => {
-          if (d.type === 'directory') {
-            return d.label;
-          }
           // Truncate filename based on box width with padding
-          // Account for font size scaling (10-16px range)
           const fontSize = 10 + ((d.size - 150) / (350 - 150)) * (16 - 10);
-          const avgCharWidth = fontSize * 0.6; // Average character width is ~60% of font size
-          const padding = 4; // Reduced padding on each side
+          const avgCharWidth = fontSize * 0.6;
+          const padding = 4;
           const availableWidth = d.size - (padding * 2);
           const maxChars = Math.floor(availableWidth / avgCharWidth);
           return d.label.length > maxChars ? d.label.substring(0, Math.max(1, maxChars - 3)) + '...' : d.label;
@@ -728,21 +1181,13 @@ export class FilesMapPanel {
           return \`M\${d.source.x},\${d.source.y}A\${dr},\${dr} 0 0,1 \${d.target.x},\${d.target.y}\`;
         });
         
-        nodeElements.each(function(d) {
-          const node = d3.select(this);
-          // Preserve scale if node is hovered
-          if (d.isHovered) {
-            node.attr('transform', \`translate(\${d.x},\${d.y}) scale(3)\`);
-          } else {
-            node.attr('transform', \`translate(\${d.x},\${d.y})\`);
-          }
-        });
+        nodeElements.attr('transform', d => \`translate(\${d.x},\${d.y})\`);
       });
     }
     
     // Drag handlers
     function dragStarted(event, d) {
-      if (!event.active) simulation.alphaTarget(0.3).restart();
+      // Don't restart simulation on drag
       d.fx = d.x;
       d.fy = d.y;
     }
@@ -753,9 +1198,8 @@ export class FilesMapPanel {
     }
     
     function dragEnded(event, d) {
-      if (!event.active) simulation.alphaTarget(0);
-      d.fx = null;
-      d.fy = null;
+      // Keep node fixed after drag
+      // Don't unfix position - keep it where user dragged it
     }
     
     // Handle messages from extension

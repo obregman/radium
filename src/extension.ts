@@ -167,8 +167,9 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize git diff tracker with indexer reference
     gitDiffTracker = new GitDiffTracker(store, workspaceRoot, indexer);
 
-    // Start indexing in background
-    startIndexing();
+    // Don't auto-index on startup - only index on manual re-index command
+    outputChannel.appendLine('Radium: Skipping automatic indexing on startup');
+    console.log('Radium: Skipping automatic indexing on startup');
 
     // Show welcome message
     // showWelcome();

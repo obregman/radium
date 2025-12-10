@@ -188,6 +188,10 @@ export class FilesMapPanel {
   public updateGraph() {
     const graphData = this.buildFilesGraph();
     
+    console.log(`[Files Map] Sending graph data: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
+    console.log(`[Files Map] File nodes: ${graphData.nodes.filter(n => n.type === 'file').length}`);
+    console.log(`[Files Map] Directory nodes: ${graphData.nodes.filter(n => n.type === 'directory').length}`);
+    
     this.panel.webview.postMessage({
       type: 'graph:update',
       data: graphData
@@ -972,6 +976,8 @@ export class FilesMapPanel {
       
       // Log export counts for debugging
       console.log('[Files Map Webview] Total nodes:', nodes.length);
+      console.log('[Files Map Webview] File nodes:', nodes.filter(n => n.type === 'file').length);
+      console.log('[Files Map Webview] Directory nodes:', nodes.filter(n => n.type === 'directory').length);
       console.log('[Files Map Webview] File nodes with exports:', 
         nodes.filter(n => n.type === 'file' && n.exportedSymbols > 0).length
       );
@@ -979,7 +985,7 @@ export class FilesMapPanel {
         nodes.filter(n => n.type === 'file').slice(0, 10).map(n => ({
           label: n.label,
           exports: n.exportedSymbols,
-          color: getFileColor(n.exportedSymbols)
+          color: getFileColor(n)
         }))
       );
       
@@ -992,17 +998,6 @@ export class FilesMapPanel {
       
       // Filter only containment edges for the force simulation
       const containmentEdges = edges.filter(e => e.type === 'contains');
-      
-      // Separate directory-to-directory edges from directory-to-file edges
-      const dirToDirEdges = containmentEdges.filter(e => 
-        e.source.type === 'directory' && e.target.type === 'directory' || 
-        (typeof e.source === 'string' && e.source.startsWith('dir:') && 
-         typeof e.target === 'string' && e.target.startsWith('dir:'))
-      );
-      
-      const dirToFileEdges = containmentEdges.filter(e => 
-        !dirToDirEdges.includes(e)
-      );
       
       // Function to get directory size based on depth
       function getDirSize(depth) {
@@ -1060,9 +1055,17 @@ export class FilesMapPanel {
             if (source.type === 'directory' && target.type === 'directory') {
               return 0.5;
             }
-            // Strong pull from directory to files
-            if (source.type === 'directory') {
-              return 1.2;
+            // Directory-to-file: only strong pull for direct containment
+            // Check if target file is directly in source directory
+            if (source.type === 'directory' && target.type === 'file') {
+              // Extract directory path from file path
+              const fileDir = target.path.substring(0, target.path.lastIndexOf('/'));
+              // Only apply strong force if this is the direct parent directory
+              if (source.path === fileDir) {
+                return 1.2;
+              }
+              // No force for non-direct parent directories
+              return 0;
             }
             return 0;
           })
@@ -1077,8 +1080,8 @@ export class FilesMapPanel {
               const repulsions = [-4000, -2500, -1500, -1000];
               return repulsions[Math.min(depth, repulsions.length - 1)];
             }
-            // Files repel strongly to avoid sticking together
-            return -800;
+            // Files have minimal repulsion - they mostly orbit their parent
+            return -100;
           })
         )
         .force('center', d3.forceCenter(width / 2, height / 2))
@@ -1147,8 +1150,8 @@ export class FilesMapPanel {
         .attr('class', d => d.type === 'directory' ? 'node-directory' : 'node-file')
         .call(d3.drag()
           .filter(function(event, d) {
-            // Allow drag for all nodes
-            return true;
+            // Only allow drag for directory nodes, not files
+            return d.type === 'directory';
           })
           .on('start', dragStarted)
           .on('drag', dragged)
@@ -1171,7 +1174,10 @@ export class FilesMapPanel {
         })
       
       // Add rectangles for files
-      const fileRects = nodeElements.filter(d => d.type === 'file')
+      const fileNodesForRects = nodeElements.filter(d => d.type === 'file');
+      console.log('[Files Map Webview] Creating file rectangles for', fileNodesForRects.size(), 'files');
+      
+      const fileRects = fileNodesForRects
         .append('rect')
         .attr('width', d => d.size)
         .attr('height', d => d.size / 2)
@@ -1181,6 +1187,8 @@ export class FilesMapPanel {
         .attr('ry', 4)
         .attr('class', 'file-rect')
         .style('fill', d => getFileColor(d));
+      
+      console.log('[Files Map Webview] File rectangles created:', fileRects.size());
       
       // Function to get directory size based on depth
       function getDirSize(depth) {

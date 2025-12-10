@@ -114,6 +114,12 @@ export class FilesMapPanel {
       case 'ready':
         this.updateGraph();
         break;
+      case 'layout:save':
+        await this.saveLayout(message.layout);
+        break;
+      case 'layout:load':
+        await this.loadLayout();
+        break;
     }
   }
 
@@ -135,6 +141,47 @@ export class FilesMapPanel {
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
       console.error('[Files Map] Error opening file:', error);
+    }
+  }
+
+  private async saveLayout(layout: { [dirPath: string]: { x: number; y: number } }) {
+    try {
+      const radiumDir = path.join(this.workspaceRoot, '.radium');
+      const layoutFile = path.join(radiumDir, 'file-map-layout.json');
+
+      // Ensure .radium directory exists
+      if (!fs.existsSync(radiumDir)) {
+        fs.mkdirSync(radiumDir, { recursive: true });
+      }
+
+      // Save layout to file
+      fs.writeFileSync(layoutFile, JSON.stringify(layout, null, 2), 'utf-8');
+      console.log('[Files Map] Layout saved to', layoutFile);
+    } catch (error) {
+      console.error('[Files Map] Error saving layout:', error);
+    }
+  }
+
+  private async loadLayout() {
+    try {
+      const layoutFile = path.join(this.workspaceRoot, '.radium', 'file-map-layout.json');
+
+      if (fs.existsSync(layoutFile)) {
+        const layoutData = fs.readFileSync(layoutFile, 'utf-8');
+        const layout = JSON.parse(layoutData);
+        
+        // Send layout to webview
+        this.panel.webview.postMessage({
+          type: 'layout:loaded',
+          layout
+        });
+        
+        console.log('[Files Map] Layout loaded from', layoutFile);
+      } else {
+        console.log('[Files Map] No saved layout found');
+      }
+    } catch (error) {
+      console.error('[Files Map] Error loading layout:', error);
     }
   }
 
@@ -560,6 +607,7 @@ export class FilesMapPanel {
     let zoom = null;
     let colorMode = 'directory'; // 'symbol' or 'directory'
     let searchQuery = '';
+    let savedLayout = {}; // Stores saved directory positions
     
     // 30 predefined distinct colors for directories
     const directoryColors = [
@@ -739,6 +787,7 @@ export class FilesMapPanel {
       }
       
       vscode.postMessage({ type: 'ready' });
+      vscode.postMessage({ type: 'layout:load' });
     }
     
     // Zoom to a specific node
@@ -912,6 +961,14 @@ export class FilesMapPanel {
       // Use all nodes and edges (no filtering)
       const nodes = data.nodes;
       const edges = data.edges;
+      
+      // Apply saved positions to directory nodes
+      nodes.forEach(node => {
+        if (node.type === 'directory' && savedLayout[node.path]) {
+          node.fx = savedLayout[node.path].x;
+          node.fy = savedLayout[node.path].y;
+        }
+      });
       
       // Log export counts for debugging
       console.log('[Files Map Webview] Total nodes:', nodes.length);
@@ -1089,6 +1146,10 @@ export class FilesMapPanel {
         .append('g')
         .attr('class', d => d.type === 'directory' ? 'node-directory' : 'node-file')
         .call(d3.drag()
+          .filter(function(event, d) {
+            // Allow drag for all nodes
+            return true;
+          })
           .on('start', dragStarted)
           .on('drag', dragged)
           .on('end', dragEnded)
@@ -1304,21 +1365,78 @@ export class FilesMapPanel {
       });
     }
     
+    // Save layout to backend
+    function saveLayout() {
+      if (!graphData) return;
+      
+      const layout = {};
+      
+      // Save positions of all directory nodes
+      graphData.nodes.forEach(node => {
+        if (node.type === 'directory' && node.fx !== undefined && node.fy !== undefined) {
+          layout[node.path] = { x: node.fx, y: node.fy };
+        }
+      });
+      
+      vscode.postMessage({
+        type: 'layout:save',
+        layout
+      });
+    }
+    
     // Drag handlers
     function dragStarted(event, d) {
-      // Don't restart simulation on drag
+      // Store starting position to detect actual drag vs click
+      d.dragStartX = event.x;
+      d.dragStartY = event.y;
+      d.wasDragged = false;
+      
+      // Fix position
       d.fx = d.x;
       d.fy = d.y;
+      
+      // Restart simulation with low alpha for smooth updates
+      if (simulation) {
+        simulation.alphaTarget(0.3).restart();
+      }
     }
     
     function dragged(event, d) {
-      d.fx = event.x;
-      d.fy = event.y;
+      // Calculate distance moved
+      const dx = event.x - d.dragStartX;
+      const dy = event.y - d.dragStartY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Deadzone: only start dragging if moved more than 10 pixels
+      const DEADZONE = 10;
+      
+      if (distance > DEADZONE) {
+        d.wasDragged = true;
+        
+        // Update position during drag (only after deadzone exceeded)
+        d.fx = event.x;
+        d.fy = event.y;
+      }
     }
     
     function dragEnded(event, d) {
+      // Stop simulation
+      if (simulation) {
+        simulation.alphaTarget(0);
+      }
+      
       // Keep node fixed after drag
       // Don't unfix position - keep it where user dragged it
+      
+      // Save layout if this was a directory and was actually dragged
+      if (d.type === 'directory' && d.wasDragged) {
+        saveLayout();
+      }
+      
+      // If it was a real drag, prevent click event
+      if (d.wasDragged) {
+        event.sourceEvent.stopPropagation();
+      }
     }
     
     // Handle messages from extension
@@ -1328,6 +1446,24 @@ export class FilesMapPanel {
       switch (message.type) {
         case 'graph:update':
           renderGraph(message.data);
+          break;
+        case 'layout:loaded':
+          savedLayout = message.layout || {};
+          console.log('[Files Map] Layout loaded with', Object.keys(savedLayout).length, 'directory positions');
+          // If graph is already rendered, apply the layout
+          if (graphData) {
+            graphData.nodes.forEach(node => {
+              if (node.type === 'directory' && savedLayout[node.path]) {
+                node.fx = savedLayout[node.path].x;
+                node.fy = savedLayout[node.path].y;
+                node.x = savedLayout[node.path].x;
+                node.y = savedLayout[node.path].y;
+              }
+            });
+            if (simulation) {
+              simulation.alpha(0.3).restart();
+            }
+          }
           break;
       }
     });

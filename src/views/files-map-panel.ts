@@ -1046,7 +1046,7 @@ export class FilesMapPanel {
               const distances = [250, 200, 150, 120];
               return distances[Math.min(parentDepth, distances.length - 1)];
             }
-            return 120; // Normal distance for directory-to-file
+            return 150; // Increased distance for directory-to-file to give more space
           })
           .strength(d => {
             const source = d.source;
@@ -1055,14 +1055,14 @@ export class FilesMapPanel {
             if (source.type === 'directory' && target.type === 'directory') {
               return 0.5;
             }
-            // Directory-to-file: only strong pull for direct containment
+            // Directory-to-file: only gentle pull for direct containment
             // Check if target file is directly in source directory
             if (source.type === 'directory' && target.type === 'file') {
               // Extract directory path from file path
               const fileDir = target.path.substring(0, target.path.lastIndexOf('/'));
-              // Only apply strong force if this is the direct parent directory
+              // Only apply force if this is the direct parent directory
               if (source.path === fileDir) {
-                return 1.2;
+                return 0.3; // Reduced from 1.2 to 0.3 for gentler orbit
               }
               // No force for non-direct parent directories
               return 0;
@@ -1080,8 +1080,8 @@ export class FilesMapPanel {
               const repulsions = [-4000, -2500, -1500, -1000];
               return repulsions[Math.min(depth, repulsions.length - 1)];
             }
-            // Files have minimal repulsion - they mostly orbit their parent
-            return -100;
+            // Files have stronger repulsion to spread out more evenly
+            return -300;
           })
         )
         .force('center', d3.forceCenter(width / 2, height / 2))

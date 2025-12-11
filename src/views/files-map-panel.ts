@@ -591,6 +591,35 @@ export class FilesMapPanel {
     .arrow {
       fill: currentColor;
     }
+    
+    #tooltip {
+      position: absolute;
+      background: rgba(30, 30, 30, 0.95);
+      color: #d4d4d4;
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #555;
+      font-size: 13px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 2000;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    }
+    
+    #tooltip.visible {
+      opacity: 1;
+    }
+    
+    .tooltip-filename {
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+    
+    .tooltip-lines {
+      font-size: 11px;
+      color: #999;
+    }
   </style>
 </head>
 <body>
@@ -598,6 +627,10 @@ export class FilesMapPanel {
     <input type="text" id="search-box" placeholder="Search files and directories..." />
     <button class="toggle-btn active" data-mode="directory">Color by Parent Directory</button>
     <button class="toggle-btn" data-mode="symbol">Color by Symbol Use</button>
+  </div>
+  <div id="tooltip">
+    <div class="tooltip-filename"></div>
+    <div class="tooltip-lines"></div>
   </div>
   <svg id="graph"></svg>
   
@@ -612,6 +645,9 @@ export class FilesMapPanel {
     let colorMode = 'directory'; // 'symbol' or 'directory'
     let searchQuery = '';
     let savedLayout = {}; // Stores saved directory positions
+    let tooltipTimeout = null;
+    let tooltip = null;
+    let isDragging = false;
     
     // 30 predefined distinct colors for directories
     const directoryColors = [
@@ -739,7 +775,7 @@ export class FilesMapPanel {
       
       // Add zoom behavior
       zoom = d3.zoom()
-        .scaleExtent([0.1, 4])
+        .scaleExtent([0.01, 4])
         .on('zoom', (event) => {
           g.attr('transform', event.transform);
         });
@@ -748,6 +784,9 @@ export class FilesMapPanel {
       
       // Create container group
       g = svg.append('g');
+      
+      // Get tooltip element
+      tooltip = document.getElementById('tooltip');
       
       // Setup search box
       const searchBox = document.getElementById('search-box');
@@ -792,6 +831,40 @@ export class FilesMapPanel {
       
       vscode.postMessage({ type: 'ready' });
       vscode.postMessage({ type: 'layout:load' });
+    }
+    
+    // Show tooltip
+    function showTooltip(event, node) {
+      if (!tooltip) return;
+      
+      const filenameEl = tooltip.querySelector('.tooltip-filename');
+      const linesEl = tooltip.querySelector('.tooltip-lines');
+      
+      if (node.type === 'file') {
+        filenameEl.textContent = node.label;
+        linesEl.textContent = node.lines + ' lines';
+      } else if (node.type === 'directory') {
+        filenameEl.textContent = node.path;
+        linesEl.textContent = '';
+      }
+      
+      updateTooltipPosition(event);
+      tooltip.classList.add('visible');
+    }
+    
+    // Update tooltip position
+    function updateTooltipPosition(event) {
+      if (!tooltip) return;
+      
+      const offset = 10;
+      tooltip.style.left = (event.pageX + offset) + 'px';
+      tooltip.style.top = (event.pageY + offset) + 'px';
+    }
+    
+    // Hide tooltip
+    function hideTooltip() {
+      if (!tooltip) return;
+      tooltip.classList.remove('visible');
     }
     
     // Zoom to a specific node
@@ -1032,58 +1105,127 @@ export class FilesMapPanel {
         return maxWidth + 80; // Add padding (40px on each side)
       }
       
+      // Create a map of directory -> files for radial positioning
+      const dirToFiles = new Map();
+      const dirNodeMap = new Map(); // Map dirPath -> directory node
+      
+      // First pass: map directory nodes
+      nodes.forEach(node => {
+        if (node.type === 'directory') {
+          dirNodeMap.set(node.path, node);
+        }
+      });
+      
+      // Second pass: group files by parent directory
+      nodes.forEach(node => {
+        if (node.type === 'file') {
+          const fileDir = node.path.substring(0, node.path.lastIndexOf('/'));
+          if (!dirToFiles.has(fileDir)) {
+            dirToFiles.set(fileDir, []);
+          }
+          dirToFiles.get(fileDir).push(node);
+        }
+      });
+      
+      // Initialize directory positions first (spread them out)
+      let dirIndex = 0;
+      const dirCount = dirNodeMap.size;
+      dirNodeMap.forEach((dirNode, dirPath) => {
+        if (dirNode.fx === undefined && dirNode.fy === undefined) {
+          // Spread directories in a grid pattern
+          const cols = Math.ceil(Math.sqrt(dirCount));
+          const row = Math.floor(dirIndex / cols);
+          const col = dirIndex % cols;
+          const spacing = 600;
+          dirNode.x = width / 2 + (col - cols / 2) * spacing;
+          dirNode.y = height / 2 + (row - Math.ceil(dirCount / cols) / 2) * spacing;
+        } else {
+          // Use fixed position
+          dirNode.x = dirNode.fx;
+          dirNode.y = dirNode.fy;
+        }
+        dirIndex++;
+      });
+      
+      // Assign initial angles and POSITIONS to files for radial distribution
+      const ORBIT_RADIUS = 250;
+      dirToFiles.forEach((files, dirPath) => {
+        const parentDir = dirNodeMap.get(dirPath);
+        const angleStep = (2 * Math.PI) / files.length;
+        
+        files.forEach((file, index) => {
+          file.targetAngle = index * angleStep;
+          
+          // Set initial position around parent directory
+          if (parentDir) {
+            file.x = parentDir.x + Math.cos(file.targetAngle) * ORBIT_RADIUS;
+            file.y = parentDir.y + Math.sin(file.targetAngle) * ORBIT_RADIUS;
+          } else {
+            // Fallback: random position
+            file.x = width / 2 + (Math.random() - 0.5) * 200;
+            file.y = height / 2 + (Math.random() - 0.5) * 200;
+          }
+        });
+      });
+      
       simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(containmentEdges)
+        .force('link', d3.forceLink(containmentEdges.filter(e => {
+            // Only use links between directories, not dir-to-file
+            const source = typeof e.source === 'object' ? e.source : nodes.find(n => n.id === e.source);
+            const target = typeof e.target === 'object' ? e.target : nodes.find(n => n.id === e.target);
+            return source && target && source.type === 'directory' && target.type === 'directory';
+          }))
           .id(d => d.id)
           .distance(d => {
-            // Directory-to-directory connections should be very close based on depth
-            const source = d.source;
-            const target = d.target;
-            if (source.type === 'directory' && target.type === 'directory') {
-              // Child directories stay very close to parent
-              // Distance based on parent's depth: depth 0->1 = 250px, 1->2 = 200px, 2->3 = 150px
-              const parentDepth = source.depth || 0;
-              const distances = [250, 200, 150, 120];
-              return distances[Math.min(parentDepth, distances.length - 1)];
-            }
-            return 150; // Increased distance for directory-to-file to give more space
-          })
-          .strength(d => {
-            const source = d.source;
-            const target = d.target;
             // Directory-to-directory connections
-            if (source.type === 'directory' && target.type === 'directory') {
-              return 0.5;
-            }
-            // Directory-to-file: only gentle pull for direct containment
-            // Check if target file is directly in source directory
-            if (source.type === 'directory' && target.type === 'file') {
-              // Extract directory path from file path
-              const fileDir = target.path.substring(0, target.path.lastIndexOf('/'));
-              // Only apply force if this is the direct parent directory
-              if (source.path === fileDir) {
-                return 0.3; // Reduced from 1.2 to 0.3 for gentler orbit
+            const source = d.source;
+            const parentDepth = source.depth || 0;
+            const distances = [250, 200, 150, 120];
+            return distances[Math.min(parentDepth, distances.length - 1)];
+          })
+          .strength(0.5)
+        )
+        .force('charge', alpha => {
+          // Custom charge force that doesn't apply between files and directories
+          nodes.forEach((nodeA, i) => {
+            nodes.slice(i + 1).forEach(nodeB => {
+              const dx = nodeB.x - nodeA.x;
+              const dy = nodeB.y - nodeA.y;
+              const distSq = dx * dx + dy * dy;
+              if (distSq === 0) return;
+              
+              const dist = Math.sqrt(distSq);
+              
+              // Determine repulsion strength based on node types
+              let strength = 0;
+              
+              // Directory to directory: strong repulsion
+              if (nodeA.type === 'directory' && nodeB.type === 'directory') {
+                const depthA = nodeA.depth || 0;
+                const repulsions = [4000, 2500, 1500, 1000];
+                strength = repulsions[Math.min(depthA, repulsions.length - 1)];
               }
-              // No force for non-direct parent directories
-              return 0;
-            }
-            return 0;
-          })
-        )
-        .force('charge', d3.forceManyBody()
-          .strength(d => {
-            if (d.type === 'directory') {
-              // Reduce repulsion between directories at different depths
-              // to allow parent-child to stay close
-              const depth = d.depth || 0;
-              // Root directories repel strongly, deeper ones less so
-              const repulsions = [-4000, -2500, -1500, -1000];
-              return repulsions[Math.min(depth, repulsions.length - 1)];
-            }
-            // Files have stronger repulsion to spread out more evenly
-            return -300;
-          })
-        )
+              // File to file: weak repulsion
+              else if (nodeA.type === 'file' && nodeB.type === 'file') {
+                strength = 50;
+              }
+              // File to directory: NO repulsion (this is the key fix)
+              else {
+                return; // Skip file-directory interactions
+              }
+              
+              // Apply repulsion force
+              const force = strength / distSq;
+              const fx = (dx / dist) * force;
+              const fy = (dy / dist) * force;
+              
+              nodeB.vx += fx;
+              nodeB.vy += fy;
+              nodeA.vx -= fx;
+              nodeA.vy -= fy;
+            });
+          });
+        })
         .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collision', d3.forceCollide()
           .radius(d => {
@@ -1103,8 +1245,51 @@ export class FilesMapPanel {
           })
           .strength(1.2)
         )
-        .force('x', d3.forceX(width / 2).strength(0.02))
-        .force('y', d3.forceY(height / 2).strength(0.02));
+        .force('radial', d3.forceRadial(
+          d => {
+            // Only apply to files
+            if (d.type !== 'file') return 0;
+            return 250; // Radius around parent directory
+          },
+          d => {
+            // Find parent directory position using map
+            if (d.type !== 'file') return width / 2;
+            const fileDir = d.path.substring(0, d.path.lastIndexOf('/'));
+            const parentDir = dirNodeMap.get(fileDir);
+            return parentDir ? parentDir.x : width / 2;
+          },
+          d => {
+            // Find parent directory position using map
+            if (d.type !== 'file') return height / 2;
+            const fileDir = d.path.substring(0, d.path.lastIndexOf('/'));
+            const parentDir = dirNodeMap.get(fileDir);
+            return parentDir ? parentDir.y : height / 2;
+          }
+        ).strength(d => d.type === 'file' ? 1.0 : 0))
+        .force('angle', alpha => {
+          // Custom force to spread files evenly around their parent directory
+          nodes.forEach(node => {
+            if (node.type !== 'file' || node.targetAngle === undefined) return;
+            
+            // Find parent directory using the map
+            const fileDir = node.path.substring(0, node.path.lastIndexOf('/'));
+            const parentDir = dirNodeMap.get(fileDir);
+            if (!parentDir) return;
+            
+            // Calculate target position based on angle
+            const radius = 250;
+            const targetX = parentDir.x + Math.cos(node.targetAngle) * radius;
+            const targetY = parentDir.y + Math.sin(node.targetAngle) * radius;
+            
+            // Apply strong force toward target angle position
+            const strength = 0.8 * alpha;
+            node.vx += (targetX - node.x) * strength;
+            node.vy += (targetY - node.y) * strength;
+          });
+        })
+        // Only center directories, not files
+        .force('x', d3.forceX(width / 2).strength(d => d.type === 'directory' ? 0.02 : 0))
+        .force('y', d3.forceY(height / 2).strength(d => d.type === 'directory' ? 0.02 : 0));
       
       // Create edges (only directory-to-file connections)
       const edgeGroup = g.append('g').attr('class', 'edges');
@@ -1171,6 +1356,37 @@ export class FilesMapPanel {
             event.stopPropagation();
             vscode.postMessage({ type: 'file:open', filePath: d.path });
           }
+        })
+        .on('mouseenter', function(event, d) {
+          // Don't show tooltip while dragging
+          if (isDragging) return;
+          
+          // Clear any existing timeout
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+          }
+          
+          // Set timeout to show tooltip after 200ms
+          tooltipTimeout = setTimeout(() => {
+            // Double-check we're not dragging before showing
+            if (!isDragging) {
+              showTooltip(event, d);
+            }
+          }, 200);
+        })
+        .on('mousemove', function(event, d) {
+          // Update tooltip position if visible
+          if (tooltip && tooltip.classList.contains('visible')) {
+            updateTooltipPosition(event);
+          }
+        })
+        .on('mouseleave', function(event, d) {
+          // Clear timeout and hide tooltip
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+            tooltipTimeout = null;
+          }
+          hideTooltip();
         })
       
       // Add rectangles for files
@@ -1399,6 +1615,16 @@ export class FilesMapPanel {
       d.dragStartY = event.y;
       d.wasDragged = false;
       
+      // Set dragging flag and hide tooltip
+      isDragging = true;
+      hideTooltip();
+      
+      // Clear any pending tooltip timeout
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+        tooltipTimeout = null;
+      }
+      
       // Fix position
       d.fx = d.x;
       d.fy = d.y;
@@ -1428,6 +1654,9 @@ export class FilesMapPanel {
     }
     
     function dragEnded(event, d) {
+      // Clear dragging flag
+      isDragging = false;
+      
       // Stop simulation
       if (simulation) {
         simulation.alphaTarget(0);

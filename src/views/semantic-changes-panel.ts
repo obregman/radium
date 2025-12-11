@@ -1562,7 +1562,7 @@ export class SemanticChangesPanel {
           }
         });
 
-        const totalHeight = maxBottom + 10; // Bottom padding (CSS already has 20px padding)
+        const totalHeight = maxBottom + 20; // Add full bottom padding (box-sizing: border-box includes padding in height)
         container.style.height = totalHeight + 'px';
         
         repositionAllFiles();

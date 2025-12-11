@@ -1169,6 +1169,7 @@ export class FilesMapPanel {
       });
       
       simulation = d3.forceSimulation(nodes)
+        .velocityDecay(0.6) // Higher decay to reduce vibration (default 0.4)
         .force('link', d3.forceLink(containmentEdges.filter(e => {
             // Only use links between directories, not dir-to-file
             const source = typeof e.source === 'object' ? e.source : nodes.find(n => n.id === e.source);
@@ -1205,9 +1206,9 @@ export class FilesMapPanel {
                 const repulsions = [4000, 2500, 1500, 1000];
                 strength = repulsions[Math.min(depthA, repulsions.length - 1)];
               }
-              // File to file: weak repulsion
+              // File to file: very weak repulsion to prevent vibration
               else if (nodeA.type === 'file' && nodeB.type === 'file') {
-                strength = 50;
+                strength = 20;
               }
               // File to directory: NO repulsion (this is the key fix)
               else {
@@ -1238,36 +1239,18 @@ export class FilesMapPanel {
               const height = baseSize * 0.3; // Height is 30% of width
               return Math.sqrt(width * width + height * height) / 2 + 50;
             }
-            // File collision based on its size with generous padding to prevent overlap
+            // File collision based on its size with smaller padding
             const boxWidth = d.size;
             const boxHeight = d.size / 2;
-            return Math.sqrt(boxWidth * boxWidth + boxHeight * boxHeight) / 2 + 30;
+            return Math.sqrt(boxWidth * boxWidth + boxHeight * boxHeight) / 2 + 10;
           })
-          .strength(1.2)
+          .strength(0.7) // Reduced strength to prevent vibration
+          .iterations(1) // Single iteration per tick
         )
-        .force('radial', d3.forceRadial(
-          d => {
-            // Only apply to files
-            if (d.type !== 'file') return 0;
-            return 250; // Radius around parent directory
-          },
-          d => {
-            // Find parent directory position using map
-            if (d.type !== 'file') return width / 2;
-            const fileDir = d.path.substring(0, d.path.lastIndexOf('/'));
-            const parentDir = dirNodeMap.get(fileDir);
-            return parentDir ? parentDir.x : width / 2;
-          },
-          d => {
-            // Find parent directory position using map
-            if (d.type !== 'file') return height / 2;
-            const fileDir = d.path.substring(0, d.path.lastIndexOf('/'));
-            const parentDir = dirNodeMap.get(fileDir);
-            return parentDir ? parentDir.y : height / 2;
-          }
-        ).strength(d => d.type === 'file' ? 1.0 : 0))
-        .force('angle', alpha => {
-          // Custom force to spread files evenly around their parent directory
+        .force('orbit', alpha => {
+          // Custom force to keep files orbiting around their parent directory
+          const ORBIT_RADIUS = 250;
+          
           nodes.forEach(node => {
             if (node.type !== 'file' || node.targetAngle === undefined) return;
             
@@ -1276,13 +1259,12 @@ export class FilesMapPanel {
             const parentDir = dirNodeMap.get(fileDir);
             if (!parentDir) return;
             
-            // Calculate target position based on angle
-            const radius = 250;
-            const targetX = parentDir.x + Math.cos(node.targetAngle) * radius;
-            const targetY = parentDir.y + Math.sin(node.targetAngle) * radius;
+            // Calculate target position based on angle around parent
+            const targetX = parentDir.x + Math.cos(node.targetAngle) * ORBIT_RADIUS;
+            const targetY = parentDir.y + Math.sin(node.targetAngle) * ORBIT_RADIUS;
             
-            // Apply strong force toward target angle position
-            const strength = 0.8 * alpha;
+            // Apply strong force toward target orbital position
+            const strength = 1.0 * alpha;
             node.vx += (targetX - node.x) * strength;
             node.vy += (targetY - node.y) * strength;
           });
@@ -1625,13 +1607,13 @@ export class FilesMapPanel {
         tooltipTimeout = null;
       }
       
-      // Fix position
+      // Fix position of dragged node
       d.fx = d.x;
       d.fy = d.y;
       
-      // Restart simulation with low alpha for smooth updates
+      // Restart simulation with very low alpha to prevent vibration
       if (simulation) {
-        simulation.alphaTarget(0.3).restart();
+        simulation.alphaTarget(0.1).restart();
       }
     }
     

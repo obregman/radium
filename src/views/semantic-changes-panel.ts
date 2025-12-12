@@ -1852,10 +1852,25 @@ export class SemanticChangesPanel {
       
       // Add delayed hover effect
       let hoverTimeout = null;
-      card.addEventListener('mouseenter', () => {
+      card.addEventListener('mouseenter', (e) => {
+        // Don't zoom if hovering over the diff icon
+        if (e.target.closest('.diff-icon')) {
+          return;
+        }
         hoverTimeout = setTimeout(() => {
           card.classList.add('popped');
         }, 800);
+      });
+      
+      card.addEventListener('mousemove', (e) => {
+        // Cancel zoom if mouse moves over the diff icon
+        if (e.target.closest('.diff-icon')) {
+          if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+          }
+          card.classList.remove('popped');
+        }
       });
       
       card.addEventListener('mouseleave', () => {

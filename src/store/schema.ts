@@ -70,6 +70,19 @@ export interface Metric {
   ts: number;
 }
 
+export interface FileSmell {
+  id?: number;
+  file_id: number;
+  score: number;
+  line_count: number;
+  function_count: number;
+  avg_function_length: number;
+  max_function_length: number;
+  max_nesting_depth: number;
+  import_count: number;
+  ts: number;
+}
+
 export class GraphStore {
   private db: DatabaseAdapter;
   private initialized = false;
@@ -172,6 +185,22 @@ export class GraphStore {
       );
 
       CREATE INDEX IF NOT EXISTS idx_metric_node ON metric(node_id);
+
+      CREATE TABLE IF NOT EXISTS file_smell (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL UNIQUE,
+        score REAL NOT NULL,
+        line_count INTEGER NOT NULL,
+        function_count INTEGER NOT NULL,
+        avg_function_length REAL NOT NULL,
+        max_function_length INTEGER NOT NULL,
+        max_nesting_depth INTEGER NOT NULL,
+        import_count INTEGER NOT NULL,
+        ts INTEGER NOT NULL,
+        FOREIGN KEY(file_id) REFERENCES file(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_file_smell_file ON file_smell(file_id);
     `);
   }
 
@@ -360,6 +389,54 @@ export class GraphStore {
     return stmt.all(nodeId) as Metric[];
   }
 
+  // FileSmell operations
+  upsertFileSmell(smell: FileSmell): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO file_smell (file_id, score, line_count, function_count, avg_function_length, max_function_length, max_nesting_depth, import_count, ts)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(file_id) DO UPDATE SET
+        score = excluded.score,
+        line_count = excluded.line_count,
+        function_count = excluded.function_count,
+        avg_function_length = excluded.avg_function_length,
+        max_function_length = excluded.max_function_length,
+        max_nesting_depth = excluded.max_nesting_depth,
+        import_count = excluded.import_count,
+        ts = excluded.ts
+    `);
+    const result = stmt.run(
+      smell.file_id,
+      smell.score,
+      smell.line_count,
+      smell.function_count,
+      smell.avg_function_length,
+      smell.max_function_length,
+      smell.max_nesting_depth,
+      smell.import_count,
+      smell.ts
+    );
+    return result.lastInsertRowid as number;
+  }
+
+  getFileSmellByFileId(fileId: number): FileSmell | undefined {
+    const stmt = this.db.prepare('SELECT * FROM file_smell WHERE file_id = ?');
+    return stmt.get(fileId) as FileSmell | undefined;
+  }
+
+  getFileSmellByPath(filePath: string): FileSmell | undefined {
+    const stmt = this.db.prepare(`
+      SELECT fs.* FROM file_smell fs
+      JOIN file f ON fs.file_id = f.id
+      WHERE f.path = ?
+    `);
+    return stmt.get(filePath) as FileSmell | undefined;
+  }
+
+  getAllFileSmells(): FileSmell[] {
+    const stmt = this.db.prepare('SELECT * FROM file_smell');
+    return stmt.all() as FileSmell[];
+  }
+
   // Utility
   close(): void {
     this.db.close();
@@ -385,6 +462,7 @@ export class GraphStore {
   clearIndex(): void {
     console.log('GraphStore: Clearing all index data...');
     this.db.exec(`
+      DELETE FROM file_smell;
       DELETE FROM edge;
       DELETE FROM node;
       DELETE FROM file;

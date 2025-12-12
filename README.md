@@ -50,18 +50,25 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 The Files Map provides a bird's-eye view of your entire codebase structure, showing files as rectangles sized by their line count and organized by directory:
 
 **Color Modes:**
-Toggle between two visualization modes using the button bar at the top:
-- **Color by Symbol Use** (default): Files colored by how many symbols they export
+Toggle between three visualization modes using the button bar at the top:
+- **Color by Parent Directory** (default): Each directory gets a unique color from 30 predefined colors
+  - Colors assigned based on hash of directory name (consistent across sessions)
+  - Directory boxes and their files share the same color
+  - Makes it easy to visually group files by their directory
+  - Same directory always gets the same color
+- **Color by Symbol Use**: Files colored by how many symbols they export
   - Grey: 0 exports (isolated files)
   - Yellow: 1-3 exports (lightly connected)
   - Yellow-green: 4-6 exports (moderately connected)
   - Light green: 7-9 exports (well connected)
   - Green: 9+ exports (highly connected, potential core modules)
-- **Color by Directory Level**: Each directory gets a unique color from 20 predefined colors
-  - Colors assigned based on hash of directory name (consistent across sessions)
-  - Directory boxes and their files share the same color
-  - Makes it easy to visually group files by their directory
-  - Same directory always gets the same color
+- **Color by Code Smell**: Files colored by their code smell score (0-100)
+  - Green (#52B788): Score 0-20 - Clean code
+  - Light Green (#98D8C8): Score 21-40 - Minor issues
+  - Yellow (#F7DC6F): Score 41-60 - Moderate concerns
+  - Orange (#FFA07A): Score 61-80 - Significant smells
+  - Red (#E63946): Score 81-100 - High smell density
+  - Score is calculated from: file length, function count, average/max function length, nesting depth, and import count
 
 **Visual Elements:**
 - **File Rectangles**: Size proportional to line count (150-350px width, 2:1 aspect ratio, 3000 lines = 350px)
@@ -95,6 +102,7 @@ Toggle between two visualization modes using the button bar at the top:
 - **Click to open**: Click on file boxes to open them in the editor
 - **Drag to move**: Drag any node to reposition it manually
 - **Pan and zoom**: Use mouse drag and scroll wheel to navigate
+- **Smart zoom**: When zooming out (scale < 1), directory boxes and font sizes automatically increase to maintain readability
 
 **Use Cases:**
 - Understand project structure at a glance
@@ -102,6 +110,7 @@ Toggle between two visualization modes using the button bar at the top:
 - Find isolated or orphaned files (grey) that might need better integration
 - Compare relative file sizes across the project
 - Visualize directory organization and file distribution
+- Identify files with code smells that may need refactoring (use "Color by Code Smell" mode)
 
 To use: Run `Radium: Files Map` from the command palette.
 

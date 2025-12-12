@@ -5,6 +5,7 @@ import { watch, FSWatcher } from 'chokidar';
 import { GraphStore, Node, Edge, FileRecord } from '../store/schema';
 import { CodeParser, ParseResult } from './parser';
 import { RadiumIgnore } from '../config/radium-ignore';
+import { getCodeSmellAnalyzer } from '../analysis/code-smell-analyzer';
 
 export class Indexer {
   private store: GraphStore;
@@ -328,6 +329,27 @@ export class Indexer {
         size: stats.size,
         ts: now
       });
+
+      // Analyze code smells
+      try {
+        const code = await fs.promises.readFile(filePath, 'utf-8');
+        const smellAnalyzer = getCodeSmellAnalyzer();
+        const smellMetrics = smellAnalyzer.analyze(code, result);
+        
+        this.store.upsertFileSmell({
+          file_id: fileId,
+          score: smellMetrics.score,
+          line_count: smellMetrics.lineCount,
+          function_count: smellMetrics.functionCount,
+          avg_function_length: smellMetrics.avgFunctionLength,
+          max_function_length: smellMetrics.maxFunctionLength,
+          max_nesting_depth: smellMetrics.maxNestingDepth,
+          import_count: smellMetrics.importCount,
+          ts: now
+        });
+      } catch (smellError) {
+        console.warn(`INDEXER: Failed to analyze code smells for ${relativePath}:`, smellError);
+      }
 
       // Delete old nodes for this file
       this.store.deleteNodesByPath(relativePath);

@@ -1,0 +1,218 @@
+import Parser from 'tree-sitter';
+import { ParseResult, ParsedSymbol } from '../indexer/parsers/base-parser';
+
+/**
+ * Code smell metrics for a single file
+ */
+export interface CodeSmellMetrics {
+  score: number;
+  lineCount: number;
+  functionCount: number;
+  avgFunctionLength: number;
+  maxFunctionLength: number;
+  maxNestingDepth: number;
+  importCount: number;
+}
+
+/**
+ * Thresholds for code smell scoring
+ * Each metric has a min (no penalty) and max (full penalty) threshold
+ */
+interface MetricThresholds {
+  min: number;
+  max: number;
+  weight: number;
+}
+
+const THRESHOLDS: Record<string, MetricThresholds> = {
+  lineCount: { min: 300, max: 1000, weight: 0.20 },
+  functionCount: { min: 10, max: 30, weight: 0.15 },
+  avgFunctionLength: { min: 30, max: 100, weight: 0.20 },
+  maxFunctionLength: { min: 50, max: 200, weight: 0.15 },
+  maxNestingDepth: { min: 4, max: 8, weight: 0.15 },
+  importCount: { min: 10, max: 30, weight: 0.15 }
+};
+
+/**
+ * Analyzes code for various code smell indicators
+ */
+export class CodeSmellAnalyzer {
+  /**
+   * Analyze a file and compute code smell metrics
+   * Works with data from the parser result plus raw code
+   */
+  analyze(code: string, parseResult: ParseResult, tree?: Parser.Tree): CodeSmellMetrics {
+    const lines = code.split('\n');
+    const lineCount = lines.length;
+    
+    // Extract function-related symbols
+    const functionSymbols = parseResult.symbols.filter(s => 
+      s.kind === 'function' || s.kind === 'method' || s.kind === 'constructor'
+    );
+    const functionCount = functionSymbols.length;
+    
+    // Calculate function lengths
+    const functionLengths = functionSymbols.map(s => {
+      const startLine = this.getLineNumber(code, s.range.start);
+      const endLine = this.getLineNumber(code, s.range.end);
+      return endLine - startLine + 1;
+    });
+    
+    const avgFunctionLength = functionLengths.length > 0 
+      ? functionLengths.reduce((a, b) => a + b, 0) / functionLengths.length 
+      : 0;
+    
+    const maxFunctionLength = functionLengths.length > 0 
+      ? Math.max(...functionLengths) 
+      : 0;
+    
+    // Calculate max nesting depth from AST if available, otherwise estimate from code
+    const maxNestingDepth = tree 
+      ? this.calculateNestingDepthFromTree(tree.rootNode)
+      : this.estimateNestingDepthFromCode(code);
+    
+    // Count imports
+    const importCount = parseResult.imports.length;
+    
+    // Calculate composite score
+    const score = this.calculateScore({
+      lineCount,
+      functionCount,
+      avgFunctionLength,
+      maxFunctionLength,
+      maxNestingDepth,
+      importCount
+    });
+    
+    return {
+      score,
+      lineCount,
+      functionCount,
+      avgFunctionLength,
+      maxFunctionLength,
+      maxNestingDepth,
+      importCount
+    };
+  }
+
+  /**
+   * Calculate composite smell score (0-100)
+   */
+  private calculateScore(metrics: Omit<CodeSmellMetrics, 'score'>): number {
+    let totalScore = 0;
+    
+    for (const [key, thresholds] of Object.entries(THRESHOLDS)) {
+      const value = metrics[key as keyof typeof metrics];
+      const metricScore = this.calculateMetricScore(value, thresholds);
+      totalScore += metricScore * thresholds.weight;
+    }
+    
+    // Convert to 0-100 scale
+    return Math.round(totalScore * 100);
+  }
+
+  /**
+   * Calculate score for a single metric (0-1)
+   */
+  private calculateMetricScore(value: number, thresholds: MetricThresholds): number {
+    if (value <= thresholds.min) {
+      return 0;
+    }
+    if (value >= thresholds.max) {
+      return 1;
+    }
+    // Linear interpolation between min and max
+    return (value - thresholds.min) / (thresholds.max - thresholds.min);
+  }
+
+  /**
+   * Get line number for a character position
+   */
+  private getLineNumber(code: string, charIndex: number): number {
+    const substring = code.substring(0, charIndex);
+    return substring.split('\n').length;
+  }
+
+  /**
+   * Calculate max nesting depth by traversing the AST
+   */
+  private calculateNestingDepthFromTree(node: Parser.SyntaxNode, currentDepth: number = 0): number {
+    const nestingTypes = new Set([
+      // Control flow
+      'if_statement', 'else_clause',
+      'for_statement', 'for_in_statement', 'for_of_statement',
+      'while_statement', 'do_statement',
+      'switch_statement', 'case_clause',
+      'try_statement', 'catch_clause',
+      // Functions
+      'function_declaration', 'function_expression', 'arrow_function',
+      'method_definition', 'method_declaration',
+      // Classes
+      'class_declaration', 'class_definition',
+      // Python specific
+      'with_statement', 'except_clause',
+      // C# specific
+      'foreach_statement', 'using_statement', 'lock_statement',
+      // Go specific
+      'select_statement', 'type_switch_statement',
+      // Blocks and scopes
+      'block', 'statement_block', 'compound_statement'
+    ]);
+    
+    let maxDepth = currentDepth;
+    const isNestingNode = nestingTypes.has(node.type);
+    const newDepth = isNestingNode ? currentDepth + 1 : currentDepth;
+    
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) {
+        const childDepth = this.calculateNestingDepthFromTree(child, newDepth);
+        maxDepth = Math.max(maxDepth, childDepth);
+      }
+    }
+    
+    return maxDepth;
+  }
+
+  /**
+   * Estimate nesting depth from code when AST is not available
+   * Uses indentation-based heuristics
+   */
+  private estimateNestingDepthFromCode(code: string): number {
+    const lines = code.split('\n');
+    let maxDepth = 0;
+    let currentDepth = 0;
+    
+    // Simple brace/indent counting
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('*')) {
+        continue;
+      }
+      
+      // Count opening braces/keywords
+      const opens = (trimmed.match(/\{/g) || []).length;
+      const closes = (trimmed.match(/\}/g) || []).length;
+      
+      // Python/indentation-based languages: use leading spaces
+      const leadingSpaces = line.length - line.trimStart().length;
+      const indentLevel = Math.floor(leadingSpaces / 4); // Assume 4-space indent
+      
+      currentDepth += opens - closes;
+      maxDepth = Math.max(maxDepth, currentDepth, indentLevel);
+    }
+    
+    return maxDepth;
+  }
+}
+
+// Singleton instance for reuse
+let analyzerInstance: CodeSmellAnalyzer | null = null;
+
+export function getCodeSmellAnalyzer(): CodeSmellAnalyzer {
+  if (!analyzerInstance) {
+    analyzerInstance = new CodeSmellAnalyzer();
+  }
+  return analyzerInstance;
+}
+

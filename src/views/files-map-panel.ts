@@ -1,8 +1,16 @@
 import * as vscode from 'vscode';
-import { GraphStore, Node, Edge, FileRecord, EdgeKind } from '../store/schema';
+import { GraphStore, Node, Edge, FileRecord, EdgeKind, FileSmell } from '../store/schema';
 import * as path from 'path';
 import * as fs from 'fs';
 import { RadiumIgnore } from '../config/radium-ignore';
+
+interface SmellDetails {
+  functionCount: number;
+  avgFunctionLength: number;
+  maxFunctionLength: number;
+  maxNestingDepth: number;
+  importCount: number;
+}
 
 interface FileNode {
   id: string;
@@ -13,6 +21,8 @@ interface FileNode {
   lang: string;
   size: number;
   exportedSymbols: number;
+  smellScore: number;
+  smellDetails: SmellDetails | null;
 }
 
 interface DirectoryNode {
@@ -212,6 +222,25 @@ export class FilesMapPanel {
     
     const allNodes = this.store.getAllNodes();
     const allEdges = this.store.getAllEdges();
+    const allFileSmells = this.store.getAllFileSmells();
+    
+    // Build a map of file path to smell data (score and details)
+    const fileSmellMap = new Map<string, { score: number; details: SmellDetails }>();
+    for (const smell of allFileSmells) {
+      const file = files.find(f => f.id === smell.file_id);
+      if (file) {
+        fileSmellMap.set(file.path, {
+          score: smell.score,
+          details: {
+            functionCount: smell.function_count,
+            avgFunctionLength: smell.avg_function_length,
+            maxFunctionLength: smell.max_function_length,
+            maxNestingDepth: smell.max_nesting_depth,
+            importCount: smell.import_count
+          }
+        });
+      }
+    }
     
     // Track directories
     const directories = new Map<string, Set<string>>();
@@ -292,6 +321,11 @@ export class FilesMapPanel {
       // Get exported symbols count
       const exportedSymbols = fileExportedSymbols.get(file.path)?.size || 0;
       
+      // Get smell data
+      const smellData = fileSmellMap.get(file.path);
+      const smellScore = smellData?.score || 0;
+      const smellDetails = smellData?.details || null;
+      
       nodes.push({
         id: file.path,
         type: 'file',
@@ -300,7 +334,9 @@ export class FilesMapPanel {
         lines,
         lang: file.lang,
         size,
-        exportedSymbols
+        exportedSymbols,
+        smellScore,
+        smellDetails
       });
       
       // Track directory
@@ -620,6 +656,65 @@ export class FilesMapPanel {
       font-size: 11px;
       color: #999;
     }
+    
+    .smell-details-panel {
+      background: rgba(30, 30, 30, 0.95);
+      color: #d4d4d4;
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: 1px solid #555;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    
+    .smell-details-panel.visible {
+      opacity: 1;
+    }
+    
+    .smell-header {
+      font-weight: bold;
+      font-size: 14px;
+      border-right: 1px solid #555;
+      padding-right: 20px;
+    }
+    
+    .smell-score {
+      font-size: 24px;
+      font-weight: bold;
+    }
+    
+    .smell-score.clean { color: #52B788; }
+    .smell-score.minor { color: #98D8C8; }
+    .smell-score.moderate { color: #F7DC6F; }
+    .smell-score.significant { color: #FFA07A; }
+    .smell-score.high { color: #E63946; }
+    
+    .smell-metrics {
+      display: flex;
+      gap: 16px;
+    }
+    
+    .smell-metric {
+      text-align: center;
+    }
+    
+    .smell-metric-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #fff;
+    }
+    
+    .smell-metric-label {
+      font-size: 10px;
+      color: #888;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
@@ -627,6 +722,7 @@ export class FilesMapPanel {
     <input type="text" id="search-box" placeholder="Search files and directories..." />
     <button class="toggle-btn active" data-mode="directory">Color by Parent Directory</button>
     <button class="toggle-btn" data-mode="symbol">Color by Symbol Use</button>
+    <button class="toggle-btn" data-mode="smell">Color by Code Smell</button>
   </div>
   <div id="tooltip">
     <div class="tooltip-filename"></div>
@@ -642,12 +738,14 @@ export class FilesMapPanel {
     let svg = null;
     let g = null;
     let zoom = null;
-    let colorMode = 'directory'; // 'symbol' or 'directory'
+    let colorMode = 'directory'; // 'symbol', 'directory', or 'smell'
     let searchQuery = '';
     let savedLayout = {}; // Stores saved directory positions
     let tooltipTimeout = null;
     let tooltip = null;
     let isDragging = false;
+    let currentSmellDetailsNode = null; // Track which node has smell details shown
+    let updateDirectorySizes = null; // Function to update directory sizes on zoom (assigned in renderGraph)
     
     // 30 predefined distinct colors for directories
     const directoryColors = [
@@ -724,10 +822,22 @@ export class FilesMapPanel {
       return '#4caf50'; // green
     }
     
+    // Function to get color based on code smell score (0-100)
+    // Green (clean) -> Yellow (moderate) -> Red (high smells)
+    function getFileColorBySmell(smellScore) {
+      if (smellScore <= 20) return '#52B788'; // Green - Clean code
+      if (smellScore <= 40) return '#98D8C8'; // Light Green - Minor issues
+      if (smellScore <= 60) return '#F7DC6F'; // Yellow - Moderate concerns
+      if (smellScore <= 80) return '#FFA07A'; // Orange - Significant smells
+      return '#E63946'; // Red - High smell density
+    }
+    
     // Function to get color based on current mode
     function getFileColor(node) {
       if (colorMode === 'directory') {
         return getFileColorByDirectory(node.path);
+      } else if (colorMode === 'smell') {
+        return getFileColorBySmell(node.smellScore);
       } else {
         return getFileColorBySymbols(node.exportedSymbols);
       }
@@ -738,7 +848,7 @@ export class FilesMapPanel {
       if (colorMode === 'directory') {
         return getDirectoryColor(dirPath);
       } else {
-        return '#fff'; // White for symbol mode
+        return '#fff'; // White for symbol/smell mode
       }
     }
     
@@ -747,6 +857,12 @@ export class FilesMapPanel {
       if (colorMode === 'directory') {
         // For directory mode, use dark text on colored backgrounds
         return '#000';
+      } else if (colorMode === 'smell') {
+        // For smell mode, adjust based on background color
+        const smellScore = node.smellScore;
+        if (smellScore <= 40) return '#000'; // dark text for green/light green
+        if (smellScore <= 80) return '#333'; // dark gray text for yellow/orange
+        return '#fff'; // white text for red
       } else {
         // For symbol mode, adjust based on background color
         const exportedSymbols = node.exportedSymbols;
@@ -778,9 +894,23 @@ export class FilesMapPanel {
         .scaleExtent([0.01, 4])
         .on('zoom', (event) => {
           g.attr('transform', event.transform);
+          // Update directory sizes and fonts when zoom changes
+          if (updateDirectorySizes) {
+            updateDirectorySizes(event.transform.k);
+          }
+          // Update or hide smell details based on zoom level
+          updateSmellDetailsPosition();
         });
       
       svg.call(zoom);
+      
+      // Hide smell details when clicking on background
+      svg.on('click', (event) => {
+        // Only hide if clicking directly on the SVG (not a node)
+        if (event.target.tagName === 'svg') {
+          hideSmellDetails();
+        }
+      });
       
       // Create container group
       g = svg.append('g');
@@ -808,6 +938,14 @@ export class FilesMapPanel {
             
             // Update colors
             updateColors();
+            
+            // Hide smell details if switching away from smell mode
+            if (colorMode !== 'smell') {
+              hideSmellDetails();
+            } else {
+              // Check for centered file when switching to smell mode
+              checkAndShowCenteredFile();
+            }
           }
         });
       });
@@ -842,7 +980,17 @@ export class FilesMapPanel {
       
       if (node.type === 'file') {
         filenameEl.textContent = node.label;
-        linesEl.textContent = node.lines + ' lines';
+        let details = node.lines + ' lines';
+        if (colorMode === 'smell') {
+          const score = node.smellScore || 0;
+          let rating = 'Clean';
+          if (score > 80) rating = 'High';
+          else if (score > 60) rating = 'Significant';
+          else if (score > 40) rating = 'Moderate';
+          else if (score > 20) rating = 'Minor';
+          details += ' | Smell: ' + rating + ' (' + score + ')';
+        }
+        linesEl.textContent = details;
       } else if (node.type === 'directory') {
         filenameEl.textContent = node.path;
         linesEl.textContent = '';
@@ -867,6 +1015,180 @@ export class FilesMapPanel {
       tooltip.classList.remove('visible');
     }
     
+    // Show smell details panel under a file node
+    function showSmellDetails(node) {
+      if (node.type !== 'file') return;
+      
+      // Only show in smell mode
+      if (colorMode !== 'smell') return;
+      
+      // Remove any existing panel
+      hideSmellDetails();
+      
+      // Get current zoom scale
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      
+      // Hide if zoomed out too far
+      if (scale < 0.5) return;
+      
+      currentSmellDetailsNode = node;
+      
+      const score = node.smellScore || 0;
+      const details = node.smellDetails;
+      
+      // Create foreignObject to hold HTML content
+      const panelGroup = g.append('g')
+        .attr('class', 'smell-details-group')
+        .attr('transform', \`translate(\${node.x}, \${node.y + node.size / 4 + 20})\`);
+      
+      // Create the panel HTML
+      let metricsHTML = '';
+      if (details) {
+        metricsHTML = \`
+          <div class="smell-metric">
+            <div class="smell-metric-value">\${node.lines}</div>
+            <div class="smell-metric-label">Lines</div>
+          </div>
+          <div class="smell-metric">
+            <div class="smell-metric-value">\${details.functionCount}</div>
+            <div class="smell-metric-label">Functions</div>
+          </div>
+          <div class="smell-metric">
+            <div class="smell-metric-value">\${Math.round(details.avgFunctionLength)}</div>
+            <div class="smell-metric-label">Avg Func Len</div>
+          </div>
+          <div class="smell-metric">
+            <div class="smell-metric-value">\${details.maxFunctionLength}</div>
+            <div class="smell-metric-label">Max Func Len</div>
+          </div>
+          <div class="smell-metric">
+            <div class="smell-metric-value">\${details.maxNestingDepth}</div>
+            <div class="smell-metric-label">Max Nesting</div>
+          </div>
+          <div class="smell-metric">
+            <div class="smell-metric-value">\${details.importCount}</div>
+            <div class="smell-metric-label">Imports</div>
+          </div>
+        \`;
+      } else {
+        metricsHTML = \`
+          <div class="smell-metric">
+            <div class="smell-metric-value">\${node.lines}</div>
+            <div class="smell-metric-label">Lines</div>
+          </div>
+          <div class="smell-metric">
+            <div class="smell-metric-value">-</div>
+            <div class="smell-metric-label">No data</div>
+          </div>
+        \`;
+      }
+      
+      let scoreClass = 'clean';
+      if (score > 80) scoreClass = 'high';
+      else if (score > 60) scoreClass = 'significant';
+      else if (score > 40) scoreClass = 'moderate';
+      else if (score > 20) scoreClass = 'minor';
+      
+      const panelHTML = \`
+        <div class="smell-details-panel visible">
+          <div class="smell-header">
+            <div class="smell-filename">\${node.label}</div>
+            <div class="smell-score \${scoreClass}">\${score}</div>
+          </div>
+          <div class="smell-metrics">
+            \${metricsHTML}
+          </div>
+        </div>
+      \`;
+      
+      // Estimate panel width (adjust as needed)
+      const panelWidth = 600;
+      const panelHeight = 80;
+      
+      panelGroup.append('foreignObject')
+        .attr('x', -panelWidth / 2)
+        .attr('y', 0)
+        .attr('width', panelWidth)
+        .attr('height', panelHeight)
+        .html(panelHTML);
+    }
+    
+    // Hide smell details panel
+    function hideSmellDetails() {
+      d3.selectAll('.smell-details-group').remove();
+      currentSmellDetailsNode = null;
+    }
+    
+    // Update smell details position when simulation ticks or zoom changes
+    function updateSmellDetailsPosition() {
+      // Only show in smell mode
+      if (colorMode !== 'smell') {
+        hideSmellDetails();
+        return;
+      }
+      
+      // Always check for centered file on zoom/pan changes
+      checkAndShowCenteredFile();
+      
+      // Update position if we have a current node
+      if (currentSmellDetailsNode) {
+        const node = currentSmellDetailsNode;
+        d3.selectAll('.smell-details-group')
+          .attr('transform', \`translate(\${node.x}, \${node.y + node.size / 4 + 20})\`);
+      }
+    }
+    
+    // Check if a file is centered and show its smell details
+    function checkAndShowCenteredFile() {
+      if (!graphData || colorMode !== 'smell') return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      
+      // Only auto-show when zoomed in enough
+      if (scale < 1.0) {
+        hideSmellDetails();
+        return;
+      }
+      
+      // Calculate viewport center in graph coordinates
+      const centerX = (width / 2 - currentTransform.x) / scale;
+      const centerY = (height / 2 - currentTransform.y) / scale;
+      
+      // Find the file node closest to center
+      let closestNode = null;
+      let minDistance = Infinity;
+      
+      graphData.nodes.forEach(node => {
+        if (node.type !== 'file') return;
+        
+        const dx = node.x - centerX;
+        const dy = node.y - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Only consider nodes within a reasonable distance (within their own size)
+        if (distance < node.size && distance < minDistance) {
+          minDistance = distance;
+          closestNode = node;
+        }
+      });
+      
+      // If no file is centered, hide the panel
+      if (!closestNode) {
+        hideSmellDetails();
+        return;
+      }
+      
+      // If different file is now centered, switch to it
+      if (closestNode !== currentSmellDetailsNode) {
+        hideSmellDetails();
+        showSmellDetails(closestNode);
+      }
+    }
+    
     // Zoom to a specific node
     function zoomToNode(node) {
       if (!svg || !zoom) return;
@@ -888,6 +1210,7 @@ export class FilesMapPanel {
       svg.transition()
         .duration(750)
         .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+      // Note: smell details will be updated by the zoom event handler
     }
     
     // Check if a node matches the search query
@@ -1072,17 +1395,17 @@ export class FilesMapPanel {
       // Filter only containment edges for the force simulation
       const containmentEdges = edges.filter(e => e.type === 'contains');
       
-      // Function to get directory size based on depth
+      // Function to get directory size based on depth (base sizes, no zoom adjustment)
       function getDirSize(depth) {
         // Inverse relationship: depth 0 = largest, higher depth = smaller
-        // Base sizes: depth 0 = 600px, depth 1 = 450px, depth 2 = 320px, depth 3+ = 240px
-        const baseSizes = [600, 450, 320, 240];
+        // Base sizes: depth 0 = 400px, depth 1 = 300px, depth 2 = 220px, depth 3+ = 160px
+        const baseSizes = [400, 300, 220, 160];
         return baseSizes[Math.min(depth, baseSizes.length - 1)];
       }
       
-      // Function to get directory font size based on depth
+      // Function to get directory font size based on depth (base sizes, no zoom adjustment)
       function getDirFontSize(depth) {
-        const fontSizes = [72, 48, 28, 18];
+        const fontSizes = [48, 32, 20, 14];
         return fontSizes[Math.min(depth, fontSizes.length - 1)];
       }
       
@@ -1103,6 +1426,86 @@ export class FilesMapPanel {
         // Use the larger of the two, plus padding
         const maxWidth = Math.max(dirNameWidth, parentPathWidth);
         return maxWidth + 80; // Add padding (40px on each side)
+      }
+      
+      // Update directory and file sizes based on zoom level
+      // Assign to outer-scope variable so it can be called from zoom handler
+      updateDirectorySizes = function(zoomScale) {
+        // Only update if we have a valid scale
+        if (zoomScale === undefined) return;
+        
+        // Calculate GRADUAL scaling factor for directory sizes
+        // Use square root for smoother, more gradual scaling
+        // Cap at 2x max size
+        const MAX_DIR_SCALE = 2.0;
+        let dirSizeMultiplier = 1;
+        if (zoomScale < 1) {
+          // Gradual scaling: sqrt(1/scale) gives smoother growth
+          // At scale=0.5: sqrt(2) ≈ 1.41x
+          // At scale=0.25: sqrt(4) = 2x (capped)
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / zoomScale));
+        }
+        
+        // Update directory shapes
+        d3.selectAll('.dir-rect')
+          .attr('d', function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            
+            // Get base sizes (without zoom adjustment)
+            const baseSizes = [400, 300, 220, 160];
+            const baseSize = baseSizes[Math.min(node.depth || 0, baseSizes.length - 1)] * dirSizeMultiplier;
+            
+            const fontSizes = [48, 32, 20, 14];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            
+            // Calculate text width
+            const parts = node.label.split('/');
+            const dirName = parts[parts.length - 1];
+            const parentPath = parts.slice(0, -1).join('/');
+            const dirNameWidth = dirName.length * fontSize * 0.6;
+            const parentFontSize = fontSize * 0.7;
+            const parentPathWidth = parentPath.length * parentFontSize * 0.6;
+            const textWidth = Math.max(dirNameWidth, parentPathWidth) + 80;
+            
+            const width = Math.max(baseSize, textWidth);
+            const height = baseSize * 0.3;
+            
+            // Create hexagon path: rectangle with angled left and right sides
+            const indent = height * 0.4;
+            const halfWidth = width / 2;
+            const halfHeight = height / 2;
+            
+            return \`
+              M \${-halfWidth + indent},\${-halfHeight}
+              L \${halfWidth - indent},\${-halfHeight}
+              L \${halfWidth},0
+              L \${halfWidth - indent},\${halfHeight}
+              L \${-halfWidth + indent},\${halfHeight}
+              L \${-halfWidth},0
+              Z
+            \`;
+          });
+        
+        // Update directory name font sizes
+        d3.selectAll('.directory-name')
+          .style('font-size', function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            const fontSizes = [48, 32, 20, 14];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            return fontSize + 'px';
+          });
+        
+        // Update directory path font sizes
+        d3.selectAll('.directory-path')
+          .style('font-size', function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            const fontSizes = [48, 32, 20, 14];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            return (fontSize * 0.7) + 'px';
+          });
       }
       
       // Create a map of directory -> files for radial positioning
@@ -1388,17 +1791,7 @@ export class FilesMapPanel {
       
       console.log('[Files Map Webview] File rectangles created:', fileRects.size());
       
-      // Function to get directory size based on depth
-      function getDirSize(depth) {
-        const baseSizes = [600, 450, 320, 240];
-        return baseSizes[Math.min(depth, baseSizes.length - 1)];
-      }
-      
-      // Function to get directory font size based on depth
-      function getDirFontSize(depth) {
-        const fontSizes = [72, 48, 28, 18];
-        return fontSizes[Math.min(depth, fontSizes.length - 1)];
-      }
+      // Function to get directory size based on depth (duplicate removed - using above)
       
       // Function to calculate width needed for text
       function getTextWidth(text, fontSize) {
@@ -1487,7 +1880,7 @@ export class FilesMapPanel {
         .attr('x', 0)
         .attr('y', d => {
           const fontSize = getDirFontSize(d.depth || 0);
-          return -fontSize * 0.65; // Position above the main label with more padding
+          return -fontSize * 0.85; // Position above the main label with larger gap
         })
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
@@ -1512,8 +1905,8 @@ export class FilesMapPanel {
         .attr('y', d => {
           const fontSize = getDirFontSize(d.depth || 0);
           const parts = d.label.split('/');
-          // If there's a parent path, shift down with more padding
-          return parts.length > 1 ? fontSize * 0.35 : 0;
+          // If there's a parent path, shift down with larger gap
+          return parts.length > 1 ? fontSize * 0.55 : 0;
         })
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
@@ -1538,24 +1931,38 @@ export class FilesMapPanel {
         .attr('y', 0)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
-        .style('font-size', d => {
-          // Scale font size based on box width (150-350px -> 10-16px)
-          const minFont = 10;
-          const maxFont = 16;
-          const fontSize = minFont + ((d.size - 150) / (350 - 150)) * (maxFont - minFont);
-          return \`\${Math.round(fontSize)}px\`;
-        })
         .attr('class', 'file-label')
         .style('fill', d => getTextColor(d))
         .style('font-weight', 'normal')
-        .text(d => {
-          // Truncate filename based on box width with padding
-          const fontSize = 10 + ((d.size - 150) / (350 - 150)) * (16 - 10);
-          const avgCharWidth = fontSize * 0.6;
-          const padding = 4;
+        .text(d => d.label)
+        .each(function(d) {
+          // Dynamically adjust font size to fit the box width with padding
+          const textElement = this;
+          const padding = 8; // Small padding on left and right
           const availableWidth = d.size - (padding * 2);
-          const maxChars = Math.floor(availableWidth / avgCharWidth);
-          return d.label.length > maxChars ? d.label.substring(0, Math.max(1, maxChars - 3)) + '...' : d.label;
+          
+          let fontSize = 16; // Start with max font size
+          const minFontSize = 8;
+          
+          // Binary search for optimal font size
+          let low = minFontSize;
+          let high = fontSize;
+          
+          while (high - low > 0.5) {
+            fontSize = (low + high) / 2;
+            textElement.style.fontSize = fontSize + 'px';
+            const textWidth = textElement.getComputedTextLength();
+            
+            if (textWidth > availableWidth) {
+              high = fontSize;
+            } else {
+              low = fontSize;
+            }
+          }
+          
+          // Set final font size
+          fontSize = low;
+          textElement.style.fontSize = fontSize + 'px';
         });
       
       // Update positions on tick
@@ -1568,6 +1975,9 @@ export class FilesMapPanel {
         });
         
         nodeElements.attr('transform', d => \`translate(\${d.x},\${d.y})\`);
+        
+        // Update smell details position if shown
+        updateSmellDetailsPosition();
       });
     }
     

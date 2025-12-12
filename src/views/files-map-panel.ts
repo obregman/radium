@@ -1488,21 +1488,16 @@ export class FilesMapPanel {
       
       // Function to calculate width needed for text
       function getTextWidth(text, fontSize) {
-        // For directories, we need to account for both parent path and dir name
+        // For directories, we only show the directory name (last segment)
         const parts = text.split('/');
         const dirName = parts[parts.length - 1];
-        const parentPath = parts.slice(0, -1).join('/');
         
-        // Calculate width for directory name (main text)
-        const dirNameWidth = dirName.length * fontSize * 0.6;
+        // Calculate width for directory name
+        // Use 0.65 as character width ratio for better accuracy with bold text
+        const dirNameWidth = dirName.length * fontSize * 0.65;
         
-        // Calculate width for parent path (70% of main font size)
-        const parentFontSize = fontSize * 0.7;
-        const parentPathWidth = parentPath.length * parentFontSize * 0.6;
-        
-        // Use the larger of the two, plus padding
-        const maxWidth = Math.max(dirNameWidth, parentPathWidth);
-        return maxWidth + 80; // Add padding (40px on each side)
+        // Add padding (30px on each side for margin)
+        return dirNameWidth + 60;
       }
       
       // Update directory and file sizes based on zoom level
@@ -1533,7 +1528,7 @@ export class FilesMapPanel {
             const baseSizes = [400, 300, 220, 160];
             const baseSize = baseSizes[Math.min(node.depth || 0, baseSizes.length - 1)] * dirSizeMultiplier;
             
-            const fontSizes = [48, 32, 20, 14];
+            const fontSizes = [84, 60, 36, 22];
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             
             // Calculate text width
@@ -1857,27 +1852,6 @@ export class FilesMapPanel {
         .style('fill', d => getFileColor(d));
       
       console.log('[Files Map Webview] File rectangles created:', fileRects.size());
-      
-      // Function to get directory size based on depth (duplicate removed - using above)
-      
-      // Function to calculate width needed for text
-      function getTextWidth(text, fontSize) {
-        // For directories, we need to account for both parent path and dir name
-        const parts = text.split('/');
-        const dirName = parts[parts.length - 1];
-        const parentPath = parts.slice(0, -1).join('/');
-        
-        // Calculate width for directory name (main text)
-        const dirNameWidth = dirName.length * fontSize * 0.6;
-        
-        // Calculate width for parent path (70% of main font size)
-        const parentFontSize = fontSize * 0.7;
-        const parentPathWidth = parentPath.length * parentFontSize * 0.6;
-        
-        // Use the larger of the two, plus padding
-        const maxWidth = Math.max(dirNameWidth, parentPathWidth);
-        return maxWidth + 80; // Add padding (40px on each side)
-      }
 
       // Add hexagonal shapes for directories (rectangle with rhombus sides)
       const dirRects = nodeElements.filter(d => d.type === 'directory')

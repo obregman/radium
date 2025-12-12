@@ -130,6 +130,19 @@ export class FilesMapPanel {
       case 'layout:load':
         await this.loadLayout();
         break;
+      case 'file:copy':
+        await this.handleFileCopy(message.fileName);
+        break;
+    }
+  }
+
+  private async handleFileCopy(fileName: string) {
+    try {
+      await vscode.env.clipboard.writeText(fileName);
+      vscode.window.showInformationMessage(`Copied: ${fileName}`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to copy file name: ${fileName}`);
+      console.error('[Files Map] Error copying file name:', error);
     }
   }
 
@@ -624,6 +637,23 @@ export class FilesMapPanel {
       user-select: none;
     }
     
+    .copy-button {
+      opacity: 0;
+      transition: opacity 0.3s;
+      cursor: pointer;
+      pointer-events: none;
+    }
+    
+    .copy-button.visible {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .copy-button rect {
+      pointer-events: all;
+      cursor: pointer;
+    }
+    
     .arrow {
       fill: currentColor;
     }
@@ -745,6 +775,7 @@ export class FilesMapPanel {
     let tooltip = null;
     let isDragging = false;
     let currentSmellDetailsNode = null; // Track which node has smell details shown
+    let currentCenteredNode = null; // Track which node is currently centered (for copy button)
     let updateDirectorySizes = null; // Function to update directory sizes on zoom (assigned in renderGraph)
     
     // 30 predefined distinct colors for directories
@@ -898,8 +929,8 @@ export class FilesMapPanel {
           if (updateDirectorySizes) {
             updateDirectorySizes(event.transform.k);
           }
-          // Update or hide smell details based on zoom level
-          updateSmellDetailsPosition();
+          // Update copy button and smell details based on zoom level
+          updateCenteredElements();
         });
       
       svg.call(zoom);
@@ -978,7 +1009,10 @@ export class FilesMapPanel {
       const filenameEl = tooltip.querySelector('.tooltip-filename');
       const linesEl = tooltip.querySelector('.tooltip-lines');
       
-      if (node.type === 'file') {
+      if (node.type === 'copy-button') {
+        filenameEl.textContent = node.label;
+        linesEl.textContent = '';
+      } else if (node.type === 'file') {
         filenameEl.textContent = node.label;
         let details = node.lines + ' lines';
         if (colorMode === 'smell') {
@@ -1139,6 +1173,12 @@ export class FilesMapPanel {
       }
     }
     
+    // Update copy button and smell details on zoom/pan
+    function updateCenteredElements() {
+      updateCopyButtonVisibility();
+      updateSmellDetailsPosition();
+    }
+    
     // Check if a file is centered and show its smell details
     function checkAndShowCenteredFile() {
       if (!graphData || colorMode !== 'smell') return;
@@ -1186,6 +1226,64 @@ export class FilesMapPanel {
       if (closestNode !== currentSmellDetailsNode) {
         hideSmellDetails();
         showSmellDetails(closestNode);
+      }
+    }
+    
+    // Check if a file is centered and show copy button
+    function updateCopyButtonVisibility() {
+      if (!graphData) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      
+      // Only show when zoomed in enough
+      if (scale < 1.0) {
+        // Hide all copy buttons
+        d3.selectAll('.copy-button').classed('visible', false);
+        currentCenteredNode = null;
+        return;
+      }
+      
+      // Calculate viewport center in graph coordinates
+      const centerX = (width / 2 - currentTransform.x) / scale;
+      const centerY = (height / 2 - currentTransform.y) / scale;
+      
+      // Find the file node closest to center
+      let closestNode = null;
+      let minDistance = Infinity;
+      
+      graphData.nodes.forEach(node => {
+        if (node.type !== 'file') return;
+        
+        const dx = node.x - centerX;
+        const dy = node.y - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Only consider nodes within a reasonable distance (within their own size)
+        if (distance < node.size && distance < minDistance) {
+          minDistance = distance;
+          closestNode = node;
+        }
+      });
+      
+      // Update copy button visibility
+      if (closestNode !== currentCenteredNode) {
+        // Hide all copy buttons first
+        d3.selectAll('.copy-button').classed('visible', false);
+        
+        // Show copy button for centered node
+        if (closestNode) {
+          d3.selectAll('.copy-button')
+            .filter(function() {
+              const node = d3.select(this.parentNode).datum();
+              return node === closestNode;
+            })
+            .classed('visible', true);
+        }
+        
+        currentCenteredNode = closestNode;
       }
     }
     
@@ -1487,7 +1585,7 @@ export class FilesMapPanel {
             \`;
           });
         
-        // Update directory name font sizes
+        // Update directory name font sizes and position
         d3.selectAll('.directory-name')
           .style('font-size', function() {
             const node = d3.select(this.parentNode).datum();
@@ -1495,9 +1593,24 @@ export class FilesMapPanel {
             const fontSizes = [48, 32, 20, 14];
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             return fontSize + 'px';
+          })
+          .attr('y', function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            
+            // When zoomed out (scale < 0.7), center the directory name
+            if (zoomScale < 0.7) {
+              return 0;
+            }
+            
+            // Otherwise, use normal positioning with parent path
+            const fontSizes = [48, 32, 20, 14];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            const parts = node.label.split('/');
+            return parts.length > 1 ? fontSize * 0.55 : 0;
           });
         
-        // Update directory path font sizes
+        // Update directory path font sizes and visibility
         d3.selectAll('.directory-path')
           .style('font-size', function() {
             const node = d3.select(this.parentNode).datum();
@@ -1505,6 +1618,10 @@ export class FilesMapPanel {
             const fontSizes = [48, 32, 20, 14];
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             return (fontSize * 0.7) + 'px';
+          })
+          .style('opacity', function() {
+            // Hide path label when zoomed out (scale < 0.7)
+            return zoomScale < 0.7 ? 0 : 1;
           });
       }
       
@@ -1873,6 +1990,57 @@ export class FilesMapPanel {
         .attr('y', d => -d.size / 4 + 14) // Position at top of file box
         .text(d => \`\${d.lines}\`);
       
+      // Add copy button group (icon only) at bottom right corner
+      const copyButtonGroup = fileNodes.append('g')
+        .attr('class', 'copy-button')
+        .attr('transform', d => {
+          // Position at bottom right corner of the file box with margin
+          const margin = 12;
+          const x = d.size / 2 - margin;
+          const y = d.size / 4 - margin;
+          return \`translate(\${x}, \${y})\`;
+        })
+        .on('click', function(event, d) {
+          event.stopPropagation(); // Prevent triggering zoom/open
+          vscode.postMessage({ type: 'file:copy', fileName: d.label });
+        })
+        .on('mouseenter', function(event, d) {
+          showTooltip(event, { type: 'copy-button', label: 'Copy file name' });
+        })
+        .on('mousemove', function(event, d) {
+          updateTooltipPosition(event);
+        })
+        .on('mouseleave', function(event, d) {
+          hideTooltip();
+        });
+      
+      // Add copy icon (two overlapping rectangles to represent copy/duplicate)
+      // Back rectangle
+      copyButtonGroup.append('rect')
+        .attr('class', 'copy-button-icon')
+        .attr('x', -4)
+        .attr('y', -3)
+        .attr('width', 7)
+        .attr('height', 8)
+        .attr('rx', 1)
+        .attr('ry', 1)
+        .style('fill', 'rgba(0, 0, 0, 0.6)')
+        .style('stroke', '#fff')
+        .style('stroke-width', 0.8);
+      
+      // Front rectangle
+      copyButtonGroup.append('rect')
+        .attr('class', 'copy-button-icon')
+        .attr('x', -1)
+        .attr('y', -6)
+        .attr('width', 7)
+        .attr('height', 8)
+        .attr('rx', 1)
+        .attr('ry', 1)
+        .style('fill', '#007acc')
+        .style('stroke', '#fff')
+        .style('stroke-width', 0.8);
+      
       // Add parent path label for directories (smaller, above)
       nodeElements.filter(d => d.type === 'directory')
         .append('text')
@@ -1976,8 +2144,8 @@ export class FilesMapPanel {
         
         nodeElements.attr('transform', d => \`translate(\${d.x},\${d.y})\`);
         
-        // Update smell details position if shown
-        updateSmellDetailsPosition();
+        // Update copy button and smell details position if shown
+        updateCenteredElements();
       });
     }
     

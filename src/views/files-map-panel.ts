@@ -131,18 +131,18 @@ export class FilesMapPanel {
         await this.loadLayout();
         break;
       case 'file:copy':
-        await this.handleFileCopy(message.fileName);
+        await this.handleFileCopy(message.filePath);
         break;
     }
   }
 
-  private async handleFileCopy(fileName: string) {
+  private async handleFileCopy(filePath: string) {
     try {
-      await vscode.env.clipboard.writeText(fileName);
-      vscode.window.showInformationMessage(`Copied: ${fileName}`);
+      await vscode.env.clipboard.writeText(filePath);
+      vscode.window.showInformationMessage(`Copied: ${filePath}`);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to copy file name: ${fileName}`);
-      console.error('[Files Map] Error copying file name:', error);
+      vscode.window.showErrorMessage(`Failed to copy file path: ${filePath}`);
+      console.error('[Files Map] Error copying file path:', error);
     }
   }
 
@@ -1373,18 +1373,6 @@ export class FilesMapPanel {
           return '#888'; // Gray text for non-matching
         });
       
-      // Update directory path labels
-      d3.selectAll('.directory-path')
-        .transition()
-        .duration(200)
-        .style('fill', function() {
-          const node = d3.select(this.parentNode).datum();
-          if (nodeMatchesSearch(node)) {
-            return '#000';
-          }
-          return '#888'; // Gray text for non-matching
-        });
-      
       // Update line count badges
       d3.selectAll('.node-sublabel')
         .transition()
@@ -1434,15 +1422,6 @@ export class FilesMapPanel {
       
       // Update directory text color for better contrast
       d3.selectAll('.directory-name')
-        .transition()
-        .duration(300)
-        .style('fill', function() {
-          const node = d3.select(this.parentNode).datum();
-          if (!nodeMatchesSearch(node)) return '#888';
-          return '#000';
-        });
-      
-      d3.selectAll('.directory-path')
         .transition()
         .duration(300)
         .style('fill', function() {
@@ -1503,7 +1482,7 @@ export class FilesMapPanel {
       
       // Function to get directory font size based on depth (base sizes, no zoom adjustment)
       function getDirFontSize(depth) {
-        const fontSizes = [48, 32, 20, 14];
+        const fontSizes = [64, 44, 28, 18];
         return fontSizes[Math.min(depth, fontSizes.length - 1)];
       }
       
@@ -1585,43 +1564,14 @@ export class FilesMapPanel {
             \`;
           });
         
-        // Update directory name font sizes and position
+        // Update directory name font sizes (always centered)
         d3.selectAll('.directory-name')
           .style('font-size', function() {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'directory') return null;
-            const fontSizes = [48, 32, 20, 14];
+            const fontSizes = [64, 44, 28, 18];
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             return fontSize + 'px';
-          })
-          .attr('y', function() {
-            const node = d3.select(this.parentNode).datum();
-            if (!node || node.type !== 'directory') return null;
-            
-            // When zoomed out (scale < 0.7), center the directory name
-            if (zoomScale < 0.7) {
-              return 0;
-            }
-            
-            // Otherwise, use normal positioning with parent path
-            const fontSizes = [48, 32, 20, 14];
-            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
-            const parts = node.label.split('/');
-            return parts.length > 1 ? fontSize * 0.55 : 0;
-          });
-        
-        // Update directory path font sizes and visibility
-        d3.selectAll('.directory-path')
-          .style('font-size', function() {
-            const node = d3.select(this.parentNode).datum();
-            if (!node || node.type !== 'directory') return null;
-            const fontSizes = [48, 32, 20, 14];
-            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
-            return (fontSize * 0.7) + 'px';
-          })
-          .style('opacity', function() {
-            // Hide path label when zoomed out (scale < 0.7)
-            return zoomScale < 0.7 ? 0 : 1;
           });
       }
       
@@ -2002,10 +1952,10 @@ export class FilesMapPanel {
         })
         .on('click', function(event, d) {
           event.stopPropagation(); // Prevent triggering zoom/open
-          vscode.postMessage({ type: 'file:copy', fileName: d.label });
+          vscode.postMessage({ type: 'file:copy', filePath: d.path });
         })
         .on('mouseenter', function(event, d) {
-          showTooltip(event, { type: 'copy-button', label: 'Copy file name' });
+          showTooltip(event, { type: 'copy-button', label: 'Copy file path' });
         })
         .on('mousemove', function(event, d) {
           updateTooltipPosition(event);
@@ -2041,45 +1991,16 @@ export class FilesMapPanel {
         .style('stroke', '#fff')
         .style('stroke-width', 0.8);
       
-      // Add parent path label for directories (smaller, above)
-      nodeElements.filter(d => d.type === 'directory')
-        .append('text')
-        .attr('class', 'node-label directory-path')
-        .attr('x', 0)
-        .attr('y', d => {
-          const fontSize = getDirFontSize(d.depth || 0);
-          return -fontSize * 0.85; // Position above the main label with larger gap
-        })
-        .attr('text-anchor', 'middle')
-        .attr('dominant-baseline', 'middle')
-        .style('font-size', d => {
-          const fontSize = getDirFontSize(d.depth || 0);
-          return \`\${Math.round(fontSize * 0.7)}px\`; // 70% of main font size (2x increase from 35%)
-        })
-        .style('fill', '#000')
-        .style('font-weight', 'normal')
-        .text(d => {
-          // Extract parent path (everything except the last segment)
-          const parts = d.label.split('/');
-          if (parts.length <= 1) return ''; // No parent path
-          return parts.slice(0, -1).join('/');
-        });
-      
-      // Add directory name label (larger, centered)
+      // Add directory name label (centered)
       nodeElements.filter(d => d.type === 'directory')
         .append('text')
         .attr('class', 'node-label directory-name')
         .attr('x', 0)
-        .attr('y', d => {
-          const fontSize = getDirFontSize(d.depth || 0);
-          const parts = d.label.split('/');
-          // If there's a parent path, shift down with larger gap
-          return parts.length > 1 ? fontSize * 0.55 : 0;
-        })
+        .attr('y', 0)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
         .style('font-size', d => {
-          const fontSizes = [72, 48, 28, 18];
+          const fontSizes = [84, 60, 36, 22];
           const fontSize = fontSizes[Math.min(d.depth || 0, fontSizes.length - 1)];
           return \`\${fontSize}px\`;
         })

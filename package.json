@@ -2,7 +2,7 @@
   "name": "radium",
   "displayName": "Radium - Vibe Coding Visualizer",
   "description": "A living, zoomable map of your codebase that visualizes everything the LLM touches",
-  "version": "0.133.0",
+  "version": "0.134.0",
   "publisher": "radium",
   "repository": {
     "type": "git",

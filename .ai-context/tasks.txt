@@ -1,4 +1,6 @@
 -- not started        >> in progress         $$ completedw
 
 
--- 
+-- implement code smell score for files, add the coloring option in the toolbar.
+support all currently supported languages
+

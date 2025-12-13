@@ -1493,11 +1493,17 @@ export class FilesMapPanel {
         const dirName = parts[parts.length - 1];
         
         // Calculate width for directory name
-        // Use 0.65 as character width ratio for better accuracy with bold text
-        const dirNameWidth = dirName.length * fontSize * 0.65;
+        // Use 0.5 as character width ratio for bold text (tighter fit)
+        const dirNameWidth = dirName.length * fontSize * 0.5;
         
         // Add padding (30px on each side for margin)
-        return dirNameWidth + 60;
+        const calculatedWidth = dirNameWidth + 60;
+        
+        // Set minimum width based on depth
+        const minWidths = [400, 250, 180, 140];
+        const minWidth = minWidths[Math.min(parts.length - 1, minWidths.length - 1)];
+        
+        return Math.max(calculatedWidth, minWidth);
       }
       
       // Update directory and file sizes based on zoom level
@@ -1524,24 +1530,21 @@ export class FilesMapPanel {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'directory') return null;
             
-            // Get base sizes (without zoom adjustment)
-            const baseSizes = [400, 300, 220, 160];
-            const baseSize = baseSizes[Math.min(node.depth || 0, baseSizes.length - 1)] * dirSizeMultiplier;
-            
             const fontSizes = [84, 60, 36, 22];
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             
             // Calculate text width
             const parts = node.label.split('/');
             const dirName = parts[parts.length - 1];
-            const parentPath = parts.slice(0, -1).join('/');
-            const dirNameWidth = dirName.length * fontSize * 0.6;
-            const parentFontSize = fontSize * 0.7;
-            const parentPathWidth = parentPath.length * parentFontSize * 0.6;
-            const textWidth = Math.max(dirNameWidth, parentPathWidth) + 80;
+            const dirNameWidth = dirName.length * fontSize * 0.5;
+            const calculatedWidth = dirNameWidth + 60; // 30px margin on each side
             
-            const width = Math.max(baseSize, textWidth);
-            const height = baseSize * 0.3;
+            // Set minimum width based on depth
+            const minWidths = [400, 250, 180, 140];
+            const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
+            
+            const width = Math.max(calculatedWidth, minWidth);
+            const height = fontSize * 1.8; // Height proportional to font size
             
             // Create hexagon path: rectangle with angled left and right sides
             const indent = height * 0.4;
@@ -1697,11 +1700,9 @@ export class FilesMapPanel {
           .radius(d => {
             if (d.type === 'directory') {
               // Directory collision based on actual width (accounting for text)
-              const baseSize = getDirSize(d.depth || 0);
               const fontSize = getDirFontSize(d.depth || 0);
-              const textWidth = getTextWidth(d.label, fontSize);
-              const width = Math.max(baseSize, textWidth);
-              const height = baseSize * 0.3; // Height is 30% of width
+              const width = getTextWidth(d.label, fontSize);
+              const height = fontSize * 1.8; // Height proportional to font size
               return Math.sqrt(width * width + height * height) / 2 + 50;
             }
             // File collision based on its size with smaller padding
@@ -1857,11 +1858,9 @@ export class FilesMapPanel {
       const dirRects = nodeElements.filter(d => d.type === 'directory')
         .append('path')
         .attr('d', d => {
-          const baseSize = getDirSize(d.depth || 0);
           const fontSize = getDirFontSize(d.depth || 0);
-          const textWidth = getTextWidth(d.label, fontSize);
-          const width = Math.max(baseSize, textWidth);
-          const height = baseSize * 0.3;
+          const width = getTextWidth(d.label, fontSize);
+          const height = fontSize * 1.8; // Height proportional to font size
           
           // Create hexagon path: rectangle with angled left and right sides
           const indent = height * 0.4; // How much the sides angle in
@@ -1939,7 +1938,7 @@ export class FilesMapPanel {
         });
       
       // Add copy icon (two overlapping rectangles to represent copy/duplicate)
-      // Back rectangle
+      // Back rectangle (outline only)
       copyButtonGroup.append('rect')
         .attr('class', 'copy-button-icon')
         .attr('x', -4)
@@ -1948,11 +1947,11 @@ export class FilesMapPanel {
         .attr('height', 8)
         .attr('rx', 1)
         .attr('ry', 1)
-        .style('fill', 'rgba(0, 0, 0, 0.6)')
+        .style('fill', 'none')
         .style('stroke', '#fff')
-        .style('stroke-width', 0.8);
+        .style('stroke-width', 1.2);
       
-      // Front rectangle
+      // Front rectangle (outline only)
       copyButtonGroup.append('rect')
         .attr('class', 'copy-button-icon')
         .attr('x', -1)
@@ -1961,9 +1960,9 @@ export class FilesMapPanel {
         .attr('height', 8)
         .attr('rx', 1)
         .attr('ry', 1)
-        .style('fill', '#007acc')
+        .style('fill', 'none')
         .style('stroke', '#fff')
-        .style('stroke-width', 0.8);
+        .style('stroke-width', 1.2);
       
       // Add directory name label (centered)
       nodeElements.filter(d => d.type === 'directory')

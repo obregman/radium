@@ -1731,7 +1731,7 @@ export class FilesMapPanel {
           dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / zoomScale));
         }
         
-        // Update pin indicator positions
+        // Update pin indicator positions and sizes
         d3.selectAll('.pin-indicator')
           .attr('transform', function() {
             const node = d3.select(this.parentNode).datum();
@@ -1757,6 +1757,19 @@ export class FilesMapPanel {
             const y = -height / 2 - 15; // 15px above the top edge
             
             return \`translate(\${x}, \${y})\`;
+          });
+        
+        // Update pin indicator circle radius to maintain relative size
+        d3.selectAll('.pin-indicator circle')
+          .attr('r', function() {
+            const node = d3.select(this.parentNode.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            
+            // Calculate radius as a percentage of the directory box height
+            const fontSizes = [84, 60, 36, 22];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            const height = fontSize * 1.8;
+            return height * 0.12; // 12% of box height
           });
       }
       
@@ -2178,12 +2191,15 @@ export class FilesMapPanel {
         .attr('class', 'pin-indicator')
         .style('pointer-events', 'none'); // Prevent event bubbling to parent
       
-      // Add small filled circle as pin indicator
+      // Add small filled circle as pin indicator with radius relative to box size
       pinIndicatorGroup.append('circle')
-        .attr('r', 10)
+        .attr('r', d => {
+          // Calculate radius as a percentage of the directory box height
+          const fontSize = getDirFontSize(d.depth || 0);
+          const height = fontSize * 1.8;
+          return height * 0.12; // 12% of box height
+        })
         .style('fill', '#007acc')
-        .style('stroke', '#fff')
-        .style('stroke-width', 2)
         .style('cursor', 'pointer')
         .style('pointer-events', 'all') // Re-enable events on the circle itself
         .on('click', function(event, d) {

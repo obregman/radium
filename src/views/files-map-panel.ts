@@ -1512,13 +1512,22 @@ export class FilesMapPanel {
         // Only update if we have a valid scale
         if (zoomScale === undefined) return;
         
-        // Calculate GRADUAL scaling factor for directory sizes
-        // Use square root for smoother, more gradual scaling
-        // Cap at 2x max size
-        const MAX_DIR_SCALE = 2.0;
+        // Calculate INVERSE scaling factor for directory sizes
+        // When zooming IN (scale > 1), make boxes SMALLER
+        // When zooming OUT (scale < 1), make boxes LARGER
+        const MIN_DIR_SCALE = 0.4; // Minimum size when zoomed in (40% of base)
+        const MAX_DIR_SCALE = 2.0;  // Maximum size when zoomed out (200% of base)
+        
         let dirSizeMultiplier = 1;
-        if (zoomScale < 1) {
-          // Gradual scaling: sqrt(1/scale) gives smoother growth
+        
+        if (zoomScale > 1) {
+          // Zooming IN: scale down directories
+          // At scale=2: 1/sqrt(2) ≈ 0.71x
+          // At scale=4: 1/sqrt(4) = 0.5x
+          // At scale=6.25+: 0.4x (capped)
+          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(zoomScale));
+        } else if (zoomScale < 1) {
+          // Zooming OUT: scale up directories
           // At scale=0.5: sqrt(2) ≈ 1.41x
           // At scale=0.25: sqrt(4) = 2x (capped)
           dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / zoomScale));
@@ -1571,6 +1580,10 @@ export class FilesMapPanel {
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             return fontSize + 'px';
           });
+        
+        // Update directory border width (stroke-width)
+        d3.selectAll('.dir-rect')
+          .style('stroke-width', 6 * dirSizeMultiplier);
       }
       
       // Create a map of directory -> files for radial positioning

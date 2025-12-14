@@ -1539,33 +1539,40 @@ export class SemanticChangesPanel {
 
     function updateContainerHeight(container) {
       // Use requestAnimationFrame to ensure we measure after DOM updates
-      requestAnimationFrame(() => {
-        let maxBottom = 85; // Minimum height (header space)
-        
-        Array.from(container.children).forEach(child => {
-          // Skip absolutely positioned dropdown lists from height calculation
-          // as they render outside the container
-          if (child.classList.contains('previous-changes-list')) {
-            return;
-          }
+      // Return a promise so we can wait for the update to complete
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          let maxBottom = 85; // Minimum height (header space)
           
-          // Check if element is visible/rendered
-          // We include all children to handle absolute positioned elements correctly
-          if (child.offsetHeight > 0) {
-            // Get computed style to include margins
-            const style = window.getComputedStyle(child);
-            const marginBottom = parseInt(style.marginBottom) || 0;
-            const bottom = child.offsetTop + child.offsetHeight + marginBottom;
-            if (bottom > maxBottom) {
-              maxBottom = bottom;
+          Array.from(container.children).forEach(child => {
+            // Skip absolutely positioned dropdown lists from height calculation
+            // as they render outside the container
+            if (child.classList.contains('previous-changes-list')) {
+              return;
             }
-          }
-        });
+            
+            // Check if element is visible/rendered
+            // We include all children to handle absolute positioned elements correctly
+            if (child.offsetHeight > 0) {
+              // Get computed style to include margins
+              const style = window.getComputedStyle(child);
+              const marginBottom = parseInt(style.marginBottom) || 0;
+              const bottom = child.offsetTop + child.offsetHeight + marginBottom;
+              if (bottom > maxBottom) {
+                maxBottom = bottom;
+              }
+            }
+          });
 
-        const totalHeight = maxBottom + 20; // Add full bottom padding (box-sizing: border-box includes padding in height)
-        container.style.height = totalHeight + 'px';
-        
-        repositionAllFiles();
+          const totalHeight = maxBottom + 20; // Add full bottom padding (box-sizing: border-box includes padding in height)
+          container.style.height = totalHeight + 'px';
+          
+          // Wait for next frame to ensure height is applied before repositioning
+          requestAnimationFrame(() => {
+            repositionAllFiles();
+            resolve();
+          });
+        });
       });
     }
 
@@ -1806,6 +1813,7 @@ export class SemanticChangesPanel {
       }
 
       // Update container size based on actual content
+      // This will trigger repositioning of all files after height is calculated
       updateContainerHeight(group.container);
       
       // Update stats

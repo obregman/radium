@@ -46,9 +46,15 @@ export class CodeSmellAnalyzer {
     const lineCount = lines.length;
     
     // Extract function-related symbols
-    const functionSymbols = parseResult.symbols.filter(s => 
+    const allFunctionSymbols = parseResult.symbols.filter(s => 
       s.kind === 'function' || s.kind === 'method' || s.kind === 'constructor'
     );
+    
+    // Filter out special cases that shouldn't be counted as functions for code smell metrics
+    const filteredSymbols = this.filterNonFunctionSymbols(allFunctionSymbols, code);
+    
+    // Filter out nested functions (functions whose range is contained within another function's range)
+    const functionSymbols = this.filterNestedFunctions(filteredSymbols);
     const functionCount = functionSymbols.length;
     
     // Calculate function lengths
@@ -131,6 +137,78 @@ export class CodeSmellAnalyzer {
   private getLineNumber(code: string, charIndex: number): number {
     const substring = code.substring(0, charIndex);
     return substring.split('\n').length;
+  }
+
+  /**
+   * Filter out symbols that shouldn't be counted as functions for code smell metrics
+   * - Indexers (C# properties named 'this')
+   * - TypeScript/JavaScript getters and setters
+   * - Other special cases
+   */
+  private filterNonFunctionSymbols(functionSymbols: ParsedSymbol[], code: string): ParsedSymbol[] {
+    return functionSymbols.filter(s => {
+      // Exclude C# indexers (they're named 'this' and are properties, not functions)
+      if (s.name === 'this' && s.kind === 'function') {
+        return false;
+      }
+      
+      // Exclude TypeScript/JavaScript getters and setters
+      // Check the code around the function to see if it's a getter or setter
+      if (s.kind === 'function' || s.kind === 'method') {
+        // Look for 'get name' or 'set name' pattern before the function
+        // Check a reasonable window before the function start
+        const searchStart = Math.max(0, s.range.start - 100);
+        const searchEnd = Math.min(code.length, s.range.start + 50);
+        const context = code.substring(searchStart, searchEnd);
+        
+        // Match: (optional modifiers) get/set (whitespace) methodName
+        // The method name should appear after get/set
+        const getterPattern = new RegExp(`\\b(?:public|private|protected|static|readonly|\\s)*\\bget\\s+${s.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[\(:]`, 'i');
+        const setterPattern = new RegExp(`\\b(?:public|private|protected|static|readonly|\\s)*\\bset\\s+${s.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[\(:]`, 'i');
+        
+        if (getterPattern.test(context) || setterPattern.test(context)) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  }
+
+  /**
+   * Filter out nested functions (functions that are contained within other functions)
+   * Only top-level functions should be counted for code smell metrics
+   */
+  private filterNestedFunctions(functionSymbols: ParsedSymbol[]): ParsedSymbol[] {
+    if (functionSymbols.length === 0) {
+      return [];
+    }
+
+    // Sort by start position, then by end position (descending) to process outer functions first
+    const sorted = [...functionSymbols].sort((a, b) => {
+      if (a.range.start !== b.range.start) {
+        return a.range.start - b.range.start;
+      }
+      // If same start, prefer longer functions (outer functions)
+      return b.range.end - a.range.end;
+    });
+    
+    const topLevelFunctions: ParsedSymbol[] = [];
+
+    for (const func of sorted) {
+      // Check if this function is nested inside any already-processed function
+      // A function is nested if it's strictly contained within another function's range
+      const isNested = topLevelFunctions.some(parent => 
+        func.range.start > parent.range.start && 
+        func.range.end < parent.range.end
+      );
+
+      if (!isNested) {
+        topLevelFunctions.push(func);
+      }
+    }
+
+    return topLevelFunctions;
   }
 
   /**

@@ -328,9 +328,16 @@ export class CSharpParser extends BaseParser {
     }
     // Using directives (imports)
     else if (node.type === 'using_directive') {
-      const nameNode = node.childForFieldName('name');
-      if (nameNode) {
-        const source = code.slice(nameNode.startIndex, nameNode.endIndex);
+      // Using directives can have either an identifier or qualified_name as direct child
+      // (not a named field, so we need to find it manually)
+      let source = '';
+      for (const child of node.children) {
+        if (child.type === 'identifier' || child.type === 'qualified_name') {
+          source = code.slice(child.startIndex, child.endIndex);
+          break;
+        }
+      }
+      if (source) {
         imports.push({
           source,
           names: [source],

@@ -7,6 +7,14 @@ import { CodeParser, ParseResult } from './parser';
 import { RadiumIgnore } from '../config/radium-ignore';
 import { getCodeSmellAnalyzer } from '../analysis/code-smell-analyzer';
 
+// Stored parse results for deferred edge creation
+interface ParsedFileInfo {
+  relativePath: string;
+  lang: string;
+  result: ParseResult;
+  nodeMap: Map<string, number>;
+}
+
 export class Indexer {
   private store: GraphStore;
   private parser: CodeParser;
@@ -15,6 +23,8 @@ export class Indexer {
   private isIndexing = false;
   private workspaceRoot: string;
   private radiumIgnore: RadiumIgnore;
+  // Store parse results for deferred edge creation during batch indexing
+  private pendingEdgeCreation: ParsedFileInfo[] = [];
 
   constructor(store: GraphStore, workspaceRoot: string) {
     this.store = store;
@@ -130,9 +140,15 @@ export class Indexer {
 
   /**
    * Index specific files immediately (useful for indexing new files before they're needed)
+   * Uses two-pass approach to ensure cross-file edges are created correctly
    */
   public async indexFiles(filePaths: string[]): Promise<void> {
     console.log(`[Indexer] indexFiles called with ${filePaths.length} files:`, filePaths);
+    
+    // Clear pending edge creation for this batch
+    this.pendingEdgeCreation = [];
+    
+    // PASS 1: Parse files and create nodes
     for (const filePath of filePaths) {
       try {
         // Convert to absolute path if relative
@@ -140,14 +156,20 @@ export class Indexer {
           ? filePath 
           : path.join(this.workspaceRoot, filePath);
         
-        console.log(`[Indexer] Indexing file: ${filePath} -> ${absolutePath}`);
-        await this.indexFile(absolutePath);
-        console.log(`[Indexer] Successfully indexed: ${filePath}`);
+        console.log(`[Indexer] Pass 1 - Indexing file: ${filePath} -> ${absolutePath}`);
+        await this.indexFile(absolutePath, true); // deferEdges = true
+        console.log(`[Indexer] Successfully indexed nodes: ${filePath}`);
       } catch (error) {
         console.error(`[Indexer] Failed to index ${filePath}:`, error);
       }
     }
-    console.log(`[Indexer] Finished indexing ${filePaths.length} files`);
+    
+    // PASS 2: Create edges now that all nodes exist
+    console.log(`[Indexer] Pass 2 - Creating edges for ${this.pendingEdgeCreation.length} files...`);
+    this.createDeferredEdges();
+    this.store.save();
+    
+    console.log(`[Indexer] Finished indexing ${filePaths.length} files with edges`);
   }
 
   private async indexWorkspace(): Promise<void> {
@@ -160,7 +182,11 @@ export class Indexer {
       return;
     }
 
-    // Process files in batches to avoid memory issues
+    // Clear pending edge creation for fresh start
+    this.pendingEdgeCreation = [];
+
+    // PASS 1: Parse files and create nodes (defer edge creation)
+    console.log('INDEXER: Pass 1 - Parsing files and creating nodes...');
     const batchSize = 50;
     let processed = 0;
     
@@ -169,12 +195,12 @@ export class Indexer {
       
       for (const file of batch) {
         try {
-          await this.indexFile(file);
+          await this.indexFile(file, true); // deferEdges = true
           processed++;
           
           // Log progress every 10 files
           if (processed % 10 === 0) {
-            console.log(`INDEXER: Progress: ${processed}/${files.length} files indexed`);
+            console.log(`INDEXER: Pass 1 progress: ${processed}/${files.length} files`);
           }
         } catch (error) {
           console.error(`INDEXER: Failed to index ${file}:`, error);
@@ -188,7 +214,15 @@ export class Indexer {
       await new Promise(resolve => setTimeout(resolve, 10));
     }
 
+    console.log(`INDEXER: Pass 1 complete - processed ${processed}/${files.length} files`);
+
+    // PASS 2: Create edges now that all nodes exist
+    console.log(`INDEXER: Pass 2 - Creating edges for ${this.pendingEdgeCreation.length} files...`);
+    const edgeStats = this.createDeferredEdges();
+    this.store.save();
+    
     console.log(`INDEXER: Indexing complete - processed ${processed}/${files.length} files`);
+    console.log(`INDEXER: Edge creation stats:`, edgeStats);
   }
 
   private async findSourceFiles(): Promise<string[]> {
@@ -260,7 +294,12 @@ export class Indexer {
     return filteredFiles;
   }
 
-  private async indexFile(filePath: string): Promise<void> {
+  /**
+   * Index a single file
+   * @param filePath Absolute path to the file
+   * @param deferEdges If true, store parse results for deferred edge creation instead of creating edges immediately
+   */
+  private async indexFile(filePath: string, deferEdges: boolean = false): Promise<void> {
     try {
       // Normalize path to use forward slashes (cross-platform)
       const relativePath = path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
@@ -371,99 +410,20 @@ export class Indexer {
         nodeMap.set(symbol.fqname, nodeId);
       }
 
-      // Create edges for imports
-      for (const imp of result.imports) {
-        const importedPath = this.resolveImport(relativePath, imp.source, lang);
-        if (!importedPath) continue;
-
-        const importedNodes = this.store.getNodesByPath(importedPath);
-        for (const name of imp.names) {
-          const importedNode = importedNodes.find(n => n.name === name);
-          if (!importedNode) continue;
-
-          // Find the first node in this file (file-level import)
-          const firstNode = result.symbols[0];
-          if (!firstNode) continue;
-
-          const srcId = nodeMap.get(firstNode.fqname);
-          if (!srcId) continue;
-
-          this.store.insertEdge({
-            kind: 'imports',
-            src: srcId,
-            dst: importedNode.id!,
-            weight: 1.0,
-            ts: now
-          });
-        }
+      // If deferring edges, store parse info for later edge creation
+      if (deferEdges) {
+        this.pendingEdgeCreation.push({
+          relativePath,
+          lang,
+          result,
+          nodeMap
+        });
+        this.store.commit();
+        return;
       }
 
-      // Create edges for calls (simplified - match by name)
-      for (const call of result.calls) {
-        const callerSymbol = result.symbols.find(
-          s => s.range.start <= call.range.start && s.range.end >= call.range.end
-        );
-        if (!callerSymbol) continue;
-
-        const callerId = nodeMap.get(callerSymbol.fqname);
-        if (!callerId) continue;
-
-        // Try to find callee in all nodes
-        const allNodes = this.store.getAllNodes();
-        
-        // For calls like "ClassName.staticMethod", create edges to both:
-        // 1. The class itself (ClassName)
-        // 2. The method (staticMethod)
-        const lastDot = call.callee.lastIndexOf('.');
-        if (lastDot !== -1) {
-          // Static method call or property access
-          const className = call.callee.substring(0, lastDot);
-          const methodName = call.callee.substring(lastDot + 1);
-          
-          // Create edge to the class
-          const classNode = allNodes.find(n => 
-            n.name === className || n.fqname.endsWith(`.${className}`)
-          );
-          if (classNode) {
-            this.store.insertEdge({
-              kind: 'calls',
-              src: callerId,
-              dst: classNode.id!,
-              weight: 1.0,
-              ts: now
-            });
-          }
-          
-          // Also create edge to the method if it exists
-          const methodNode = allNodes.find(n => 
-            n.name === methodName || n.fqname.endsWith(`.${methodName}`)
-          );
-          if (methodNode) {
-            this.store.insertEdge({
-              kind: 'calls',
-              src: callerId,
-              dst: methodNode.id!,
-              weight: 1.0,
-              ts: now
-            });
-          }
-        } else {
-          // Simple call without property access
-          const calleeNode = allNodes.find(n => 
-            n.name === call.callee || n.fqname.endsWith(`.${call.callee}`)
-          );
-          
-          if (calleeNode) {
-            this.store.insertEdge({
-              kind: 'calls',
-              src: callerId,
-              dst: calleeNode.id!,
-              weight: 1.0,
-              ts: now
-            });
-          }
-        }
-      }
+      // Create edges immediately (for single-file updates)
+      this.createEdgesForFile(relativePath, lang, result, nodeMap);
 
       this.store.commit();
     } catch (error) {
@@ -475,6 +435,179 @@ export class Indexer {
       console.error(`INDEXER: Error indexing file ${filePath}:`, error);
       // Don't rethrow - continue with other files
     }
+  }
+
+  /**
+   * Create edges for a single file's imports and calls
+   */
+  private createEdgesForFile(
+    relativePath: string,
+    lang: string,
+    result: ParseResult,
+    nodeMap: Map<string, number>
+  ): void {
+    const now = Date.now();
+
+    // Create edges for imports
+    for (const imp of result.imports) {
+      const importedPath = this.resolveImport(relativePath, imp.source, lang);
+      if (!importedPath) {
+        console.log(`[Indexer Edge] Could not resolve import '${imp.source}' from ${relativePath}`);
+        continue;
+      }
+
+      const importedNodes = this.store.getNodesByPath(importedPath);
+      
+      for (const name of imp.names) {
+        const importedNode = importedNodes.find(n => n.name === name);
+        if (!importedNode) {
+          // Only log if this looks like it should have been found
+          if (importedNodes.length > 0) {
+            console.log(`[Indexer] ⚠️ Import '${name}' not found in ${importedPath} (from ${relativePath})`);
+            console.log(`[Indexer]    Available symbols: ${importedNodes.map(n => n.name).slice(0, 5).join(', ')}${importedNodes.length > 5 ? '...' : ''}`);
+          }
+          continue;
+        }
+
+        // Find the first node in this file (file-level import)
+        const firstNode = result.symbols[0];
+        if (!firstNode) continue;
+
+        const srcId = nodeMap.get(firstNode.fqname);
+        if (!srcId) continue;
+
+        this.store.insertEdge({
+          kind: 'imports',
+          src: srcId,
+          dst: importedNode.id!,
+          weight: 1.0,
+          ts: now
+        });
+      }
+    }
+
+    // Create edges for calls (simplified - match by name)
+    for (const call of result.calls) {
+      const callerSymbol = result.symbols.find(
+        s => s.range.start <= call.range.start && s.range.end >= call.range.end
+      );
+      if (!callerSymbol) continue;
+
+      const callerId = nodeMap.get(callerSymbol.fqname);
+      if (!callerId) continue;
+
+      // Try to find callee in all nodes
+      const allNodes = this.store.getAllNodes();
+      
+      // For calls like "ClassName.staticMethod", create edges to both:
+      // 1. The class itself (ClassName)
+      // 2. The method (staticMethod)
+      const lastDot = call.callee.lastIndexOf('.');
+      if (lastDot !== -1) {
+        // Static method call or property access
+        const className = call.callee.substring(0, lastDot);
+        const methodName = call.callee.substring(lastDot + 1);
+        
+        // Create edge to the class
+        const classNode = allNodes.find(n => 
+          n.name === className || n.fqname.endsWith(`.${className}`)
+        );
+        if (classNode) {
+          this.store.insertEdge({
+            kind: 'calls',
+            src: callerId,
+            dst: classNode.id!,
+            weight: 1.0,
+            ts: now
+          });
+        }
+        
+        // Also create edge to the method if it exists
+        const methodNode = allNodes.find(n => 
+          n.name === methodName || n.fqname.endsWith(`.${methodName}`)
+        );
+        if (methodNode) {
+          this.store.insertEdge({
+            kind: 'calls',
+            src: callerId,
+            dst: methodNode.id!,
+            weight: 1.0,
+            ts: now
+          });
+        }
+      } else {
+        // Simple call without property access
+        const calleeNode = allNodes.find(n => 
+          n.name === call.callee || n.fqname.endsWith(`.${call.callee}`)
+        );
+        
+        if (calleeNode) {
+          this.store.insertEdge({
+            kind: 'calls',
+            src: callerId,
+            dst: calleeNode.id!,
+            weight: 1.0,
+            ts: now
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Create edges for all pending files (pass 2 of two-pass indexing)
+   * This is called after all files have been indexed and all nodes exist
+   */
+  private createDeferredEdges(): { total: number; imports: number; calls: number; failed: number } {
+    let edgesCreated = 0;
+    let importEdges = 0;
+    let callEdges = 0;
+    let failedFiles = 0;
+    
+    for (const fileInfo of this.pendingEdgeCreation) {
+      try {
+        const beforeEdges = this.store.getAllEdges().length;
+        
+        // Count import and call edges separately
+        const importCount = fileInfo.result.imports.length;
+        const callCount = fileInfo.result.calls.length;
+        
+        this.createEdgesForFile(
+          fileInfo.relativePath,
+          fileInfo.lang,
+          fileInfo.result,
+          fileInfo.nodeMap
+        );
+        
+        const afterEdges = this.store.getAllEdges().length;
+        const created = afterEdges - beforeEdges;
+        edgesCreated += created;
+        
+        // Estimate breakdown (not perfect but gives an idea)
+        if (importCount > 0) importEdges += Math.min(created, importCount);
+        if (callCount > 0) callEdges += Math.max(0, created - importCount);
+      } catch (error) {
+        console.error(`INDEXER: Failed to create edges for ${fileInfo.relativePath}:`, error);
+        failedFiles++;
+      }
+    }
+    
+    const stats = {
+      total: edgesCreated,
+      imports: importEdges,
+      calls: callEdges,
+      failed: failedFiles
+    };
+    
+    console.log(`INDEXER: Created ${edgesCreated} edges (${importEdges} imports, ${callEdges} calls) for ${this.pendingEdgeCreation.length} files`);
+    if (failedFiles > 0) {
+      console.log(`INDEXER: Failed to create edges for ${failedFiles} files`);
+    }
+    
+    // Clear pending edge creation
+    this.pendingEdgeCreation = [];
+    
+    return stats;
   }
 
   private resolveImport(fromPath: string, importSource: string, lang: string): string | undefined {
@@ -489,7 +622,9 @@ export class Indexer {
       
       for (const ext of extensions) {
         const resolvedPath = resolved + ext;
-        if (fs.existsSync(path.join(this.workspaceRoot, resolvedPath))) {
+        const fullPath = path.join(this.workspaceRoot, resolvedPath);
+        if (fs.existsSync(fullPath)) {
+          console.log(`[Indexer] Resolved import '${importSource}' from ${fromPath} -> ${resolvedPath}`);
           return resolvedPath;
         }
       }
@@ -497,9 +632,19 @@ export class Indexer {
       // Try as directory with index file
       const indexFile = lang === 'python' ? '__init__.py' : 'index.ts';
       const indexPath = path.join(resolved, indexFile).replace(/\\/g, '/');
-      if (fs.existsSync(path.join(this.workspaceRoot, indexPath))) {
+      const fullIndexPath = path.join(this.workspaceRoot, indexPath);
+      if (fs.existsSync(fullIndexPath)) {
+        console.log(`[Indexer] Resolved import '${importSource}' from ${fromPath} -> ${indexPath} (index file)`);
         return indexPath;
       }
+      
+      // Log resolution failure with details
+      console.log(`[Indexer] Failed to resolve import '${importSource}' from ${fromPath}`);
+      console.log(`[Indexer]   Tried paths: ${extensions.map(ext => resolved + ext).join(', ')}`);
+      console.log(`[Indexer]   Tried index: ${indexPath}`);
+    } else {
+      // Log non-relative imports
+      console.log(`[Indexer] Skipping non-relative import '${importSource}' from ${fromPath}`);
     }
 
     // Absolute/package imports not resolved for now

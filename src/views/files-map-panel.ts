@@ -133,6 +133,9 @@ export class FilesMapPanel {
       case 'file:copy':
         await this.handleFileCopy(message.filePath);
         break;
+      case 'dir:unpin':
+        await this.handleDirUnpin(message.dirPath);
+        break;
     }
   }
 
@@ -143,6 +146,35 @@ export class FilesMapPanel {
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to copy file path: ${filePath}`);
       console.error('[Files Map] Error copying file path:', error);
+    }
+  }
+
+  private async handleDirUnpin(dirPath: string) {
+    try {
+      const layoutFile = path.join(this.workspaceRoot, '.radium', 'file-map-layout.json');
+      
+      if (fs.existsSync(layoutFile)) {
+        const layoutData = fs.readFileSync(layoutFile, 'utf-8');
+        const layout = JSON.parse(layoutData);
+        
+        // Remove the directory from the layout
+        if (layout[dirPath]) {
+          delete layout[dirPath];
+          
+          // Save updated layout
+          fs.writeFileSync(layoutFile, JSON.stringify(layout, null, 2), 'utf-8');
+          console.log('[Files Map] Unpinned directory:', dirPath);
+          
+          // Notify webview to update the node
+          this.panel.webview.postMessage({
+            type: 'dir:unpinned',
+            dirPath
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[Files Map] Error unpinning directory:', error);
+      vscode.window.showErrorMessage(`Failed to unpin directory: ${dirPath}`);
     }
   }
 
@@ -654,6 +686,28 @@ export class FilesMapPanel {
       cursor: pointer;
     }
     
+    .pin-indicator {
+      opacity: 0;
+      transition: opacity 0.3s;
+      cursor: pointer;
+      pointer-events: none;
+    }
+    
+    .pin-indicator.visible {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .pin-indicator circle {
+      pointer-events: all;
+      cursor: pointer;
+      transition: fill 0.2s;
+    }
+    
+    .pin-indicator:hover circle {
+      fill: #ff6b6b;
+    }
+    
     .arrow {
       fill: currentColor;
     }
@@ -777,6 +831,7 @@ export class FilesMapPanel {
     let currentSmellDetailsNode = null; // Track which node has smell details shown
     let currentCenteredNode = null; // Track which node is currently centered (for copy button)
     let updateDirectorySizes = null; // Function to update directory sizes on zoom (assigned in renderGraph)
+    let updatePinIndicators = null; // Function to update pin indicators on zoom (assigned in renderGraph)
     
     // 30 predefined distinct colors for directories
     const directoryColors = [
@@ -929,7 +984,11 @@ export class FilesMapPanel {
           if (updateDirectorySizes) {
             updateDirectorySizes(event.transform.k);
           }
-          // Update copy button and smell details based on zoom level
+          // Update pin indicator positions when zoom changes
+          if (updatePinIndicators) {
+            updatePinIndicators(event.transform.k);
+          }
+          // Update copy button, pin indicators, and smell details based on zoom level
           updateCenteredElements();
         });
       
@@ -1010,6 +1069,9 @@ export class FilesMapPanel {
       const linesEl = tooltip.querySelector('.tooltip-lines');
       
       if (node.type === 'copy-button') {
+        filenameEl.textContent = node.label;
+        linesEl.textContent = '';
+      } else if (node.type === 'pin-indicator') {
         filenameEl.textContent = node.label;
         linesEl.textContent = '';
       } else if (node.type === 'file') {
@@ -1173,9 +1235,10 @@ export class FilesMapPanel {
       }
     }
     
-    // Update copy button and smell details on zoom/pan
+    // Update copy button, pin indicators, and smell details on zoom/pan
     function updateCenteredElements() {
       updateCopyButtonVisibility();
+      updatePinIndicatorVisibility();
       updateSmellDetailsPosition();
     }
     
@@ -1284,6 +1347,75 @@ export class FilesMapPanel {
         }
         
         currentCenteredNode = closestNode;
+      }
+    }
+    
+    // Check if a directory is centered and show pin indicator
+    function updatePinIndicatorVisibility() {
+      if (!graphData) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      
+      // Calculate viewport center in graph coordinates
+      const centerX = (width / 2 - currentTransform.x) / scale;
+      const centerY = (height / 2 - currentTransform.y) / scale;
+      
+      // Find the directory node closest to center (only pinned ones)
+      let closestDir = null;
+      let minDistance = Infinity;
+      
+      graphData.nodes.forEach(node => {
+        if (node.type !== 'directory') return;
+        if (node.fx == null || node.fy == null) return; // Only pinned directories (using == to catch both null and undefined)
+        
+        const dx = node.x - centerX;
+        const dy = node.y - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Calculate directory size for distance check
+        const MIN_DIR_SCALE = 0.4;
+        const MAX_DIR_SCALE = 2.0;
+        let dirSizeMultiplier = 1;
+        if (scale > 1) {
+          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(scale));
+        } else if (scale < 1) {
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / scale));
+        }
+        
+        const fontSizes = [84, 60, 36, 22];
+        const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+        const parts = node.label.split('/');
+        const dirName = parts[parts.length - 1];
+        const dirNameWidth = dirName.length * fontSize * 0.5;
+        const calculatedWidth = dirNameWidth + 60;
+        const minWidths = [400, 250, 180, 140];
+        const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
+        const dirWidth = Math.max(calculatedWidth, minWidth);
+        const dirHeight = fontSize * 1.8;
+        const dirSize = Math.max(dirWidth, dirHeight);
+        
+        // Only consider nodes within a reasonable distance
+        if (distance < dirSize && distance < minDistance) {
+          minDistance = distance;
+          closestDir = node;
+        }
+      });
+      
+      // Update pin indicator visibility
+      // Hide all pin indicators first
+      d3.selectAll('.pin-indicator').classed('visible', false);
+      
+      // Show pin indicator for centered directory
+      if (closestDir) {
+        d3.selectAll('.pin-indicator')
+          .filter(function() {
+            const node = d3.select(this.parentNode).datum();
+            return node === closestDir;
+          })
+          .classed('visible', true);
       }
     }
     
@@ -1580,10 +1712,52 @@ export class FilesMapPanel {
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             return fontSize + 'px';
           });
+      }
+      
+      // Update pin indicator positions based on zoom level (not visibility)
+      updatePinIndicators = function(zoomScale) {
+        // Only update if we have a valid scale
+        if (zoomScale === undefined) return;
         
-        // Update directory border width (stroke-width)
-        d3.selectAll('.dir-rect')
-          .style('stroke-width', 6 * dirSizeMultiplier);
+        // Calculate directory size multiplier (same as updateDirectorySizes)
+        const MIN_DIR_SCALE = 0.4;
+        const MAX_DIR_SCALE = 2.0;
+        
+        let dirSizeMultiplier = 1;
+        
+        if (zoomScale > 1) {
+          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(zoomScale));
+        } else if (zoomScale < 1) {
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / zoomScale));
+        }
+        
+        // Update pin indicator positions
+        d3.selectAll('.pin-indicator')
+          .attr('transform', function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            
+            // Calculate box dimensions
+            const fontSizes = [84, 60, 36, 22];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            
+            const parts = node.label.split('/');
+            const dirName = parts[parts.length - 1];
+            const dirNameWidth = dirName.length * fontSize * 0.5;
+            const calculatedWidth = dirNameWidth + 60;
+            
+            const minWidths = [400, 250, 180, 140];
+            const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
+            
+            const width = Math.max(calculatedWidth, minWidth);
+            const height = fontSize * 1.8;
+            
+            // Position at top right corner, above the box
+            const x = width / 2 - 15; // 15px from the right edge
+            const y = -height / 2 - 15; // 15px above the top edge
+            
+            return \`translate(\${x}, \${y})\`;
+          });
       }
       
       // Create a map of directory -> files for radial positioning
@@ -1894,7 +2068,7 @@ export class FilesMapPanel {
         .attr('class', 'dir-rect')
         .style('fill', d => getDirBoxColor(d.path))
         .style('stroke', '#fff')
-        .style('stroke-width', 6);
+        .style('stroke-width', 3);
       
       // Add line count badge for files (at the top)
       const fileNodes = nodeElements.filter(d => d.type === 'file');
@@ -1998,6 +2172,37 @@ export class FilesMapPanel {
           return parts[parts.length - 1];
         });
       
+      // Add pin indicator for ALL directories (visibility controlled by updatePinIndicatorVisibility)
+      const pinIndicatorGroup = nodeElements.filter(d => d.type === 'directory')
+        .append('g')
+        .attr('class', 'pin-indicator')
+        .style('pointer-events', 'none'); // Prevent event bubbling to parent
+      
+      // Add small filled circle as pin indicator
+      pinIndicatorGroup.append('circle')
+        .attr('r', 10)
+        .style('fill', '#007acc')
+        .style('stroke', '#fff')
+        .style('stroke-width', 2)
+        .style('cursor', 'pointer')
+        .style('pointer-events', 'all') // Re-enable events on the circle itself
+        .on('click', function(event, d) {
+          event.stopPropagation(); // Prevent triggering zoom/drag and parent events
+          vscode.postMessage({ type: 'dir:unpin', dirPath: d.path });
+        })
+        .on('mouseenter', function(event, d) {
+          event.stopPropagation(); // Prevent parent node hover
+          showTooltip(event, { type: 'pin-indicator', label: 'Click to unpin the box' });
+        })
+        .on('mousemove', function(event, d) {
+          event.stopPropagation(); // Prevent parent node hover
+          updateTooltipPosition(event);
+        })
+        .on('mouseleave', function(event, d) {
+          event.stopPropagation(); // Prevent parent node hover
+          hideTooltip();
+        });
+      
       // Add labels for files
       nodeElements.filter(d => d.type === 'file')
         .append('text')
@@ -2054,6 +2259,12 @@ export class FilesMapPanel {
         // Update copy button and smell details position if shown
         updateCenteredElements();
       });
+      
+      // Initialize pin indicators with current zoom level
+      if (updatePinIndicators) {
+        const currentTransform = d3.zoomTransform(svg.node());
+        updatePinIndicators(currentTransform.k);
+      }
     }
     
     // Save layout to backend
@@ -2166,6 +2377,29 @@ export class FilesMapPanel {
             });
             if (simulation) {
               simulation.alpha(0.3).restart();
+            }
+          }
+          break;
+        case 'dir:unpinned':
+          // Remove directory from saved layout
+          if (savedLayout[message.dirPath]) {
+            delete savedLayout[message.dirPath];
+          }
+          
+          // Find the node and unpin it
+          if (graphData) {
+            const node = graphData.nodes.find(n => n.type === 'directory' && n.path === message.dirPath);
+            if (node) {
+              node.fx = null;
+              node.fy = null;
+              
+              // Hide pin indicator (visibility is controlled by updatePinIndicatorVisibility)
+              updatePinIndicatorVisibility();
+              
+              // Restart simulation to let the node find a new position
+              if (simulation) {
+                simulation.alpha(0.5).restart();
+              }
             }
           }
           break;

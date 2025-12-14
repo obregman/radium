@@ -1,4 +1,4 @@
--- not started        >> in progress         $$ completedw
+-- not started        >> in progress         $$ completed
 
 
 -- 

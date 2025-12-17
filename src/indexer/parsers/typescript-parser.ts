@@ -137,11 +137,21 @@ export class TypeScriptParser extends BaseParser {
         for (const child of node.children) {
           if (child.type === 'variable_declarator') {
             const nameNode = child.childForFieldName('name');
+            const valueNode = child.childForFieldName('value');
+            
             if (nameNode) {
               const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+              
+              // Check if the value is a function (arrow function or function expression)
+              const isFunctionValue = valueNode && (
+                valueNode.type === 'arrow_function' || 
+                valueNode.type === 'function' || 
+                valueNode.type === 'function_expression'
+              );
+              
               symbols.push({
-                kind: 'variable',
-                name,
+                kind: isFunctionValue ? 'function' : 'variable',
+                name: isFunctionValue ? name + '()' : name,
                 fqname: namespace ? `${namespace}.${name}` : name,
                 range: { start: child.startIndex, end: child.endIndex }
               });

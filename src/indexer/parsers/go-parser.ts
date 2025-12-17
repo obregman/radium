@@ -115,11 +115,17 @@ export class GoParser extends BaseParser {
       for (const child of node.children) {
         if (child.type === 'var_spec') {
           const nameNode = child.childForFieldName('name');
+          const valueNode = child.childForFieldName('value');
+          
           if (nameNode) {
             const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+            
+            // Check if the value is a function literal
+            const isFunctionValue = valueNode && valueNode.type === 'func_literal';
+            
             symbols.push({
-              kind: 'variable',
-              name,
+              kind: isFunctionValue ? 'function' : 'variable',
+              name: isFunctionValue ? name + '()' : name,
               fqname: namespace ? `${namespace}.${name}` : name,
               range: { start: child.startIndex, end: child.endIndex }
             });

@@ -25,6 +25,7 @@ interface FileNode {
   smellDetails: SmellDetails | null;
   functions: string[];
   variables: string[];
+  types: string[];
 }
 
 interface DirectoryNode {
@@ -386,11 +387,16 @@ export class FilesMapPanel {
         .filter(n => n.kind === 'function' || n.kind === 'method' || n.kind === 'constructor')
         .map(n => ({ start: n.range_start, end: n.range_end }));
       
-      // Filter variables to only include global/class-level (not inside functions)
+      // Get all type definition ranges to filter out type-level fields
+      const typeRanges = fileNodes
+        .filter(n => n.kind === 'class' || n.kind === 'interface' || n.kind === 'type' || n.kind === 'enum' || n.kind === 'struct')
+        .map(n => ({ start: n.range_start, end: n.range_end }));
+      
+      // Filter variables to only include global-level (not inside functions or types)
       const variables = fileNodes
         .filter(n => {
-          // Only include variable, constant, field, or property kinds
-          if (!(n.kind === 'variable' || n.kind === 'constant' || n.kind === 'field' || n.kind === 'property')) {
+          // Only include variable or constant kinds (exclude field and property as they belong to types)
+          if (!(n.kind === 'variable' || n.kind === 'constant')) {
             return false;
           }
           
@@ -399,9 +405,21 @@ export class FilesMapPanel {
             n.range_start > fn.start && n.range_end < fn.end
           );
           
-          // Only include if NOT inside a function (i.e., global or class-level)
-          return !isInsideFunction;
+          // Check if this variable is inside any type definition
+          const isInsideType = typeRanges.some(type => 
+            n.range_start > type.start && n.range_end < type.end
+          );
+          
+          // Only include if NOT inside a function or type (i.e., global-level only)
+          return !isInsideFunction && !isInsideType;
         })
+        .map(n => n.name)
+        .filter((name, index, self) => self.indexOf(name) === index) // Remove duplicates
+        .slice(0, 20); // Limit to 20 for performance
+      
+      // Get types (class, interface, type, enum, struct)
+      const types = fileNodes
+        .filter(n => n.kind === 'class' || n.kind === 'interface' || n.kind === 'type' || n.kind === 'enum' || n.kind === 'struct')
         .map(n => n.name)
         .filter((name, index, self) => self.indexOf(name) === index) // Remove duplicates
         .slice(0, 20); // Limit to 20 for performance
@@ -418,7 +436,8 @@ export class FilesMapPanel {
         smellScore,
         smellDetails,
         functions,
-        variables
+        variables,
+        types
       });
       
       // Track directory
@@ -1200,7 +1219,7 @@ export class FilesMapPanel {
     let currentSymbolListNode = null;
     let symbolListHideTimeout = null;
     
-    function showSymbolList(node, type) {
+    function showSymbolList(node, symbolType) {
       // Clear any pending hide timeout
       if (symbolListHideTimeout) {
         clearTimeout(symbolListHideTimeout);
@@ -1214,16 +1233,18 @@ export class FilesMapPanel {
         tooltipTimeout = null;
       }
       
-      // Don't recreate if already showing for this node and type
-      if (currentSymbolListNode === node.id + '-' + type) {
+      // Don't recreate if already showing for this node and symbolType
+      if (currentSymbolListNode === node.id + '-' + symbolType) {
         return;
       }
       
       // Remove any existing symbol list
       d3.selectAll('.symbol-list-group').remove();
-      currentSymbolListNode = node.id + '-' + type;
+      currentSymbolListNode = node.id + '-' + symbolType;
       
-      const symbols = type === 'functions' ? node.functions : node.variables;
+      const symbols = symbolType === 'functions' ? node.functions : 
+                      symbolType === 'variables' ? node.variables : 
+                      node.types;
       if (symbols.length === 0) return;
       
       // Create foreignObject for the symbol list
@@ -1256,12 +1277,32 @@ export class FilesMapPanel {
       // Calculate: -fileBoxWidth/2 - squareOffset - squareHalfSize - gap - tooltipWidth
       // For functions (right side): tooltip should be completely to the right of the square
       // Calculate: +fileBoxWidth/2 + squareOffset + squareHalfSize + gap
-      const offsetX = type === 'variables' 
-        ? -node.size / 2 - squareOffsetFromBox - squareSize / 2 - gapFromSquare - tooltipWidth
-        : node.size / 2 + squareOffsetFromBox + squareSize / 2 + gapFromSquare;
+      // For types (top): tooltip should be above the square with same gap
+      let offsetX, offsetY;
       
-      // Vertically center the tooltip relative to the file box center (y=0)
-      const offsetY = -fileBoxHeight / 2;
+      if (symbolType === 'variables') {
+        offsetX = -node.size / 2 - squareOffsetFromBox - squareSize / 2 - gapFromSquare - tooltipWidth;
+        offsetY = -fileBoxHeight / 2;
+      } else if (symbolType === 'functions') {
+        offsetX = node.size / 2 + squareOffsetFromBox + squareSize / 2 + gapFromSquare;
+        offsetY = -fileBoxHeight / 2;
+      } else { // types (top)
+        // Center horizontally
+        offsetX = -tooltipWidth / 2;
+        // Types icon center is at: -fileBoxHeight/2 - squareOffsetFromBox (which is -node.size/4 - 15)
+        // Top edge of icon is at: icon center - squareSize/2
+        // Tooltip should appear ABOVE the icon with a gap
+        // foreignObject y is the top-left corner where content starts flowing DOWN
+        // So we need: y = icon_top - gap - actual_content_height
+        // Since we don't know actual content height, use a reasonable estimate (120px max)
+        const iconCenterY = -fileBoxHeight / 2 - squareOffsetFromBox;
+        const iconTopY = iconCenterY - squareSize / 2;
+        // Position tooltip so its bottom edge is gapFromSquare above icon top
+        // Estimate tooltip content height as 120px (enough for ~12 items)
+        // Add extra 5px clearance to ensure no overlap with the icon
+        const estimatedContentHeight = Math.min(symbols.length * 10 + 12, 120);
+        offsetY = iconTopY - gapFromSquare - estimatedContentHeight - 5;
+      }
       
       // Create HTML content
       const symbolsHTML = symbols.map(s => \`<div class="symbol-list-item">\${s}</div>\`).join('');
@@ -2451,6 +2492,53 @@ export class FilesMapPanel {
         .style('fill', '#000')
         .style('pointer-events', 'none')
         .text('v');
+      
+      // Add rounded square for types (top side)
+      const typesTriangle = fileNodes.append('g')
+        .attr('class', d => {
+          const baseClass = 'symbol-triangle types-triangle';
+          return d.types.length === 0 ? baseClass + ' empty' : baseClass;
+        })
+        .attr('transform', d => {
+          // Position at top side, horizontally centered
+          const x = 0;
+          const y = -d.size / 4 - 15;
+          return \`translate(\${x}, \${y})\`;
+        })
+        .on('mouseenter', function(event, d) {
+          if (d.types.length > 0) {
+            // Clear any pending hide timeout to prevent blinking
+            if (symbolListHideTimeout) {
+              clearTimeout(symbolListHideTimeout);
+              symbolListHideTimeout = null;
+            }
+            showSymbolList(d, 'types');
+          }
+        })
+        .on('mouseleave', function(event, d) {
+          hideSymbolListWithDelay();
+        });
+      
+      // Add rounded square shape
+      typesTriangle.append('rect')
+        .attr('x', -8)
+        .attr('y', -8)
+        .attr('width', 16)
+        .attr('height', 16)
+        .attr('rx', 3)
+        .attr('ry', 3);
+      
+      // Add 't' label to types square
+      typesTriangle.append('text')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', '10px')
+        .style('font-weight', 'bold')
+        .style('fill', '#000')
+        .style('pointer-events', 'none')
+        .text('t');
       
       // Add copy button group (icon only) at bottom right corner
       const copyButtonGroup = fileNodes.append('g')

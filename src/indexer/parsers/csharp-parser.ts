@@ -171,11 +171,21 @@ export class CSharpParser extends BaseParser {
           const declaratorNode = child.childForFieldName('declarator');
           if (declaratorNode) {
             const nameNode = declaratorNode.childForFieldName('name');
+            const valueNode = declaratorNode.childForFieldName('value');
+            
             if (nameNode) {
               const name = code.slice(nameNode.startIndex, nameNode.endIndex);
+              
+              // Check if the value is a lambda or anonymous function
+              const isFunctionValue = valueNode && (
+                valueNode.type === 'lambda_expression' ||
+                valueNode.type === 'anonymous_method_expression' ||
+                valueNode.type === 'parenthesized_lambda_expression'
+              );
+              
               symbols.push({
-                kind: 'variable',
-                name,
+                kind: isFunctionValue ? 'function' : 'variable',
+                name: isFunctionValue ? name + '()' : name,
                 fqname: namespace ? `${namespace}.${name}` : name,
                 range: { start: node.startIndex, end: node.endIndex }
               });

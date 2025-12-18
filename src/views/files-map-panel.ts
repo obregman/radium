@@ -390,12 +390,20 @@ export class FilesMapPanel {
       // Get all type definition ranges to filter out type-level fields
       const typeRanges = fileNodes
         .filter(n => n.kind === 'class' || n.kind === 'interface' || n.kind === 'type' || n.kind === 'enum' || n.kind === 'struct')
-        .map(n => ({ start: n.range_start, end: n.range_end }));
+        .map(n => ({ name: n.name, start: n.range_start, end: n.range_end }));
       
-      // Filter variables to only include global-level (not inside functions or types)
+      // Determine if this is a C# or TypeScript file and get the main class name
+      const isCSharp = file.lang === 'csharp';
+      const isTypeScript = file.lang === 'typescript' || file.lang === 'javascript';
+      const fileNameWithoutExt = fileName.replace(/\.(cs|xaml\.cs|ts|tsx|js|jsx)$/i, '');
+      
+      // For C# and TypeScript files, find the main class (the one matching the filename)
+      const mainClassRange = (isCSharp || isTypeScript) ? typeRanges.find(t => t.name === fileNameWithoutExt) : null;
+      
+      // Filter variables based on language
       const variables = fileNodes
         .filter(n => {
-          // Only include variable or constant kinds (exclude field and property as they belong to types)
+          // Only include variable or constant kinds
           if (!(n.kind === 'variable' || n.kind === 'constant')) {
             return false;
           }
@@ -405,12 +413,16 @@ export class FilesMapPanel {
             n.range_start > fn.start && n.range_end < fn.end
           );
           
-          // Check if this variable is inside any type definition
+          // For C# and TypeScript files: include class member variables (inside the main class) but exclude function-level variables
+          if ((isCSharp || isTypeScript) && mainClassRange) {
+            const isInsideMainClass = n.range_start > mainClassRange.start && n.range_end < mainClassRange.end;
+            return isInsideMainClass && !isInsideFunction;
+          }
+          
+          // For other files: only include global-level variables (not inside functions or types)
           const isInsideType = typeRanges.some(type => 
             n.range_start > type.start && n.range_end < type.end
           );
-          
-          // Only include if NOT inside a function or type (i.e., global-level only)
           return !isInsideFunction && !isInsideType;
         })
         .map(n => n.name)
@@ -418,8 +430,18 @@ export class FilesMapPanel {
         .slice(0, 20); // Limit to 20 for performance
       
       // Get types (class, interface, type, enum, struct)
+      // For C# and TypeScript files: exclude the main class (the one matching the filename)
       const types = fileNodes
-        .filter(n => n.kind === 'class' || n.kind === 'interface' || n.kind === 'type' || n.kind === 'enum' || n.kind === 'struct')
+        .filter(n => {
+          if (!(n.kind === 'class' || n.kind === 'interface' || n.kind === 'type' || n.kind === 'enum' || n.kind === 'struct')) {
+            return false;
+          }
+          // For C# and TypeScript files, exclude the main class
+          if ((isCSharp || isTypeScript) && n.name === fileNameWithoutExt) {
+            return false;
+          }
+          return true;
+        })
         .map(n => n.name)
         .filter((name, index, self) => self.indexOf(name) === index) // Remove duplicates
         .slice(0, 20); // Limit to 20 for performance

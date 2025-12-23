@@ -312,6 +312,9 @@ export class SemanticChangesPanel {
   private async processFileChange(absolutePath: string) {
     const relativePath = path.relative(this.workspaceRoot, absolutePath);
     this.diffCache.delete(relativePath);
+    
+    // Normalize path to forward slashes for cross-platform consistency
+    const normalizedRelativePath = relativePath.replace(/\\/g, '/');
 
     const fullPath = path.join(this.workspaceRoot, relativePath);
     
@@ -403,7 +406,7 @@ export class SemanticChangesPanel {
       this.panel.webview.postMessage({
         type: 'semantic:changed',
         data: {
-          filePath: relativePath,
+          filePath: normalizedRelativePath,
           changes: [consolidatedChange],
           timestamp: Date.now(),
           isNew: isNew,

@@ -80,7 +80,8 @@ export class SymbolChangesPanel {
             break;
           case 'openFile':
             // Open the file at the specified line
-            // Normalize path separators for cross-platform compatibility
+            // The filePath from webview is already normalized with forward slashes
+            // Convert it to the platform-specific path
             const normalizedPath = message.filePath.replace(/\\/g, '/');
             const filePath = path.join(this.workspaceRoot, normalizedPath);
             try {
@@ -273,16 +274,19 @@ export class SymbolChangesPanel {
         const fileName = path.basename(relativePath);
         this.log(`File deleted: ${relativePath}`);
         
+        // Normalize path to forward slashes for cross-platform consistency
+        const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+        
         // Send a file deletion symbol
         this.panel.webview.postMessage({
           type: 'symbol:changed',
           data: {
-            filePath: relativePath,
+            filePath: normalizedRelativePath,
             symbol: {
               type: 'file',
               name: fileName,
               changeType: 'deleted',
-              filePath: relativePath,
+              filePath: normalizedRelativePath,
               startLine: 1,
               endLine: 1,
               changeAmount: 1
@@ -389,6 +393,9 @@ export class SymbolChangesPanel {
   private async processFileChange(absolutePath: string) {
     const relativePath = path.relative(this.workspaceRoot, absolutePath);
     this.diffCache.delete(relativePath);
+    
+    // Normalize path to forward slashes for cross-platform consistency
+    const normalizedRelativePath = relativePath.replace(/\\/g, '/');
 
     const fullPath = path.join(this.workspaceRoot, relativePath);
     
@@ -436,6 +443,17 @@ export class SymbolChangesPanel {
     const symbolChanges = await this.analyzeDiffForSymbols(relativePath, diff, isNew);
     this.log(`Found ${symbolChanges.symbols.length} symbols in ${relativePath}`);
 
+    // Calculate actual file line count
+    let fileLineCount = 0;
+    try {
+      if (fs.existsSync(fullPath)) {
+        const currentContent = fs.readFileSync(fullPath, 'utf8');
+        fileLineCount = currentContent.split('\n').length;
+      }
+    } catch (error) {
+      this.log(`Failed to count lines in ${relativePath}: ${error}`);
+    }
+    
     // If no symbols detected, send a fallback "file changed" box ONLY if this file has never had symbols
     if (symbolChanges.symbols.length === 0) {
       if (!this.filesWithSymbols.has(relativePath)) {
@@ -444,12 +462,12 @@ export class SymbolChangesPanel {
         this.panel.webview.postMessage({
           type: 'symbol:changed',
           data: {
-            filePath: relativePath,
+            filePath: normalizedRelativePath,
             symbol: {
               type: 'file',
               name: fileName,
               changeType: isNew ? 'added' : 'modified',
-              filePath: relativePath,
+              filePath: normalizedRelativePath,
               startLine: 1,
               endLine: 1,
               changeAmount: 1
@@ -460,7 +478,8 @@ export class SymbolChangesPanel {
             diff: diff,
             comments: symbolChanges.comments || [],
             additions: symbolChanges.additions || 0,
-            deletions: symbolChanges.deletions || 0
+            deletions: symbolChanges.deletions || 0,
+            fileLineCount: fileLineCount
           }
         });
       } else {
@@ -471,12 +490,12 @@ export class SymbolChangesPanel {
           this.panel.webview.postMessage({
             type: 'symbol:changed',
             data: {
-              filePath: relativePath,
+              filePath: normalizedRelativePath,
               symbol: {
                 type: 'file',
                 name: fileName,
                 changeType: isNew ? 'added' : 'modified',
-                filePath: relativePath,
+                filePath: normalizedRelativePath,
                 startLine: 1,
                 endLine: 1,
                 changeAmount: 1
@@ -487,7 +506,8 @@ export class SymbolChangesPanel {
               diff: diff,
               comments: symbolChanges.comments,
               additions: symbolChanges.additions || 0,
-              deletions: symbolChanges.deletions || 0
+              deletions: symbolChanges.deletions || 0,
+              fileLineCount: fileLineCount
             }
           });
         } else {
@@ -502,9 +522,20 @@ export class SymbolChangesPanel {
       this.panel.webview.postMessage({
         type: 'file:remove-fallback',
         data: {
-          filePath: relativePath
+          filePath: normalizedRelativePath
         }
       });
+      
+      // Calculate actual file line count
+      let fileLineCount = 0;
+      try {
+        if (fs.existsSync(fullPath)) {
+          const currentContent = fs.readFileSync(fullPath, 'utf8');
+          fileLineCount = currentContent.split('\n').length;
+        }
+      } catch (error) {
+        this.log(`Failed to count lines in ${relativePath}: ${error}`);
+      }
       
       // Send each symbol change individually so they get their own boxes
       for (const symbol of symbolChanges.symbols) {
@@ -512,7 +543,7 @@ export class SymbolChangesPanel {
         this.panel.webview.postMessage({
           type: 'symbol:changed',
           data: {
-            filePath: relativePath,
+            filePath: normalizedRelativePath,
             symbol: symbol,
             calls: symbolChanges.calls.filter(c => c.from === symbol.name || c.to === symbol.name),
             timestamp: Date.now(),
@@ -520,7 +551,8 @@ export class SymbolChangesPanel {
             diff: diff,
             comments: symbolChanges.comments || [],
             additions: symbolChanges.additions || 0,
-            deletions: symbolChanges.deletions || 0
+            deletions: symbolChanges.deletions || 0,
+            fileLineCount: fileLineCount
           }
         });
       }
@@ -3314,25 +3346,27 @@ export class SymbolChangesPanel {
           directoryElement.className = 'file-directory-path';
           directoryElement.textContent = directory;
           
-          // Add tooltip on hover for truncated paths
+          // Add tooltip on hover (always show after 500ms)
           let pathTooltipTimeout = null;
           let pathTooltip = null;
           
           directoryElement.addEventListener('mouseenter', (e) => {
-            // Only show tooltip if text is truncated
-            if (directoryElement.scrollWidth > directoryElement.clientWidth) {
-              pathTooltipTimeout = setTimeout(() => {
-                pathTooltip = document.createElement('div');
-                pathTooltip.className = 'file-path-tooltip';
-                pathTooltip.textContent = directory;
-                document.body.appendChild(pathTooltip);
-                
-                // Position near the element
-                const rect = directoryElement.getBoundingClientRect();
-                pathTooltip.style.left = rect.left + 'px';
-                pathTooltip.style.top = (rect.bottom + 4) + 'px';
-              }, 1000);
-            }
+            pathTooltipTimeout = setTimeout(() => {
+              pathTooltip = document.createElement('div');
+              pathTooltip.className = 'file-path-tooltip';
+              pathTooltip.textContent = directory;
+              pathTooltip.style.visibility = 'hidden'; // Hide while measuring
+              document.body.appendChild(pathTooltip);
+              
+              // Force layout calculation to get actual height
+              const tooltipHeight = pathTooltip.offsetHeight;
+              const rect = directoryElement.getBoundingClientRect();
+              
+              // Position above the element
+              pathTooltip.style.left = rect.left + 'px';
+              pathTooltip.style.top = (rect.top - tooltipHeight - 8) + 'px';
+              pathTooltip.style.visibility = 'visible'; // Show after positioning
+            }, 500);
           });
           
           directoryElement.addEventListener('mouseleave', () => {
@@ -3353,6 +3387,41 @@ export class SymbolChangesPanel {
         const filenameElement = document.createElement('div');
         filenameElement.className = 'file-name';
         filenameElement.textContent = filename + (isNew ? ' (new)' : '');
+        
+        // Add tooltip on hover for filename (always show after 500ms)
+        let filenameTooltipTimeout = null;
+        let filenameTooltip = null;
+        
+        filenameElement.addEventListener('mouseenter', (e) => {
+          filenameTooltipTimeout = setTimeout(() => {
+            filenameTooltip = document.createElement('div');
+            filenameTooltip.className = 'file-path-tooltip';
+            filenameTooltip.textContent = filename + (isNew ? ' (new)' : '');
+            filenameTooltip.style.visibility = 'hidden'; // Hide while measuring
+            document.body.appendChild(filenameTooltip);
+            
+            // Force layout calculation to get actual height
+            const tooltipHeight = filenameTooltip.offsetHeight;
+            const rect = filenameElement.getBoundingClientRect();
+            
+            // Position above the element
+            filenameTooltip.style.left = rect.left + 'px';
+            filenameTooltip.style.top = (rect.top - tooltipHeight - 8) + 'px';
+            filenameTooltip.style.visibility = 'visible'; // Show after positioning
+          }, 500);
+        });
+        
+        filenameElement.addEventListener('mouseleave', () => {
+          if (filenameTooltipTimeout) {
+            clearTimeout(filenameTooltipTimeout);
+            filenameTooltipTimeout = null;
+          }
+          if (filenameTooltip) {
+            filenameTooltip.remove();
+            filenameTooltip = null;
+          }
+        });
+        
         fileLabel.appendChild(filenameElement);
         
         fileContainer.appendChild(fileLabel);
@@ -3422,11 +3491,17 @@ export class SymbolChangesPanel {
 
       const group = fileGroups.get(filePath);
       
-      // Update total line count - track the maximum endLine seen
-      if (group.totalLinesElement && symbol.endLine) {
-        const currentMax = parseInt(group.totalLinesElement.textContent || '0', 10);
-        const newMax = Math.max(currentMax, symbol.endLine);
-        group.totalLinesElement.textContent = newMax.toString();
+      // Update total line count - use actual file line count if provided, otherwise track max endLine
+      if (group.totalLinesElement) {
+        if (data.fileLineCount && data.fileLineCount > 0) {
+          // Use the actual file line count sent from the extension
+          group.totalLinesElement.textContent = data.fileLineCount.toString();
+        } else if (symbol.endLine) {
+          // Fallback: track the maximum endLine seen
+          const currentMax = parseInt(group.totalLinesElement.textContent || '0', 10);
+          const newMax = Math.max(currentMax, symbol.endLine);
+          group.totalLinesElement.textContent = newMax.toString();
+        }
       }
       
       // Accumulate stats for this file (independent counters)

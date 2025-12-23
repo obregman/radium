@@ -772,7 +772,8 @@
 +  // Verify password with bcrypt
   const isValid = await bcrypt.compare(password, user.passwordHash);`,
         additions: 5,
-        deletions: 3
+        deletions: 3,
+        fileLineCount: 150
       },
       {
         filePath: 'src/services/user-service.ts',
@@ -800,7 +801,8 @@
 +  }
 +}`,
         additions: 28,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 150
       },
       {
         filePath: 'src/services/user-service.ts',
@@ -822,7 +824,8 @@
 +    return session.expiresAt > Date.now();
 +  }`,
         additions: 11,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 150
       },
       
       // File 2: src/models/user.model.ts (2 changes)
@@ -850,7 +853,8 @@
 +  lastLoginAt?: Date;
 }`,
         additions: 3,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 45
       },
       {
         filePath: 'src/models/user.model.ts',
@@ -873,7 +877,8 @@
 +  createdAt: Date;
 +}`,
         additions: 7,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 45
       },
       
       // File 3: src/utils/validation.ts (4 changes)
@@ -896,7 +901,8 @@
 -  return emailRegex.test(email);
 -}`,
         additions: 0,
-        deletions: 7
+        deletions: 7,
+        fileLineCount: 85
       },
       {
         filePath: 'src/utils/validation.ts',
@@ -914,7 +920,8 @@
         diff: `@@ -8,0 +8,1 @@
 +export const EMAIL_REGEX = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;`,
         additions: 1,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 85
       },
       {
         filePath: 'src/utils/validation.ts',
@@ -937,7 +944,8 @@
   return true;
 }`,
         additions: 5,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 85
       },
       {
         filePath: 'src/utils/validation.ts',
@@ -955,7 +963,8 @@
         diff: `@@ -5,0 +5,1 @@
 +export const MIN_PASSWORD_LENGTH = 8;`,
         additions: 1,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 85
       },
       
       // File 4: src/controllers/auth.controller.ts (3 changes)
@@ -992,7 +1001,8 @@
     }
   }`,
         additions: 8,
-        deletions: 4
+        deletions: 4,
+        fileLineCount: 120
       },
       {
         filePath: 'src/controllers/auth.controller.ts',
@@ -1020,7 +1030,8 @@
 +    res.status(201).json({ token, user });
 +  }`,
         additions: 18,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 120
       },
       {
         filePath: 'src/controllers/auth.controller.ts',
@@ -1044,7 +1055,8 @@
     res.status(204).send();
   }`,
         additions: 4,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 120
       },
       
       // File 5: src/config/database.ts (2 changes)
@@ -1065,7 +1077,8 @@
 -const connectionPool = { max: 10, min: 2 };
 +const connectionPool = { max: 20, min: 5 };`,
         additions: 1,
-        deletions: 1
+        deletions: 1,
+        fileLineCount: 65
       },
       {
         filePath: 'src/config/database.ts',
@@ -1083,7 +1096,8 @@
         diff: `@@ -15,0 +15,1 @@
 +export const DB_TIMEOUT = 5000;`,
         additions: 1,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 65
       },
       
       // File 6: src/middleware/auth.middleware.ts (3 changes)
@@ -1116,7 +1130,8 @@
   next();
 }`,
         additions: 7,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 95
       },
       {
         filePath: 'src/middleware/auth.middleware.ts',
@@ -1142,7 +1157,8 @@
 +  next();
 +}`,
         additions: 11,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 95
       },
       {
         filePath: 'src/middleware/auth.middleware.ts',
@@ -1162,7 +1178,8 @@
 +  user?: User;
 +}`,
         additions: 4,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 95
       },
       
       // File 7: src/types/api.types.ts (5 changes)
@@ -1186,7 +1203,8 @@
 +  message?: string;
 +}`,
         additions: 6,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 55
       },
       {
         filePath: 'src/types/api.types.ts',
@@ -1208,7 +1226,8 @@
 +  details?: any;
 +}`,
         additions: 6,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 55
       },
       {
         filePath: 'src/types/api.types.ts',
@@ -1226,7 +1245,8 @@
         diff: `@@ -19,0 +19,1 @@
 +export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';`,
         additions: 1,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 55
       },
       {
         filePath: 'src/types/api.types.ts',
@@ -1249,7 +1269,8 @@
 +  hasMore: boolean;
 }`,
         additions: 3,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 55
       },
       {
         filePath: 'src/types/api.types.ts',
@@ -1267,7 +1288,8 @@
         diff: `@@ -31,0 +31,1 @@
 +export const DEFAULT_PAGE_SIZE = 20;`,
         additions: 1,
-        deletions: 0
+        deletions: 0,
+        fileLineCount: 55
       }
     ];
 
@@ -1504,12 +1526,82 @@
             const directoryElement = document.createElement('div');
             directoryElement.className = 'file-directory-path';
             directoryElement.textContent = directory;
+            
+            // Add tooltip on hover (always show after 500ms)
+            let pathTooltipTimeout = null;
+            let pathTooltip = null;
+            
+            directoryElement.addEventListener('mouseenter', (e) => {
+              pathTooltipTimeout = setTimeout(() => {
+                pathTooltip = document.createElement('div');
+                pathTooltip.className = 'file-path-tooltip';
+                pathTooltip.textContent = directory;
+                pathTooltip.style.visibility = 'hidden'; // Hide while measuring
+                document.body.appendChild(pathTooltip);
+                
+                // Force layout calculation to get actual height
+                const tooltipHeight = pathTooltip.offsetHeight;
+                const rect = directoryElement.getBoundingClientRect();
+                
+                // Position above the element
+                pathTooltip.style.left = rect.left + 'px';
+                pathTooltip.style.top = (rect.top - tooltipHeight - 8) + 'px';
+                pathTooltip.style.visibility = 'visible'; // Show after positioning
+              }, 500);
+            });
+            
+            directoryElement.addEventListener('mouseleave', () => {
+              if (pathTooltipTimeout) {
+                clearTimeout(pathTooltipTimeout);
+                pathTooltipTimeout = null;
+              }
+              if (pathTooltip) {
+                pathTooltip.remove();
+                pathTooltip = null;
+              }
+            });
+            
             fileLabel.appendChild(directoryElement);
           }
           
           const filenameElement = document.createElement('div');
           filenameElement.className = 'file-name';
           filenameElement.textContent = filename + (isNew ? ' (new)' : '');
+          
+          // Add tooltip on hover for filename (always show after 500ms)
+          let filenameTooltipTimeout = null;
+          let filenameTooltip = null;
+          
+          filenameElement.addEventListener('mouseenter', (e) => {
+            filenameTooltipTimeout = setTimeout(() => {
+              filenameTooltip = document.createElement('div');
+              filenameTooltip.className = 'file-path-tooltip';
+              filenameTooltip.textContent = filename + (isNew ? ' (new)' : '');
+              filenameTooltip.style.visibility = 'hidden'; // Hide while measuring
+              document.body.appendChild(filenameTooltip);
+              
+              // Force layout calculation to get actual height
+              const tooltipHeight = filenameTooltip.offsetHeight;
+              const rect = filenameElement.getBoundingClientRect();
+              
+              // Position above the element
+              filenameTooltip.style.left = rect.left + 'px';
+              filenameTooltip.style.top = (rect.top - tooltipHeight - 8) + 'px';
+              filenameTooltip.style.visibility = 'visible'; // Show after positioning
+            }, 500);
+          });
+          
+          filenameElement.addEventListener('mouseleave', () => {
+            if (filenameTooltipTimeout) {
+              clearTimeout(filenameTooltipTimeout);
+              filenameTooltipTimeout = null;
+            }
+            if (filenameTooltip) {
+              filenameTooltip.remove();
+              filenameTooltip = null;
+            }
+          });
+          
           fileLabel.appendChild(filenameElement);
           
           fileContainer.appendChild(fileLabel);
@@ -1537,10 +1629,17 @@
 
         const group = fileGroups.get(filePath);
         
-        if (group.totalLinesElement && symbol.endLine) {
-          const currentMax = parseInt(group.totalLinesElement.textContent || '0', 10);
-          const newMax = Math.max(currentMax, symbol.endLine);
-          group.totalLinesElement.textContent = newMax.toString();
+        // Update total line count - use actual file line count if provided, otherwise track max endLine
+        if (group.totalLinesElement) {
+          if (data.fileLineCount && data.fileLineCount > 0) {
+            // Use the actual file line count sent from the extension
+            group.totalLinesElement.textContent = data.fileLineCount.toString();
+          } else if (symbol.endLine) {
+            // Fallback: track the maximum endLine seen
+            const currentMax = parseInt(group.totalLinesElement.textContent || '0', 10);
+            const newMax = Math.max(currentMax, symbol.endLine);
+            group.totalLinesElement.textContent = newMax.toString();
+          }
         }
         
         if (additions > 0) {

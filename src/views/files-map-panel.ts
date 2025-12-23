@@ -190,8 +190,10 @@ export class FilesMapPanel {
       }
 
       const workspaceRoot = workspaceFolders[0].uri.fsPath;
+      // Normalize path separators for cross-platform compatibility
+      const normalizedPath = filePath.replace(/\\/g, '/');
       const fullPath = vscode.Uri.file(
-        filePath.startsWith('/') ? filePath : path.join(workspaceRoot, filePath)
+        normalizedPath.startsWith('/') ? normalizedPath : path.join(workspaceRoot, normalizedPath)
       );
 
       const document = await vscode.workspace.openTextDocument(fullPath);

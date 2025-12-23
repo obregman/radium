@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { FeaturesConfigLoader, FeatureConfig, FlowItem } from '../config/features-config';
 import { RadiumConfigLoader } from '../config/radium-config';
 
@@ -119,9 +120,11 @@ export class FeaturesMapPanel {
       }
 
       const workspaceRoot = workspaceFolders[0].uri.fsPath;
-      const fullPath = vscode.Uri.file(implPath.startsWith('/') 
-        ? implPath 
-        : `${workspaceRoot}/${implPath}`);
+      // Normalize path separators for cross-platform compatibility
+      const normalizedPath = implPath.replace(/\\/g, '/');
+      const fullPath = vscode.Uri.file(normalizedPath.startsWith('/') 
+        ? normalizedPath 
+        : path.join(workspaceRoot, normalizedPath));
 
       // Open the file in the editor
       const document = await vscode.workspace.openTextDocument(fullPath);

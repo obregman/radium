@@ -4,6 +4,13 @@ All notable changes to the Radium extension will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Windows File Opening**: Fixed issue where clicking on symbol boxes in Symbol Changes view failed to open files on Windows
+  - Added path normalization to convert backslashes to forward slashes before joining paths
+  - Now using `vscode.Uri.file()` for proper cross-platform path handling
+  - Applied fix to all view panels: Symbol Changes, Semantic Changes, Files Map, and Features Map
+  - Files now open correctly on Windows when clicking on any symbol or file box
+
 ### Changed
 - **Index Clearing on Reindex**: When indexing begins (either on extension load or manual reindex), the index is now completely cleared first before regenerating from scratch
   - Ensures a clean slate for each indexing operation

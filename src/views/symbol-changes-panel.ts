@@ -80,9 +80,13 @@ export class SymbolChangesPanel {
             break;
           case 'openFile':
             // Open the file at the specified line
-            const filePath = path.join(this.workspaceRoot, message.filePath);
+            // Normalize path separators for cross-platform compatibility
+            const normalizedPath = message.filePath.replace(/\\/g, '/');
+            const filePath = path.join(this.workspaceRoot, normalizedPath);
             try {
-              const document = await vscode.workspace.openTextDocument(filePath);
+              // Use Uri.file() for proper cross-platform path handling
+              const fileUri = vscode.Uri.file(filePath);
+              const document = await vscode.workspace.openTextDocument(fileUri);
               const editor = await vscode.window.showTextDocument(document);
               // Navigate to the line (convert to 0-based index)
               const line = Math.max(0, (message.line || 1) - 1);

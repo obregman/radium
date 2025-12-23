@@ -1753,27 +1753,22 @@ export class SymbolChangesPanel {
     }
 
     .symbol-box {
-      position: absolute;
-      padding: 26px 14px 14px 14px;
-      background-color: transparent;
-      border: 1.5px solid transparent;
-      border-radius: 0;
+      position: relative;
+      background-color: var(--vscode-editor-background);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 3px;
       font-size: 11px;
       font-weight: 400;
-      box-shadow: none;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
       transition: all 0.2s ease;
       z-index: 10;
       cursor: pointer;
-      box-sizing: border-box; /* Ensure width/height include padding and border */
-      /* NO min-width/min-height - sizes are set dynamically via inline styles based on change amount */
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      white-space: nowrap;
+      box-sizing: border-box;
+      /* Span full width with 4px margin on each side */
+      width: calc(100% - 8px);
+      height: 90px;
+      margin: 0 4px 8px 4px;
       overflow: hidden;
-      word-wrap: break-word;
     }
 
     /* Highlight effect for newly added/updated symbols */
@@ -1799,35 +1794,102 @@ export class SymbolChangesPanel {
 
     .symbol-type-label {
       position: absolute;
-      top: 4px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 9px;
+      top: 8px;
+      left: 8px;
+      font-size: 12px;
       font-weight: 700;
-      text-transform: uppercase;
+      text-transform: none;
       color: #000000;
-      opacity: 0.85;
-      letter-spacing: 0.5px;
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 5px 12px;
+      border-radius: 3px;
+      letter-spacing: 0.3px;
       white-space: nowrap;
       z-index: 1;
       pointer-events: none;
     }
+    
+    .symbol-box[data-change-type="added"] .symbol-type-label {
+      background-color: #90EE90;
+    }
+    
+    .symbol-box[data-change-type="modified"] .symbol-type-label,
+    .symbol-box[data-change-type="value_changed"] .symbol-type-label {
+      background-color: #dfe85d;
+    }
+    
+    .symbol-box[data-change-type="deleted"] .symbol-type-label {
+      background-color: #FFB6C1;
+    }
 
-    .symbol-size-label {
+    .symbol-time-label {
       position: absolute;
-      top: -18px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 9px;
-      font-weight: 500;
+      top: 8px;
+      font-size: 11px;
+      font-weight: 600;
       font-family: 'Courier New', monospace;
-      color: var(--vscode-descriptionForeground);
-      opacity: 0.6;
+      color: #FFFFFF;
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 2px 8px;
+      border-radius: 3px;
       white-space: nowrap;
       z-index: 1;
       pointer-events: none;
-      background: var(--vscode-editor-background);
-      padding: 1px 3px;
+    }
+    
+    .symbol-line-changes {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      white-space: nowrap;
+      z-index: 1;
+      pointer-events: none;
+      display: flex;
+      gap: 4px;
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 2px 8px;
+      border-radius: 3px;
+    }
+    
+    .symbol-line-changes .additions {
+      color: #00FF00;
+    }
+    
+    .symbol-line-changes .deletions {
+      color: #FF0000;
+    }
+    
+    .symbol-icons {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      display: flex;
+      gap: 6px;
+      z-index: 2;
+    }
+    
+    .symbol-icon {
+      width: 22px;
+      height: 22px;
+      background-color: #3366AA;
+      color: #FFFFFF;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      pointer-events: auto;
+    }
+    
+    .symbol-icon:hover {
+      background-color: #4477CC;
+      transform: scale(1.1);
     }
 
     /* Base styles for all symbol types */
@@ -1859,28 +1921,21 @@ export class SymbolChangesPanel {
       min-width: 120px;
     }
 
-    /* Permanent background colors by change type */
-    .symbol-box[data-change-type="added"] {
-      background: #90EE90; /* Light green for new symbols */
+    /* Use editor background for all symbol boxes */
+    .symbol-box[data-change-type="added"],
+    .symbol-box[data-change-type="modified"],
+    .symbol-box[data-change-type="deleted"],
+    .symbol-box[data-change-type="value_changed"] {
+      background: var(--vscode-editor-background);
     }
 
-    .symbol-box[data-change-type="modified"] {
-      background: #dfe85d; /* Yellow-green for changed symbols */
-    }
-
-    .symbol-box[data-change-type="deleted"] {
-      background: #FFB6C1; /* Light red for deleted symbols */
-      opacity: 1;
-    }
-
-    .symbol-box[data-change-type="deleted"] .symbol-name,
     .symbol-box[data-change-type="deleted"] .symbol-type-label,
     .symbol-box[data-change-type="deleted"] .change-symbol {
       color: #000000; /* Black text for deleted symbols */
     }
-
-    .symbol-box[data-change-type="value_changed"] {
-      background: #dfe85d; /* Yellow-green for value changed */
+    
+    .symbol-box[data-change-type="deleted"] .symbol-name {
+      color: #FFFFFF; /* White text for deleted symbol names */
     }
 
     /* Temporary pulsing animations (removed after 3 seconds) */
@@ -1983,28 +2038,73 @@ export class SymbolChangesPanel {
     .file-container {
       position: absolute;
       border: 2px solid var(--vscode-panel-border);
-      border-radius: 0;
+      border-radius: 8px;
       background-color: #4c4d4c;
-      padding: 85px 2px 10px 2px;
-      box-sizing: border-box; /* Width/height includes border and padding */
+      padding: 85px 4px 8px 4px;
+      box-sizing: border-box;
       /* Make this the positioning context for child symbol boxes */
       /* Child elements with position:absolute will be relative to this container */
+    }
+    
+    .file-header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background-color: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      border-radius: 6px 6px 0 0;
+    }
+    
+    .file-line-count {
+      background-color: rgba(0, 0, 0, 0.4);
+      color: #FFFFFF;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+    }
+    
+    .file-net-changes {
+      background-color: rgba(0, 0, 0, 0.4);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      gap: 6px;
+    }
+    
+    .file-net-changes .additions {
+      color: #00FF00;
+    }
+    
+    .file-net-changes .deletions {
+      color: #FF0000;
     }
 
     .file-path-label {
       position: absolute;
-      top: 35px;
-      left: 8px;
-      right: 8px;
+      top: 30px;
+      left: 50%;
+      transform: translateX(-50%);
       font-family: var(--vscode-font-family);
       color: #FFFFFF;
       text-align: center;
       cursor: default;
-      max-height: 50px;
+      max-width: calc(100% - 140px);
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 2px;
+      gap: 4px;
+      margin-bottom: 12px;
     }
     
     .file-directory-path {
@@ -2016,16 +2116,24 @@ export class SymbolChangesPanel {
       overflow: hidden;
       text-overflow: ellipsis;
       max-width: 100%;
+      order: 1;
     }
     
     .file-name {
-      font-size: 20px;
+      font-size: 24px;
       font-weight: 700;
       line-height: 1.2;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       max-width: 100%;
+      order: 2;
+    }
+    
+    .file-name.small {
+      font-size: 20px;
+    }
+    
+    .file-name.smaller {
+      font-size: 18px;
     }
 
     .file-path-tooltip {
@@ -2043,18 +2151,31 @@ export class SymbolChangesPanel {
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
 
+    .file-total-lines {
+      position: absolute;
+      top: 8px;
+      left: 12px;
+      background-color: rgba(0, 0, 0, 0.5);
+      color: #FFFFFF;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      z-index: 5;
+    }
+
     .file-stats {
       position: absolute;
-      top: 6px;
-      left: 50%;
-      transform: translateX(-50%);
+      top: 8px;
+      right: 12px;
       display: flex;
       align-items: center;
       gap: 6px;
       font-size: 13px;
       font-weight: 600;
       font-family: 'Courier New', monospace;
-      background: rgba(0, 0, 0, 0.3);
+      background: rgba(0, 0, 0, 0.5);
       padding: 4px 8px;
       border-radius: 3px;
       z-index: 5;
@@ -2071,17 +2192,25 @@ export class SymbolChangesPanel {
     .symbol-content {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 4px;
+      justify-content: flex-start;
       white-space: nowrap;
+      position: absolute;
+      top: 32px;
+      bottom: 8px;
+      left: 8px;
+      right: 80px;
+      pointer-events: none;
     }
 
     .symbol-name {
-      font-size: 11px;
+      font-size: 18px;
       font-weight: 600;
       white-space: nowrap;
-      text-align: center;
-      color: #000000;
+      text-align: left;
+      color: #FFFFFF;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: auto;
     }
 
     .change-symbol {
@@ -2246,34 +2375,60 @@ export class SymbolChangesPanel {
       font-size: 9px;
     }
 
-    .comment-overlay {
-      position: absolute;
-      background-color: rgba(216, 191, 216, 0.95);
-      color: #000000;
+    .hover-popup {
+      position: fixed;
+      background-color: var(--vscode-editor-background);
+      border: 2px solid var(--vscode-panel-border);
+      border-radius: 6px;
       padding: 12px 16px;
-      border-radius: 4px;
-      font-size: 20px;
-      font-weight: 400;
-      font-style: italic;
-      min-width: 200px;
-      max-width: 400px;
-      text-align: left;
-      z-index: 15;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      min-width: 300px;
+      max-width: 600px;
+      max-height: 500px;
+      overflow: auto;
+      z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
       pointer-events: auto;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.5;
       white-space: pre-wrap;
       word-wrap: break-word;
+    }
+    
+    .hover-popup.visible {
+      opacity: 1;
+    }
+    
+    .hover-popup.code-popup {
+      color: var(--vscode-editor-foreground);
+    }
+    
+    .hover-popup.comment-popup {
+      background-color: rgba(216, 191, 216, 0.95);
+      color: #000000;
+      font-style: italic;
+    }
+    
+    .hover-popup .diff-line {
+      font-family: 'Courier New', monospace;
       line-height: 1.4;
-      transition: opacity 0.3s ease;
     }
-
-    .comment-overlay.fading {
-      animation: fadeOut 0.5s ease-in-out forwards;
+    
+    .hover-popup .diff-line.addition {
+      background-color: rgba(0, 255, 0, 0.1);
+      color: #90ee90;
     }
-
-    @keyframes fadeOut {
-      0% { opacity: 1; transform: translateY(0); }
-      100% { opacity: 0; transform: translateY(-5px); }
+    
+    .hover-popup .diff-line.deletion {
+      background-color: rgba(255, 0, 0, 0.1);
+      color: #ff6b6b;
+    }
+    
+    .hover-popup .diff-line.context {
+      color: var(--vscode-editor-foreground);
+      opacity: 0.7;
     }
 
     .context-menu {
@@ -2417,6 +2572,35 @@ export class SymbolChangesPanel {
           const parts = normalized.split('/');
           return parts.join('/\u200B'); // Zero-width space allows breaking after /
         }
+        
+        function formatTimeSince(timestamp) {
+          const now = Date.now();
+          const diff = now - timestamp;
+          const seconds = Math.floor(diff / 1000);
+          const minutes = Math.floor(seconds / 60);
+          const hours = Math.floor(minutes / 60);
+          const days = Math.floor(hours / 24);
+          
+          if (days > 0) return days + 'd';
+          if (hours > 0) return hours + 'h';
+          if (minutes > 0) return minutes + 'm';
+          if (seconds > 0) return seconds + 's';
+          return 'now';
+        }
+        
+        // Update all time labels every 30 seconds
+        function updateAllTimeLabels() {
+          const timeLabels = document.querySelectorAll('.symbol-time-label');
+          timeLabels.forEach(label => {
+            const timestamp = parseInt(label.dataset.timestamp || '0', 10);
+            if (timestamp > 0) {
+              label.textContent = formatTimeSince(timestamp);
+            }
+          });
+        }
+        
+        // Start the timer
+        setInterval(updateAllTimeLabels, 30000); // Update every 30 seconds
         
         function splitPathIntoDirectoryAndFile(filePath) {
           // Normalize to forward slashes
@@ -2650,47 +2834,24 @@ export class SymbolChangesPanel {
         // Calculate box dimensions based on change amount
         // Returns one of three discrete sizes: small, medium, or large
         function calculateBoxSize(changeAmount, symbolName) {
-          // Ensure we have a valid change amount
-          const amount = Math.max(1, changeAmount || 1);
-          
-          // Determine size based on thresholds
-          let size;
-          if (amount <= 10) {
-            size = SMALL_SIZE;
-          } else if (amount <= 50) {
-            size = MEDIUM_SIZE;
-          } else {
-            size = LARGE_SIZE;
-          }
-          
-          // If symbol name is provided, ensure width is sufficient to fit the text
-          let width = size.width;
-          if (symbolName) {
-            // Estimate text width: roughly 7-8 pixels per character at base font size
-            // Add padding for the box (28px left+right padding) + some margin
-            const estimatedTextWidth = symbolName.length * 8 + 40;
-            width = Math.max(width, estimatedTextWidth);
-          }
-          
-          return { 
-            width: width, 
-            height: size.height 
+          // All boxes are now uniform size
+          return {
+            width: 200,
+            height: 90
           };
         }
 
         // Bin-packing algorithm using Guillotine with Best Area Fit
         // Returns positions plus packed content width/height
         function packSymbols(symbolsMap, containerWidth) {
-          // Convert map to array and extract symbol data with change amounts
+          // Convert map to array and extract symbol data with timestamps
           const symbolsArray = [];
           for (const [symbolKey, elements] of symbolsMap.entries()) {
             if (elements && elements.length > 0) {
               const box = elements[0];
               const changeAmount = parseInt(box.dataset.changeAmount || '1', 10);
-              // Get symbol name from the box for width calculation
-              const symbolNameElement = box.querySelector('.symbol-name');
-              const symbolName = symbolNameElement ? symbolNameElement.textContent : '';
-              const size = calculateBoxSize(changeAmount, symbolName);
+              const timestamp = parseInt(box.dataset.timestamp || '0', 10);
+              const size = calculateBoxSize(changeAmount, '');
               
               // Set the size on the box first so we can measure it accurately
               box.style.width = size.width + 'px';
@@ -2705,17 +2866,16 @@ export class SymbolChangesPanel {
                 key: symbolKey,
                 element: box,
                 changeAmount: changeAmount,
+                timestamp: timestamp,
                 width: actualWidth,
                 height: actualHeight
               });
             }
           }
           
-          // Sort by area descending (largest first for better packing)
+          // Sort by timestamp descending (most recent first)
           symbolsArray.sort((a, b) => {
-            const areaA = a.width * a.height;
-            const areaB = b.width * b.height;
-            return areaB - areaA;
+            return b.timestamp - a.timestamp;
           });
           
           const PADDING = 4;
@@ -2929,58 +3089,13 @@ export class SymbolChangesPanel {
 
         // Helper function to calculate optimal container width for packing
         function calculateOptimalContainerWidth(symbolsMap, labelWidth) {
-          if (symbolsMap.size === 0) return 400;
+          // Since symbols now span full width of container, use a fixed comfortable width
+          // The width should accommodate the file name label and look good
+          const MIN_WIDTH = 350;
+          const DEFAULT_WIDTH = 400;
           
-          // Calculate total area needed for all symbols
-          let totalArea = 0;
-          let maxSymbolWidth = 0;
-          
-          for (const [symbolKey, elements] of symbolsMap.entries()) {
-            if (elements && elements.length > 0) {
-              const box = elements[0];
-              const changeAmount = parseInt(box.dataset.changeAmount || '1', 10);
-              // Get symbol name from the box for width calculation
-              const symbolNameElement = box.querySelector('.symbol-name');
-              const symbolName = symbolNameElement ? symbolNameElement.textContent : '';
-              const size = calculateBoxSize(changeAmount, symbolName);
-              totalArea += size.width * size.height;
-              maxSymbolWidth = Math.max(maxSymbolWidth, size.width);
-            }
-          }
-          
-          // No padding between symbols
-          // totalArea is just sum of symbol areas
-          
-          // Base width from area; prefer wider layout
-          let candidateW = Math.sqrt(totalArea) * 1.35;
-          
-          // Ensure container is at least as wide as the largest symbol and label width
-          const minWidth = Math.max(maxSymbolWidth, labelWidth || 300);
-          candidateW = Math.max(minWidth, Math.min(candidateW, 900));
-          
-          // Small iterative refinement (3-4 steps) to balance width/height
-          let bestW = candidateW;
-          let bestArea = Number.POSITIVE_INFINITY;
-          for (let i = 0; i < 4; i++) {
-            const innerW = Math.max(minWidth, bestW);
-            const packed = packSymbols(symbolsMap, innerW);
-            const totalH = packed.contentH + 40; // include top padding only
-            const area = bestW * totalH;
-            if (area < bestArea) {
-              bestArea = area;
-            } else {
-              // If area worsened, revert last change slightly
-              bestW = Math.max(minWidth, bestW * 1.05);
-              break;
-            }
-            // Adjust width for next iteration
-            if (totalH > 2.2 * bestW) {
-              bestW = Math.min(900, bestW * 1.15);
-            } else {
-              bestW = Math.max(minWidth, bestW * 0.9);
-            }
-          }
-          return Math.max(minWidth, Math.min(bestW, 900));
+          // Use the larger of: minimum width, label width, or default width
+          return Math.max(MIN_WIDTH, labelWidth || DEFAULT_WIDTH);
         }
 
         // Helper function to reposition all files using brick-packing layout
@@ -3067,59 +3182,44 @@ export class SymbolChangesPanel {
             return;
           }
           
-          // Use bin-packing algorithm to position symbols based on change amount
-          const availableWidth = group.width; // No side padding - use full width
-          console.log('[Layout] Packing symbols, containerWidth:', group.width, 'availableWidth:', availableWidth);
-          const packed = packSymbols(group.symbols, availableWidth);
-          console.log('[Layout] Packed result - contentW:', packed.contentW, 'contentH:', packed.contentH, 'positions:', packed.positions.length);
+          // Stack symbols vertically (sorted by timestamp - most recent first)
+          const symbolsArray = [];
+          for (const [symbolKey, elements] of group.symbols.entries()) {
+            if (elements && elements.length > 0) {
+              const box = elements[0];
+              const timestamp = parseInt(box.dataset.timestamp || '0', 10);
+              symbolsArray.push({ key: symbolKey, element: box, timestamp });
+            }
+          }
           
-          // Calculate exact container dimensions needed
-          let maxWidth = 0;
-          let maxHeight = 0;
+          // Sort by timestamp descending (most recent first)
+          symbolsArray.sort((a, b) => b.timestamp - a.timestamp);
           
-          // Apply positions to each symbol (relative to container)
-          for (const pos of packed.positions) {
-            const box = pos.element;
-            
-            // Position relative to file container (accounting for 85px top padding and 2px left padding)
-            box.style.left = (pos.x + 2) + 'px'; // Add 2px for left padding
-            box.style.top = (pos.y + 85) + 'px'; // Add 85px for label space
-            
-            // Ensure the box has the correct size
-            box.style.width = pos.width + 'px';
-            box.style.height = pos.height + 'px';
-            
-            // Set font size based on discrete box size
-            // Small: 11px, Medium: 14px, Large: 17px
-            let fontSize = 11;
-            if (pos.height >= LARGE_SIZE.height) {
-              fontSize = 17;
-            } else if (pos.height >= MEDIUM_SIZE.height) {
-              fontSize = 14;
+          // Reorder DOM elements to match sorted order
+          symbolsArray.forEach(symbolData => {
+            const box = symbolData.element;
+            // Remove and re-append to move to end (maintains order)
+            if (box.parentNode === group.fileContainer) {
+              group.fileContainer.appendChild(box);
             }
+          });
+          
+          // Position symbols vertically
+          let currentY = 0;
+          const BOX_HEIGHT = 90;
+          const BOX_MARGIN = 8;
+          let maxWidth = 400; // Minimum width
+          
+          for (const symbolData of symbolsArray) {
+            const box = symbolData.element;
             
-            // Apply font size to symbol name
-            const symbolName = box.querySelector('.symbol-name');
-            if (symbolName) {
-              symbolName.style.fontSize = fontSize + 'px';
-            }
-            
-            // Update size label to show dimensions
-            const sizeLabel = box.querySelector('.symbol-size-label');
-            if (sizeLabel) {
-              const changeAmount = box.dataset.changeAmount || '1';
-              sizeLabel.textContent = pos.width + 'x' + pos.height + ' (' + changeAmount + 'L)';
-            }
-            
-            console.log('[Layout] Positioned symbol:', pos.element.dataset.changeAmount, 'lines, size:', pos.width, 'x', pos.height, 'at', pos.x, ',', pos.y);
-            
-            // Track max dimensions
-            maxWidth = Math.max(maxWidth, pos.x + pos.width);
-            maxHeight = Math.max(maxHeight, pos.y + pos.height);
+            // Track dimensions
+            const boxWidth = box.offsetWidth || 200;
+            maxWidth = Math.max(maxWidth, boxWidth + 8); // Add 4px margins on each side
             
             // Store symbol position for connections (absolute coordinates)
-            const absoluteX = group.x + pos.x + pos.width / 2;
-            const absoluteY = group.y + 85 + pos.y + pos.height / 2; // group.y container top + 85px label padding + pos.y
+            const absoluteX = group.x + boxWidth / 2;
+            const absoluteY = group.y + 85 + currentY + BOX_HEIGHT / 2;
             
             // Get the actual symbol name from the box content
             const nameSpan = box.querySelector('.symbol-name');
@@ -3132,7 +3232,11 @@ export class SymbolChangesPanel {
                 y: absoluteY
               });
             }
+            
+            currentY += BOX_HEIGHT + BOX_MARGIN;
           }
+          
+          const maxHeight = currentY;
           
           // Calculate minimum width needed for the file path label
           let labelMinWidth = 300; // Default minimum
@@ -3150,13 +3254,13 @@ export class SymbolChangesPanel {
           // Add extra padding to ensure symbols don't touch borders or overflow
           // IMPORTANT: With box-sizing: border-box, the total height must account for:
           //   - 85px top padding (where label and stats live)
-          //   - packed.contentH (actual symbol content height)
-          //   - 10px bottom padding
+          //   - maxHeight (actual symbol content height)
+          //   - 8px bottom padding
           //   - 4px borders (2px top + 2px bottom)
-          const finalWidth = Math.max(packed.contentW + 4, labelMinWidth); // Add 4px horizontal padding
-          const finalHeight = packed.contentH + 85 + 10 + 4; // 85px label padding + 10px bottom padding + 4px borders
+          const finalWidth = Math.max(maxWidth, labelMinWidth); // Use calculated max width
+          const finalHeight = maxHeight + 85 + 8 + 4; // 85px label padding + 8px bottom padding + 4px borders
           
-          console.log('[Layout] Final container size:', finalWidth, 'x', finalHeight, '(label min:', labelMinWidth, ', packed:', packed.contentW, 'x', packed.contentH, ')');
+          console.log('[Layout] Final container size:', finalWidth, 'x', finalHeight, '(label min:', labelMinWidth, ', content height:', maxHeight, ')');
           group.fileContainer.style.width = finalWidth + 'px';
           group.fileContainer.style.height = finalHeight + 'px';
           
@@ -3235,6 +3339,28 @@ export class SymbolChangesPanel {
         
         fileContainer.appendChild(fileLabel);
         
+        // Adjust filename font size if it doesn't fit
+        setTimeout(() => {
+          const labelWidth = fileLabel.offsetWidth;
+          const nameWidth = filenameElement.scrollWidth;
+          if (nameWidth > labelWidth) {
+            filenameElement.classList.add('small');
+            // Check again after applying small class
+            setTimeout(() => {
+              if (filenameElement.scrollWidth > fileLabel.offsetWidth) {
+                filenameElement.classList.remove('small');
+                filenameElement.classList.add('smaller');
+              }
+            }, 0);
+          }
+        }, 0);
+        
+        // Create total line count display in top left corner
+        const totalLinesContainer = document.createElement('div');
+        totalLinesContainer.className = 'file-total-lines';
+        totalLinesContainer.textContent = '0'; // Will be updated when we get file info
+        fileContainer.appendChild(totalLinesContainer);
+        
         // Create stats display in top right corner if we have additions/deletions
         const additions = data.additions || 0;
         const deletions = data.deletions || 0;
@@ -3269,13 +3395,21 @@ export class SymbolChangesPanel {
           width: 400, // Initial width, will grow
           elements: [], 
           fileLabel: fileLabel,
-          fileContainer: fileContainer
+          fileContainer: fileContainer,
+          totalLinesElement: totalLinesContainer
         };
         fileGroups.set(filePath, newGroup);
         fileOrder.push(filePath); // Track creation order
       }
 
       const group = fileGroups.get(filePath);
+      
+      // Update total line count - track the maximum endLine seen
+      if (group.totalLinesElement && symbol.endLine) {
+        const currentMax = parseInt(group.totalLinesElement.textContent || '0', 10);
+        const newMax = Math.max(currentMax, symbol.endLine);
+        group.totalLinesElement.textContent = newMax.toString();
+      }
       
       // Accumulate stats for this file (independent counters)
       const additions = data.additions || 0;
@@ -3355,26 +3489,26 @@ export class SymbolChangesPanel {
       const box = document.createElement('div');
       box.className = 'symbol-box ' + symbol.type;
       
-      // Store changeAmount and changeType in dataset for later use
+      // Store changeAmount, changeType, and timestamp in dataset for later use
       const changeAmount = symbol.changeAmount || 1;
       box.dataset.changeAmount = String(changeAmount);
       box.dataset.changeType = symbol.changeType; // Store change type for permanent color
-      
-      // Size will be calculated and applied during repositioning
-      // Don't set size here - let the packing algorithm handle it
+      box.dataset.timestamp = String(timestamp || Date.now()); // Store timestamp for time-based sorting
+      box.dataset.diff = diff || ''; // Store diff for hover popup
+      box.dataset.comments = data.comments ? JSON.stringify(data.comments) : '[]'; // Store comments
       
       // Add () suffix for functions and methods
       const displayName = (symbol.type === 'function' || symbol.type === 'method') 
         ? symbol.name + '()' 
         : symbol.name;
       
-      // Add type label at the top with change type
+      // Add type label badge (top left)
       const typeLabel = document.createElement('div');
       typeLabel.className = 'symbol-type-label';
       
       // Format change type for display (change type comes first)
       let changeTypeText = '';
-      if (symbol.changeType === 'added') changeTypeText = 'New';
+      if (symbol.changeType === 'added') changeTypeText = 'Added';
       else if (symbol.changeType === 'modified') changeTypeText = 'Changed';
       else if (symbol.changeType === 'deleted') changeTypeText = 'Deleted';
       else if (symbol.changeType === 'value_changed') changeTypeText = 'Changed';
@@ -3382,14 +3516,53 @@ export class SymbolChangesPanel {
       typeLabel.textContent = changeTypeText + ' ' + symbol.type;
       box.appendChild(typeLabel);
       
-      // Add size label above the box (for debugging)
-      const sizeLabel = document.createElement('div');
-      sizeLabel.className = 'symbol-size-label';
-      // Size will be set during repositioning when actual dimensions are known
-      sizeLabel.textContent = ''; // Will be updated later
-      box.appendChild(sizeLabel);
+      // Add line changes (top right)
+      const lineChanges = document.createElement('div');
+      lineChanges.className = 'symbol-line-changes';
       
-      // Symbol content: just the name (no change symbol)
+      if (additions > 0) {
+        const addSpan = document.createElement('span');
+        addSpan.className = 'additions';
+        addSpan.textContent = '+' + additions;
+        lineChanges.appendChild(addSpan);
+      }
+      
+      if (deletions > 0) {
+        const delSpan = document.createElement('span');
+        delSpan.className = 'deletions';
+        delSpan.textContent = '-' + deletions;
+        lineChanges.appendChild(delSpan);
+      }
+      
+      if (additions > 0 || deletions > 0) {
+        box.appendChild(lineChanges);
+      }
+      
+      // Add time label (to the left of line changes)
+      const timeLabel = document.createElement('div');
+      timeLabel.className = 'symbol-time-label';
+      timeLabel.dataset.timestamp = String(timestamp || Date.now());
+      timeLabel.textContent = formatTimeSince(timestamp || Date.now());
+      box.appendChild(timeLabel);
+      
+      // Position time label right next to line changes after rendering
+      setTimeout(() => {
+        const hasLineChanges = lineChanges.parentNode !== null;
+        
+        if (hasLineChanges) {
+          // Line changes exist, position to the left with small gap
+          const lineChangesWidth = lineChanges.offsetWidth;
+          const gap = 4; // Small gap between time and line changes
+          // Position time label to the left of line changes
+          // Line changes are at right: 8px, so time label should be at right: 8px + lineChangesWidth + gap
+          timeLabel.style.right = (8 + lineChangesWidth + gap) + 'px';
+        } else {
+          // No line changes, position in top right
+          timeLabel.style.right = '8px';
+        }
+      }, 10);
+      
+      // Symbol content: name positioned between badge bottom and box bottom
       const contentWrapper = document.createElement('div');
       contentWrapper.className = 'symbol-content';
 
@@ -3399,6 +3572,175 @@ export class SymbolChangesPanel {
 
       contentWrapper.appendChild(nameSpan);
       box.appendChild(contentWrapper);
+      
+      // Add interactive icons (bottom right)
+      const iconsContainer = document.createElement('div');
+      iconsContainer.className = 'symbol-icons';
+      
+      // Comment icon (//) - left icon
+      const commentIcon = document.createElement('div');
+      commentIcon.className = 'symbol-icon comment-icon';
+      commentIcon.textContent = '//';
+      commentIcon.title = 'Show comments';
+      iconsContainer.appendChild(commentIcon);
+      
+      // Code icon (#) - right icon
+      const codeIcon = document.createElement('div');
+      codeIcon.className = 'symbol-icon code-icon';
+      codeIcon.textContent = '#';
+      codeIcon.title = 'Show code changes';
+      iconsContainer.appendChild(codeIcon);
+      
+      box.appendChild(iconsContainer);
+      
+      // Add hover logic for icons
+      let codePopup = null;
+      let commentPopup = null;
+      let codeHoverTimeout = null;
+      let commentHoverTimeout = null;
+      
+      // Code icon hover (show diff)
+      let isHoveringCodePopup = false;
+      
+      codeIcon.addEventListener('mouseenter', (e) => {
+        e.stopPropagation();
+        codeHoverTimeout = setTimeout(() => {
+          const diffText = box.dataset.diff || '';
+          if (diffText) {
+            codePopup = document.createElement('div');
+            codePopup.className = 'hover-popup code-popup';
+            
+            // Parse and format diff
+            const lines = diffText.split('\n');
+            lines.forEach(line => {
+              const lineDiv = document.createElement('div');
+              lineDiv.className = 'diff-line';
+              
+              if (line.startsWith('+')) {
+                lineDiv.classList.add('addition');
+              } else if (line.startsWith('-')) {
+                lineDiv.classList.add('deletion');
+              } else {
+                lineDiv.classList.add('context');
+              }
+              
+              lineDiv.textContent = line;
+              codePopup.appendChild(lineDiv);
+            });
+            
+            document.body.appendChild(codePopup);
+            
+            // Position over the file box (centered)
+            const boxRect = box.getBoundingClientRect();
+            const fileContainerRect = box.closest('.file-container').getBoundingClientRect();
+            codePopup.style.left = (fileContainerRect.left + (fileContainerRect.width - 600) / 2) + 'px';
+            codePopup.style.top = (fileContainerRect.top + 20) + 'px';
+            
+            // Show popup
+            setTimeout(() => codePopup.classList.add('visible'), 10);
+            
+            // Keep popup open when hovering over it
+            codePopup.addEventListener('mouseenter', () => {
+              isHoveringCodePopup = true;
+            });
+            
+            codePopup.addEventListener('mouseleave', () => {
+              isHoveringCodePopup = false;
+              codePopup.classList.remove('visible');
+              setTimeout(() => {
+                if (codePopup && codePopup.parentNode && !isHoveringCodePopup) {
+                  codePopup.remove();
+                  codePopup = null;
+                }
+              }, 200);
+            });
+          }
+        }, 400);
+      });
+      
+      codeIcon.addEventListener('mouseleave', (e) => {
+        e.stopPropagation();
+        if (codeHoverTimeout) {
+          clearTimeout(codeHoverTimeout);
+          codeHoverTimeout = null;
+        }
+        // Don't close immediately if hovering over popup
+        setTimeout(() => {
+          if (codePopup && !isHoveringCodePopup) {
+            codePopup.classList.remove('visible');
+            setTimeout(() => {
+              if (codePopup && codePopup.parentNode && !isHoveringCodePopup) {
+                codePopup.remove();
+                codePopup = null;
+              }
+            }, 200);
+          }
+        }, 100);
+      });
+      
+      // Comment icon hover (show comments)
+      let isHoveringCommentPopup = false;
+      
+      commentIcon.addEventListener('mouseenter', (e) => {
+        e.stopPropagation();
+        commentHoverTimeout = setTimeout(() => {
+          const commentsStr = box.dataset.comments || '[]';
+          const comments = JSON.parse(commentsStr);
+          
+          if (comments && comments.length > 0) {
+            commentPopup = document.createElement('div');
+            commentPopup.className = 'hover-popup comment-popup';
+            commentPopup.textContent = comments.join('\n\n');
+            
+            document.body.appendChild(commentPopup);
+            
+            // Position over the file box (centered)
+            const boxRect = box.getBoundingClientRect();
+            const fileContainerRect = box.closest('.file-container').getBoundingClientRect();
+            commentPopup.style.left = (fileContainerRect.left + (fileContainerRect.width - 600) / 2) + 'px';
+            commentPopup.style.top = (fileContainerRect.top + 20) + 'px';
+            
+            // Show popup
+            setTimeout(() => commentPopup.classList.add('visible'), 10);
+            
+            // Keep popup open when hovering over it
+            commentPopup.addEventListener('mouseenter', () => {
+              isHoveringCommentPopup = true;
+            });
+            
+            commentPopup.addEventListener('mouseleave', () => {
+              isHoveringCommentPopup = false;
+              commentPopup.classList.remove('visible');
+              setTimeout(() => {
+                if (commentPopup && commentPopup.parentNode && !isHoveringCommentPopup) {
+                  commentPopup.remove();
+                  commentPopup = null;
+                }
+              }, 200);
+            });
+          }
+        }, 400);
+      });
+      
+      commentIcon.addEventListener('mouseleave', (e) => {
+        e.stopPropagation();
+        if (commentHoverTimeout) {
+          clearTimeout(commentHoverTimeout);
+          commentHoverTimeout = null;
+        }
+        // Don't close immediately if hovering over popup
+        setTimeout(() => {
+          if (commentPopup && !isHoveringCommentPopup) {
+            commentPopup.classList.remove('visible');
+            setTimeout(() => {
+              if (commentPopup && commentPopup.parentNode && !isHoveringCommentPopup) {
+                commentPopup.remove();
+                commentPopup = null;
+              }
+            }, 200);
+          }
+        }, 100);
+      });
       
       // Append to file container (not canvas)
       group.fileContainer.appendChild(box);
@@ -3480,86 +3822,7 @@ export class SymbolChangesPanel {
           contextMenu.classList.add('visible');
         });
         
-        // Add hover tooltip for diff
-        let hoverTimeout = null;
-        let tooltip = null;
-        let isHoveringTooltip = false;
-        
-        let lastMouseX = 0;
-        let lastMouseY = 0;
-        
-        box.addEventListener('mousemove', (e) => {
-          lastMouseX = e.clientX;
-          lastMouseY = e.clientY;
-        });
-        
-        box.addEventListener('mouseenter', (e) => {
-          lastMouseX = e.clientX;
-          lastMouseY = e.clientY;
-          
-          // Wait 1 second before showing tooltip
-          hoverTimeout = setTimeout(() => {
-            if (diff) {
-              tooltip = createDiffTooltip(symbol, diff, box);
-              document.body.appendChild(tooltip);
-              
-              // Position tooltip near the cursor using fixed positioning
-              // This ensures the tooltip stays at a consistent size regardless of zoom
-              tooltip.style.left = (lastMouseX + 15) + 'px';
-              tooltip.style.top = (lastMouseY + 15) + 'px';
-              
-              // Ensure tooltip doesn't go off-screen
-              const tooltipRect = tooltip.getBoundingClientRect();
-              if (tooltipRect.right > window.innerWidth) {
-                tooltip.style.left = (window.innerWidth - tooltipRect.width - 10) + 'px';
-              }
-              if (tooltipRect.bottom > window.innerHeight) {
-                tooltip.style.top = (window.innerHeight - tooltipRect.height - 10) + 'px';
-              }
-              
-              // Show tooltip
-              setTimeout(() => tooltip.classList.add('visible'), 10);
-              
-              // Keep tooltip open when hovering over it
-              tooltip.addEventListener('mouseenter', () => {
-                isHoveringTooltip = true;
-              });
-              
-              tooltip.addEventListener('mouseleave', () => {
-                isHoveringTooltip = false;
-                // Hide and remove tooltip when leaving it
-                tooltip.classList.remove('visible');
-                setTimeout(() => {
-                  if (tooltip && tooltip.parentNode) {
-                    tooltip.remove();
-                  }
-                  tooltip = null;
-                }, 200);
-              });
-            }
-          }, 1000);
-        });
-        
-        box.addEventListener('mouseleave', () => {
-          // Cancel tooltip if not shown yet
-          if (hoverTimeout) {
-            clearTimeout(hoverTimeout);
-            hoverTimeout = null;
-          }
-          
-          // Only hide tooltip if not hovering over it
-          setTimeout(() => {
-            if (tooltip && !isHoveringTooltip) {
-              tooltip.classList.remove('visible');
-              setTimeout(() => {
-                if (tooltip && tooltip.parentNode) {
-                  tooltip.remove();
-                }
-                tooltip = null;
-              }, 200);
-            }
-          }, 100);
-        });
+        // Removed old hover tooltip - now only icons show tooltips
 
       function createDiffTooltip(symbolData, diffText, symbolBox) {
         const tooltip = document.createElement('div');

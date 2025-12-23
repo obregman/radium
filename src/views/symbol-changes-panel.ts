@@ -1770,7 +1770,7 @@ export class SymbolChangesPanel {
       box-sizing: border-box;
       /* Span full width with 4px margin on each side */
       width: calc(100% - 8px);
-      height: 90px;
+      height: 60px;
       margin: 0 4px 8px 4px;
       overflow: hidden;
     }
@@ -1798,16 +1798,16 @@ export class SymbolChangesPanel {
 
     .symbol-type-label {
       position: absolute;
-      top: 8px;
+      top: 6px;
       left: 8px;
-      font-size: 12px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 400;
       text-transform: none;
       color: #000000;
       background-color: rgba(255, 255, 255, 0.9);
-      padding: 5px 12px;
-      border-radius: 3px;
-      letter-spacing: 0.3px;
+      padding: 2px 6px;
+      border-radius: 2px;
+      letter-spacing: 0.2px;
       white-space: nowrap;
       z-index: 1;
       pointer-events: none;
@@ -1828,13 +1828,13 @@ export class SymbolChangesPanel {
 
     .symbol-time-label {
       position: absolute;
-      top: 8px;
-      font-size: 11px;
+      top: 6px;
+      font-size: 10px;
       font-weight: 600;
       font-family: 'Courier New', monospace;
       color: #FFFFFF;
       background-color: rgba(0, 0, 0, 0.5);
-      padding: 2px 8px;
+      padding: 2px 6px;
       border-radius: 3px;
       white-space: nowrap;
       z-index: 1;
@@ -1843,9 +1843,9 @@ export class SymbolChangesPanel {
     
     .symbol-line-changes {
       position: absolute;
-      top: 8px;
+      top: 6px;
       right: 8px;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       font-family: 'Courier New', monospace;
       white-space: nowrap;
@@ -1854,7 +1854,7 @@ export class SymbolChangesPanel {
       display: flex;
       gap: 4px;
       background-color: rgba(0, 0, 0, 0.5);
-      padding: 2px 8px;
+      padding: 2px 6px;
       border-radius: 3px;
     }
     
@@ -1868,27 +1868,29 @@ export class SymbolChangesPanel {
     
     .symbol-icons {
       position: absolute;
-      bottom: 8px;
+      bottom: 6px;
       right: 8px;
       display: flex;
-      gap: 6px;
+      gap: 4px;
       z-index: 2;
     }
     
     .symbol-icon {
-      width: 22px;
-      height: 22px;
+      width: 20px;
+      height: 20px;
       background-color: #3366AA;
       color: #FFFFFF;
       border-radius: 3px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       cursor: pointer;
       transition: all 0.2s ease;
       pointer-events: auto;
+      text-align: center;
+      line-height: 1;
     }
     
     .symbol-icon:hover {
@@ -1912,7 +1914,24 @@ export class SymbolChangesPanel {
     .symbol-box.interface,
     .symbol-box.type {
       border-style: dashed;
-      border-color: transparent;
+      border-width: 1px;
+    }
+    
+    .symbol-box.interface[data-change-type="added"],
+    .symbol-box.type[data-change-type="added"] {
+      border-color: #32CD32;
+    }
+    
+    .symbol-box.interface[data-change-type="modified"],
+    .symbol-box.type[data-change-type="modified"],
+    .symbol-box.interface[data-change-type="value_changed"],
+    .symbol-box.type[data-change-type="value_changed"] {
+      border-color: #FFD700;
+    }
+    
+    .symbol-box.interface[data-change-type="deleted"],
+    .symbol-box.type[data-change-type="deleted"] {
+      border-color: #FF6B6B;
     }
 
     /* Constants get thicker borders */
@@ -2199,15 +2218,15 @@ export class SymbolChangesPanel {
       justify-content: flex-start;
       white-space: nowrap;
       position: absolute;
-      top: 32px;
-      bottom: 8px;
+      top: 26px;
+      bottom: 6px;
       left: 8px;
-      right: 80px;
+      right: 70px;
       pointer-events: none;
     }
 
     .symbol-name {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 600;
       white-space: nowrap;
       text-align: left;
@@ -3104,60 +3123,55 @@ export class SymbolChangesPanel {
 
         // Helper function to reposition all files using brick-packing layout
         function repositionAllFiles() {
-          const CONTAINER_WIDTH = 1400; // Max width before wrapping
-          const FILE_PADDING = 12; // Padding between file containers
-          const START_X = 80;
+          const FILE_WIDTH = 340; // Fixed width for all file containers
+          const FILE_SPACING = 40; // Gap between files
+          const START_X = 100;
           const START_Y = 50;
           
-          let currentX = START_X;
-          let currentY = START_Y;
-          let rowHeight = 0;
+          const fileCount = fileOrder.length;
+          if (fileCount === 0) return;
           
-          // Use fileOrder array to maintain creation order
-          fileOrder.forEach(filePath => {
+          // Determine number of columns using sqrt to balance rows/columns
+          const columns = Math.max(1, Math.ceil(Math.sqrt(fileCount)));
+          
+          // Calculate files per column for balanced distribution
+          const filesPerColumn = Math.ceil(fileCount / columns);
+          
+          console.log('[Symbol Changes] File count:', fileCount, 'Columns:', columns, 'Files per column:', filesPerColumn);
+          
+          // Track current Y position for each column
+          const columnYPositions = Array(columns).fill(START_Y);
+          
+          fileOrder.forEach((filePath, index) => {
             const group = fileGroups.get(filePath);
             if (!group) return;
             
-            // Calculate label width estimate
-            let labelWidth = 300;
-            if (group.fileLabel) {
-              const measured = group.fileLabel.offsetWidth || 0;
-              const estimate = (group.fileLabel.textContent || '').length * 7 + 30;
-              labelWidth = Math.max(300, measured || estimate);
-            }
-            
-            // Calculate optimal container width for packing
-            const optimalWidth = calculateOptimalContainerWidth(group.symbols, labelWidth);
-            group.width = optimalWidth;
-            
-            // Update all symbol positions in this file to get the height
             repositionFileSymbols(group);
             
-            // Get the actual height from the container
-            const containerHeight = parseInt(group.fileContainer.style.height) || 100;
+            // Get the actual current height of the container
+            const styleHeight = parseInt(group.fileContainer.style.height);
+            const containerHeight = !isNaN(styleHeight) && styleHeight > 0 ? styleHeight : (group.fileContainer.offsetHeight || 200);
             
-            // Check if we need to wrap to next row
-            if (currentX + group.width > CONTAINER_WIDTH && currentX > START_X) {
-              currentX = START_X;
-              currentY += rowHeight + FILE_PADDING;
-              rowHeight = 0;
-            }
+            // Determine which column this file goes in
+            // Fill columns top-to-bottom: first filesPerColumn files go to col 0, next to col 1, etc.
+            const col = Math.floor(index / filesPerColumn);
+            
+            // Calculate position
+            const x = START_X + (col * (FILE_WIDTH + FILE_SPACING));
+            const y = columnYPositions[col];
+            
+            console.log('[Symbol Changes] File', index, '(' + filePath + '): col=' + col + ', x=' + x + ', y=' + y + ', height=' + containerHeight);
             
             // Update group position
-            group.x = currentX;
-            group.y = currentY;
+            group.x = x;
+            group.y = y;
+            group.fileContainer.style.left = x + 'px';
+            group.fileContainer.style.top = y + 'px';
+            group.fileContainer.style.width = FILE_WIDTH + 'px';
+            group.width = FILE_WIDTH;
             
-            // Update file container position
-            if (group.fileContainer) {
-              group.fileContainer.style.left = currentX + 'px';
-              group.fileContainer.style.top = currentY + 'px';
-            }
-            
-            // Track row height
-            rowHeight = Math.max(rowHeight, containerHeight);
-            
-            // Move to next position in row
-            currentX += group.width + FILE_PADDING;
+            // Update column Y position for next file in this column
+            columnYPositions[col] += containerHeight + FILE_SPACING;
           });
         }
 
@@ -3174,11 +3188,11 @@ export class SymbolChangesPanel {
         function repositionFileSymbols(group) {
           if (group.symbols.size === 0) {
             // Empty container - set minimum size based on label width
-            let labelMinWidth = 300;
+            let labelMinWidth = 255;
             if (group.fileLabel) {
               const measured = group.fileLabel.scrollWidth || 0;
               const estimate = (group.fileLabel.textContent || '').length * 8 + 20;
-              labelMinWidth = Math.max(300, measured || estimate);
+              labelMinWidth = Math.max(255, measured || estimate);
             }
             group.fileContainer.style.width = labelMinWidth + 'px';
             group.fileContainer.style.height = '100px';
@@ -3210,9 +3224,9 @@ export class SymbolChangesPanel {
           
           // Position symbols vertically
           let currentY = 0;
-          const BOX_HEIGHT = 90;
+          const BOX_HEIGHT = 60;
           const BOX_MARGIN = 8;
-          let maxWidth = 400; // Minimum width
+          let maxWidth = 340; // Minimum width
           
           for (const symbolData of symbolsArray) {
             const box = symbolData.element;
@@ -3248,7 +3262,7 @@ export class SymbolChangesPanel {
             // Measure the label's actual text width
             const measured = group.fileLabel.scrollWidth || 0;
             const estimate = (group.fileLabel.textContent || '').length * 8 + 20;
-            labelMinWidth = Math.max(300, measured || estimate);
+            labelMinWidth = Math.max(255, measured || estimate);
           }
           
           // Resize container to fit all symbols AND the label
@@ -3396,7 +3410,7 @@ export class SymbolChangesPanel {
           symbolPositions: new Map(), // Track symbol positions for connections
           x: nextX,
           y: 50, // Initial y position, will be updated by repositionAllFiles
-          width: 400, // Initial width, will grow
+          width: 340, // Initial width, will grow
           elements: [], 
           fileLabel: fileLabel,
           fileContainer: fileContainer,

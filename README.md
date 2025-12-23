@@ -18,6 +18,10 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 - Cross-platform support (macOS, Linux, Windows)
 - Session history and rollback capability
 
+## Demo
+
+Want to see what Radium looks like before installing? Check out the **[standalone demo](demo/symbol-changes-demo.html)** that shows the Symbol Changes visualization with mock data. Simply open the HTML file in your browser and click "Load Demo Data".
+
 ## Usage
 
 ### Basic Setup

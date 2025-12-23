@@ -1,0 +1,1986 @@
+<!DOCTYPE html>
+<!--
+  Radium Symbol Changes Visualization - Standalone Demo
+  
+  This is a self-contained demo of the Radium VSCode extension's Symbol Changes view.
+  
+  HOW TO USE:
+  1. Open this file in any modern web browser
+  2. Click the "Load Demo Data" button in the top-right corner
+  3. Watch as mock code changes appear with animations
+  4. Use mouse to pan/zoom, hover over symbols to see diffs
+  
+  FEATURES DEMONSTRATED:
+  - Real-time symbol tracking (functions, classes, methods, variables, etc.)
+  - Color-coded change types (green=added, yellow=modified, red=deleted)
+  - File grouping with statistics
+  - Interactive pan/zoom controls
+  - Code diff tooltips
+  - Time-since-change labels
+  
+  This demo uses the exact same visualization code as the VSCode extension,
+  just with mock data instead of real file watching.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radium Symbol Changes - Demo</title>
+  <style>
+    /* ============================================
+       DEMO-SPECIFIC STYLES
+       ============================================ */
+    :root {
+      /* VSCode theme variables - dark theme fallbacks */
+      --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      --vscode-editor-background: #1e1e1e;
+      --vscode-editor-foreground: #d4d4d4;
+      --vscode-panel-border: #3e3e42;
+      --vscode-button-background: #0e639c;
+      --vscode-button-foreground: #ffffff;
+      --vscode-foreground: #cccccc;
+      --vscode-menu-background: #252526;
+      --vscode-menu-foreground: #cccccc;
+      --vscode-menu-border: #454545;
+      --vscode-menu-selectionBackground: #094771;
+      --vscode-menu-selectionForeground: #ffffff;
+      --vscode-menu-separatorBackground: #454545;
+      --vscode-notifications-background: #252526;
+      --vscode-notifications-foreground: #cccccc;
+      --vscode-editorHoverWidget-background: #252526;
+      --vscode-editorHoverWidget-foreground: #cccccc;
+      --vscode-editorHoverWidget-border: #454545;
+    }
+
+    #demo-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px 20px;
+      z-index: 1000;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #demo-header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    #demo-header .subtitle {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-top: 2px;
+    }
+
+    #load-demo-button {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    #load-demo-button:hover {
+      background: rgba(255, 255, 255, 0.3);
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+
+    body {
+      margin: 0;
+      padding-top: 70px; /* Space for demo header */
+    }
+
+    /* ============================================
+       ORIGINAL SYMBOL CHANGES PANEL STYLES
+       ============================================ */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--vscode-font-family);
+      background-color: var(--vscode-editor-background);
+      color: var(--vscode-editor-foreground);
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    #container {
+      width: 100%;
+      height: calc(100vh - 70px);
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+    }
+
+    #container.panning {
+      cursor: grabbing;
+    }
+
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      transform-origin: 0 0;
+      transition: transform 0.1s ease-out;
+    }
+
+    #canvas.no-transition {
+      transition: none;
+    }
+
+    .symbol-box {
+      position: relative;
+      background-color: var(--vscode-editor-background);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 400;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+      transition: all 0.2s ease;
+      z-index: 10;
+      cursor: pointer;
+      box-sizing: border-box;
+      width: calc(100% - 8px);
+      height: 60px;
+      margin: 0 4px 8px 4px;
+      overflow: hidden;
+    }
+
+    .symbol-box.highlight {
+      box-shadow: inset 0 0 0 4px #FFD700;
+    }
+
+    .symbol-box.change-detected {
+      border: 4px solid #87CEEB;
+      box-shadow: 0 0 20px #87CEEB, 0 0 40px #87CEEB, inset 0 0 20px rgba(135, 206, 235, 0.3);
+      animation: glowPulse 1s ease-in-out infinite;
+    }
+
+    @keyframes glowPulse {
+      0%, 100% { 
+        box-shadow: 0 0 20px #87CEEB, 0 0 40px #87CEEB, inset 0 0 20px rgba(135, 206, 235, 0.3);
+      }
+      50% { 
+        box-shadow: 0 0 30px #87CEEB, 0 0 60px #87CEEB, inset 0 0 30px rgba(135, 206, 235, 0.5);
+      }
+    }
+
+    .symbol-type-label {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      font-size: 11px;
+      font-weight: 400;
+      text-transform: none;
+      color: #000000;
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 2px 6px;
+      border-radius: 2px;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+      z-index: 1;
+      pointer-events: none;
+    }
+    
+    .symbol-box[data-change-type="added"] .symbol-type-label {
+      background-color: #90EE90;
+    }
+    
+    .symbol-box[data-change-type="modified"] .symbol-type-label,
+    .symbol-box[data-change-type="value_changed"] .symbol-type-label {
+      background-color: #dfe85d;
+    }
+    
+    .symbol-box[data-change-type="deleted"] .symbol-type-label {
+      background-color: #FFB6C1;
+    }
+
+    .symbol-time-label {
+      position: absolute;
+      top: 6px;
+      font-size: 10px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      color: #FFFFFF;
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 2px 6px;
+      border-radius: 3px;
+      white-space: nowrap;
+      z-index: 1;
+      pointer-events: none;
+    }
+    
+    .symbol-line-changes {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      font-size: 10px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      white-space: nowrap;
+      z-index: 1;
+      pointer-events: none;
+      display: flex;
+      gap: 4px;
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    
+    .symbol-line-changes .additions {
+      color: #00FF00;
+    }
+    
+    .symbol-line-changes .deletions {
+      color: #FF0000;
+    }
+    
+    .symbol-icons {
+      position: absolute;
+      bottom: 6px;
+      right: 8px;
+      display: flex;
+      gap: 4px;
+      z-index: 2;
+    }
+    
+    .symbol-icon {
+      width: 20px;
+      height: 20px;
+      background-color: #3366AA;
+      color: #FFFFFF;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      pointer-events: auto;
+      text-align: center;
+      line-height: 1;
+    }
+    
+    .symbol-icon:hover {
+      background-color: #4477CC;
+      transform: scale(1.1);
+    }
+
+    .symbol-box.function,
+    .symbol-box.class,
+    .symbol-box.method,
+    .symbol-box.constructor,
+    .symbol-box.struct,
+    .symbol-box.variable,
+    .symbol-box.constant,
+    .symbol-box.file {
+    }
+
+    .symbol-box.interface,
+    .symbol-box.type {
+      border-style: dashed;
+      border-width: 1px;
+    }
+    
+    .symbol-box.interface[data-change-type="added"],
+    .symbol-box.type[data-change-type="added"] {
+      border-color: #32CD32;
+    }
+    
+    .symbol-box.interface[data-change-type="modified"],
+    .symbol-box.type[data-change-type="modified"],
+    .symbol-box.interface[data-change-type="value_changed"],
+    .symbol-box.type[data-change-type="value_changed"] {
+      border-color: #FFD700;
+    }
+    
+    .symbol-box.interface[data-change-type="deleted"],
+    .symbol-box.type[data-change-type="deleted"] {
+      border-color: #FF6B6B;
+    }
+
+    .symbol-box.constant {
+      border-width: 2px;
+    }
+
+    .symbol-box.file {
+      min-width: 120px;
+    }
+
+    .symbol-box[data-change-type="added"],
+    .symbol-box[data-change-type="modified"],
+    .symbol-box[data-change-type="deleted"],
+    .symbol-box[data-change-type="value_changed"] {
+      background: var(--vscode-editor-background);
+    }
+
+    .symbol-box[data-change-type="deleted"] .symbol-type-label,
+    .symbol-box[data-change-type="deleted"] .change-symbol {
+      color: #000000;
+    }
+    
+    .symbol-box[data-change-type="deleted"] .symbol-name {
+      color: #FFFFFF;
+    }
+
+    .symbol-box.added {
+      animation: pulseGreen 3s ease-in-out infinite;
+    }
+
+    .symbol-box.modified {
+      animation: pulseYellow 3s ease-in-out infinite;
+    }
+
+    .symbol-box.deleted {
+      animation: pulseRed 3s ease-in-out infinite;
+    }
+
+    .symbol-box.value_changed {
+      animation: pulseYellow 3s ease-in-out infinite;
+    }
+
+    @keyframes pulseGreen {
+      0%, 100% { border-color: #32CD32; opacity: 1; }
+      50% { border-color: #7FFF7F; opacity: 0.85; }
+    }
+
+    @keyframes pulseYellow {
+      0%, 100% { border-color: #FFD700; opacity: 1; }
+      50% { border-color: #FFED4E; opacity: 0.85; }
+    }
+
+    @keyframes pulseRed {
+      0%, 100% { border-color: #FF6B6B; opacity: 1; }
+      50% { border-color: #FFB6C1; opacity: 0.85; }
+    }
+
+    .symbol-box:hover {
+      transform: scale(1.03);
+      z-index: 20;
+      border-width: 2px;
+      cursor: pointer;
+    }
+
+    .file-container {
+      position: absolute;
+      border: 2px solid var(--vscode-panel-border);
+      border-radius: 8px;
+      background-color: #4c4d4c;
+      padding: 85px 4px 8px 4px;
+      box-sizing: border-box;
+    }
+    
+    .file-header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background-color: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      border-radius: 6px 6px 0 0;
+    }
+
+    .file-path-label {
+      position: absolute;
+      top: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--vscode-font-family);
+      color: #FFFFFF;
+      text-align: center;
+      cursor: default;
+      max-width: calc(100% - 140px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+    
+    .file-directory-path {
+      font-size: 14px;
+      font-weight: 400;
+      opacity: 0.7;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+      order: 1;
+    }
+    
+    .file-name {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+      max-width: 100%;
+      order: 2;
+    }
+    
+    .file-name.small {
+      font-size: 20px;
+    }
+    
+    .file-name.smaller {
+      font-size: 18px;
+    }
+
+    .file-total-lines {
+      position: absolute;
+      top: 8px;
+      left: 12px;
+      background-color: rgba(0, 0, 0, 0.5);
+      color: #FFFFFF;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      z-index: 5;
+    }
+
+    .file-stats {
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 4px 8px;
+      border-radius: 3px;
+      z-index: 5;
+    }
+
+    .stat-additions {
+      color: #00FF00;
+    }
+
+    .stat-deletions {
+      color: #FF0000;
+    }
+
+    .symbol-content {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      white-space: nowrap;
+      position: absolute;
+      top: 26px;
+      bottom: 6px;
+      left: 8px;
+      right: 70px;
+      pointer-events: none;
+    }
+
+    .symbol-name {
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      text-align: left;
+      color: #FFFFFF;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: auto;
+    }
+
+    svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #info {
+      position: fixed;
+      top: 86px;
+      right: 16px;
+      padding: 8px 12px;
+      background-color: transparent;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      font-size: 11px;
+      z-index: 100;
+    }
+
+    #info h3 {
+      margin-bottom: 0;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--vscode-foreground);
+      opacity: 0.6;
+    }
+
+    #zoom-controls {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 100;
+    }
+
+    .zoom-button {
+      width: 32px;
+      height: 32px;
+      background-color: transparent;
+      color: var(--vscode-foreground);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 400;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      opacity: 0.6;
+    }
+
+    .zoom-button:hover {
+      opacity: 1;
+      border-color: var(--vscode-foreground);
+    }
+
+    #zoom-level {
+      text-align: center;
+      font-size: 9px;
+      opacity: 0.5;
+      padding: 2px;
+    }
+
+    #clear-button {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      padding: 6px 10px;
+      background-color: transparent;
+      color: var(--vscode-foreground);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 400;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.15s ease;
+      opacity: 0.6;
+    }
+
+    #clear-button:hover {
+      opacity: 1;
+      border-color: var(--vscode-foreground);
+    }
+
+    #auto-focus-toggle {
+      position: fixed;
+      bottom: 50px;
+      left: 16px;
+      padding: 6px 10px;
+      background-color: transparent;
+      color: var(--vscode-foreground);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 400;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.15s ease;
+      opacity: 0.6;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #auto-focus-toggle:hover {
+      opacity: 1;
+      border-color: var(--vscode-foreground);
+    }
+
+    #auto-focus-toggle.active {
+      background-color: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border-color: var(--vscode-button-background);
+      opacity: 1;
+    }
+
+    .toggle-checkbox {
+      width: 12px;
+      height: 12px;
+      border: 1px solid currentColor;
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+    }
+
+    .hover-popup {
+      position: fixed;
+      background-color: var(--vscode-editor-background);
+      border: 2px solid var(--vscode-panel-border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      min-width: 300px;
+      max-width: 600px;
+      max-height: 500px;
+      overflow: auto;
+      z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      pointer-events: auto;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    
+    .hover-popup.visible {
+      opacity: 1;
+    }
+    
+    .hover-popup.code-popup {
+      color: var(--vscode-editor-foreground);
+    }
+    
+    .hover-popup.comment-popup {
+      background-color: rgba(216, 191, 216, 0.95);
+      color: #000000;
+      font-style: italic;
+    }
+    
+    .hover-popup .diff-line {
+      font-family: 'Courier New', monospace;
+      line-height: 1.4;
+    }
+    
+    .hover-popup .diff-line.addition {
+      background-color: rgba(0, 255, 0, 0.1);
+      color: #90ee90;
+    }
+    
+    .hover-popup .diff-line.deletion {
+      background-color: rgba(255, 0, 0, 0.1);
+      color: #ff6b6b;
+    }
+    
+    .hover-popup .diff-line.context {
+      color: var(--vscode-editor-foreground);
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <div id="demo-header">
+    <div>
+      <h1>🔬 Radium Symbol Changes Visualization</h1>
+      <div class="subtitle">Interactive demo showing real-time code change tracking</div>
+    </div>
+    <button id="load-demo-button">Load Demo Data</button>
+  </div>
+
+  <div id="info">
+    <h3>📊 Demo Mode</h3>
+  </div>
+  
+  <div id="zoom-controls">
+    <button class="zoom-button" id="zoom-in" title="Zoom In">+</button>
+    <div id="zoom-level">100%</div>
+    <button class="zoom-button" id="zoom-out" title="Zoom Out">−</button>
+    <button class="zoom-button" id="zoom-reset" title="Reset View">⟲</button>
+  </div>
+  
+  <button id="clear-button" title="Clear all symbols">
+    🗑️ Clear All
+  </button>
+  
+  <button id="auto-focus-toggle" title="Auto-focus on changes">
+    <span class="toggle-checkbox"></span>
+    <span>Auto-focus on changes</span>
+  </button>
+  
+  <div id="container">
+    <div id="canvas">
+      <svg id="connections">
+        <defs>
+          <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="2.5" orient="auto">
+            <polygon points="0 0, 8 2.5, 0 5" fill="var(--vscode-panel-border)" opacity="0.5" />
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  </div>
+
+  <script>
+    console.log('[Demo] Script loaded');
+    
+    // Mock data for demonstration
+    const MOCK_DATA = [
+      // File 1: src/services/user-service.ts (3 changes)
+      {
+        filePath: 'src/services/user-service.ts',
+        symbol: {
+          type: 'function',
+          name: 'authenticateUser',
+          changeType: 'modified',
+          startLine: 45,
+          endLine: 68,
+          changeAmount: 8
+        },
+        calls: [],
+        timestamp: Date.now() - 30000,
+        isNew: false,
+        diff: `@@ -45,6 +45,8 @@ export async function authenticateUser(username: string, password: string) {
+  const user = await db.findUser(username);
+  
+  if (!user) {
++    logger.warn('Authentication failed: user not found', { username });
+    throw new Error('User not found');
+  }
+  
++  // Verify password with bcrypt
+  const isValid = await bcrypt.compare(password, user.passwordHash);`,
+        additions: 5,
+        deletions: 3
+      },
+      {
+        filePath: 'src/services/user-service.ts',
+        symbol: {
+          type: 'class',
+          name: 'UserRepository',
+          changeType: 'added',
+          startLine: 15,
+          endLine: 42,
+          changeAmount: 28
+        },
+        calls: [],
+        timestamp: Date.now() - 60000,
+        isNew: false,
+        diff: `@@ -15,0 +15,28 @@
++export class UserRepository {
++  private db: Database;
++  
++  constructor(database: Database) {
++    this.db = database;
++  }
++  
++  async findById(id: string): Promise<User | null> {
++    return await this.db.users.findOne({ id });
++  }
++}`,
+        additions: 28,
+        deletions: 0
+      },
+      {
+        filePath: 'src/services/user-service.ts',
+        symbol: {
+          type: 'method',
+          name: 'validateSession',
+          changeType: 'added',
+          startLine: 85,
+          endLine: 95,
+          changeAmount: 11
+        },
+        calls: [],
+        timestamp: Date.now() - 10000,
+        isNew: false,
+        diff: `@@ -85,0 +85,11 @@
++  async validateSession(token: string): Promise<boolean> {
++    const session = await this.sessionStore.get(token);
++    if (!session) return false;
++    return session.expiresAt > Date.now();
++  }`,
+        additions: 11,
+        deletions: 0
+      },
+      
+      // File 2: src/models/user.model.ts (2 changes)
+      {
+        filePath: 'src/models/user.model.ts',
+        symbol: {
+          type: 'interface',
+          name: 'User',
+          changeType: 'modified',
+          startLine: 5,
+          endLine: 15,
+          changeAmount: 3
+        },
+        calls: [],
+        timestamp: Date.now() - 120000,
+        isNew: false,
+        diff: `@@ -5,8 +5,11 @@ export interface User {
+  id: string;
+  username: string;
+  email: string;
++  emailVerified: boolean;
+  passwordHash: string;
+  createdAt: Date;
++  updatedAt: Date;
++  lastLoginAt?: Date;
+}`,
+        additions: 3,
+        deletions: 0
+      },
+      {
+        filePath: 'src/models/user.model.ts',
+        symbol: {
+          type: 'interface',
+          name: 'UserSession',
+          changeType: 'added',
+          startLine: 18,
+          endLine: 24,
+          changeAmount: 7
+        },
+        calls: [],
+        timestamp: Date.now() - 25000,
+        isNew: false,
+        diff: `@@ -18,0 +18,7 @@
++export interface UserSession {
++  token: string;
++  userId: string;
++  expiresAt: number;
++  createdAt: Date;
++}`,
+        additions: 7,
+        deletions: 0
+      },
+      
+      // File 3: src/utils/validation.ts (4 changes)
+      {
+        filePath: 'src/utils/validation.ts',
+        symbol: {
+          type: 'function',
+          name: 'validateEmail',
+          changeType: 'deleted',
+          startLine: 22,
+          endLine: 28,
+          changeAmount: 7
+        },
+        calls: [],
+        timestamp: Date.now() - 90000,
+        isNew: false,
+        diff: `@@ -22,7 +22,0 @@
+-export function validateEmail(email: string): boolean {
+-  const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+-  return emailRegex.test(email);
+-}`,
+        additions: 0,
+        deletions: 7
+      },
+      {
+        filePath: 'src/utils/validation.ts',
+        symbol: {
+          type: 'constant',
+          name: 'EMAIL_REGEX',
+          changeType: 'added',
+          startLine: 8,
+          endLine: 8,
+          changeAmount: 1
+        },
+        calls: [],
+        timestamp: Date.now() - 45000,
+        isNew: false,
+        diff: `@@ -8,0 +8,1 @@
++export const EMAIL_REGEX = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;`,
+        additions: 1,
+        deletions: 0
+      },
+      {
+        filePath: 'src/utils/validation.ts',
+        symbol: {
+          type: 'function',
+          name: 'validatePassword',
+          changeType: 'modified',
+          startLine: 32,
+          endLine: 40,
+          changeAmount: 5
+        },
+        calls: [],
+        timestamp: Date.now() - 35000,
+        isNew: false,
+        diff: `@@ -32,3 +32,8 @@ export function validatePassword(password: string): boolean {
+  if (password.length < 8) return false;
++  if (!/[A-Z]/.test(password)) return false;
++  if (!/[a-z]/.test(password)) return false;
++  if (!/[0-9]/.test(password)) return false;
+  return true;
+}`,
+        additions: 5,
+        deletions: 0
+      },
+      {
+        filePath: 'src/utils/validation.ts',
+        symbol: {
+          type: 'constant',
+          name: 'MIN_PASSWORD_LENGTH',
+          changeType: 'added',
+          startLine: 5,
+          endLine: 5,
+          changeAmount: 1
+        },
+        calls: [],
+        timestamp: Date.now() - 20000,
+        isNew: false,
+        diff: `@@ -5,0 +5,1 @@
++export const MIN_PASSWORD_LENGTH = 8;`,
+        additions: 1,
+        deletions: 0
+      },
+      
+      // File 4: src/controllers/auth.controller.ts (3 changes)
+      {
+        filePath: 'src/controllers/auth.controller.ts',
+        symbol: {
+          type: 'method',
+          name: 'login',
+          changeType: 'modified',
+          startLine: 34,
+          endLine: 52,
+          changeAmount: 12
+        },
+        calls: [],
+        timestamp: Date.now() - 15000,
+        isNew: false,
+        diff: `@@ -34,10 +34,15 @@ class AuthController {
+  async login(req: Request, res: Response) {
+    const { username, password } = req.body;
+    
++    // Validate input
++    if (!username || !password) {
++      return res.status(400).json({ error: 'Missing credentials' });
++    }
++    
+    try {
+-      const token = await authenticateUser(username, password);
++      const user = await authenticateUser(username, password);
++      const token = generateToken(user);
+      res.json({ token });
+    } catch (error) {
+-      res.status(401).json({ error: 'Authentication failed' });
++      res.status(401).json({ error: error.message });
+    }
+  }`,
+        additions: 8,
+        deletions: 4
+      },
+      {
+        filePath: 'src/controllers/auth.controller.ts',
+        symbol: {
+          type: 'method',
+          name: 'register',
+          changeType: 'added',
+          startLine: 55,
+          endLine: 72,
+          changeAmount: 18
+        },
+        calls: [],
+        timestamp: Date.now() - 8000,
+        isNew: false,
+        diff: `@@ -55,0 +55,18 @@
++  async register(req: Request, res: Response) {
++    const { username, email, password } = req.body;
++    
++    if (!validatePassword(password)) {
++      return res.status(400).json({ error: 'Invalid password' });
++    }
++    
++    const user = await createUser({ username, email, password });
++    const token = generateToken(user);
++    res.status(201).json({ token, user });
++  }`,
+        additions: 18,
+        deletions: 0
+      },
+      {
+        filePath: 'src/controllers/auth.controller.ts',
+        symbol: {
+          type: 'method',
+          name: 'logout',
+          changeType: 'modified',
+          startLine: 75,
+          endLine: 82,
+          changeAmount: 4
+        },
+        calls: [],
+        timestamp: Date.now() - 5000,
+        isNew: false,
+        diff: `@@ -75,3 +75,7 @@ class AuthController {
+  async logout(req: Request, res: Response) {
+    const token = req.headers.authorization?.split(' ')[1];
++    if (token) {
++      await this.sessionStore.delete(token);
++    }
+    res.status(204).send();
+  }`,
+        additions: 4,
+        deletions: 0
+      },
+      
+      // File 5: src/config/database.ts (2 changes)
+      {
+        filePath: 'src/config/database.ts',
+        symbol: {
+          type: 'variable',
+          name: 'connectionPool',
+          changeType: 'value_changed',
+          startLine: 12,
+          endLine: 12,
+          changeAmount: 1
+        },
+        calls: [],
+        timestamp: Date.now() - 75000,
+        isNew: false,
+        diff: `@@ -12,1 +12,1 @@
+-const connectionPool = { max: 10, min: 2 };
++const connectionPool = { max: 20, min: 5 };`,
+        additions: 1,
+        deletions: 1
+      },
+      {
+        filePath: 'src/config/database.ts',
+        symbol: {
+          type: 'constant',
+          name: 'DB_TIMEOUT',
+          changeType: 'added',
+          startLine: 15,
+          endLine: 15,
+          changeAmount: 1
+        },
+        calls: [],
+        timestamp: Date.now() - 40000,
+        isNew: false,
+        diff: `@@ -15,0 +15,1 @@
++export const DB_TIMEOUT = 5000;`,
+        additions: 1,
+        deletions: 0
+      },
+      
+      // File 6: src/middleware/auth.middleware.ts (3 changes)
+      {
+        filePath: 'src/middleware/auth.middleware.ts',
+        symbol: {
+          type: 'function',
+          name: 'requireAuth',
+          changeType: 'modified',
+          startLine: 8,
+          endLine: 22,
+          changeAmount: 7
+        },
+        calls: [],
+        timestamp: Date.now() - 50000,
+        isNew: false,
+        diff: `@@ -8,5 +8,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
++    logger.warn('Missing authorization token', { path: req.path });
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
++  
++  const valid = await validateSession(token);
++  if (!valid) {
++    return res.status(401).json({ error: 'Invalid session' });
++  }
+  
+  next();
+}`,
+        additions: 7,
+        deletions: 0
+      },
+      {
+        filePath: 'src/middleware/auth.middleware.ts',
+        symbol: {
+          type: 'function',
+          name: 'optionalAuth',
+          changeType: 'added',
+          startLine: 25,
+          endLine: 35,
+          changeAmount: 11
+        },
+        calls: [],
+        timestamp: Date.now() - 28000,
+        isNew: false,
+        diff: `@@ -25,0 +25,11 @@
++export function optionalAuth(req: Request, res: Response, next: NextFunction) {
++  const token = req.headers.authorization?.split(' ')[1];
++  
++  if (token) {
++    req.user = decodeToken(token);
++  }
++  
++  next();
++}`,
+        additions: 11,
+        deletions: 0
+      },
+      {
+        filePath: 'src/middleware/auth.middleware.ts',
+        symbol: {
+          type: 'interface',
+          name: 'AuthRequest',
+          changeType: 'added',
+          startLine: 3,
+          endLine: 6,
+          changeAmount: 4
+        },
+        calls: [],
+        timestamp: Date.now() - 12000,
+        isNew: false,
+        diff: `@@ -3,0 +3,4 @@
++export interface AuthRequest extends Request {
++  user?: User;
++}`,
+        additions: 4,
+        deletions: 0
+      },
+      
+      // File 7: src/types/api.types.ts (5 changes)
+      {
+        filePath: 'src/types/api.types.ts',
+        symbol: {
+          type: 'interface',
+          name: 'ApiResponse',
+          changeType: 'added',
+          startLine: 5,
+          endLine: 10,
+          changeAmount: 6
+        },
+        calls: [],
+        timestamp: Date.now() - 95000,
+        isNew: false,
+        diff: `@@ -5,0 +5,6 @@
++export interface ApiResponse<T> {
++  data: T;
++  success: boolean;
++  message?: string;
++}`,
+        additions: 6,
+        deletions: 0
+      },
+      {
+        filePath: 'src/types/api.types.ts',
+        symbol: {
+          type: 'interface',
+          name: 'ErrorResponse',
+          changeType: 'added',
+          startLine: 12,
+          endLine: 17,
+          changeAmount: 6
+        },
+        calls: [],
+        timestamp: Date.now() - 70000,
+        isNew: false,
+        diff: `@@ -12,0 +12,6 @@
++export interface ErrorResponse {
++  error: string;
++  code: number;
++  details?: any;
++}`,
+        additions: 6,
+        deletions: 0
+      },
+      {
+        filePath: 'src/types/api.types.ts',
+        symbol: {
+          type: 'type',
+          name: 'HttpMethod',
+          changeType: 'added',
+          startLine: 19,
+          endLine: 19,
+          changeAmount: 1
+        },
+        calls: [],
+        timestamp: Date.now() - 55000,
+        isNew: false,
+        diff: `@@ -19,0 +19,1 @@
++export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';`,
+        additions: 1,
+        deletions: 0
+      },
+      {
+        filePath: 'src/types/api.types.ts',
+        symbol: {
+          type: 'interface',
+          name: 'PaginatedResponse',
+          changeType: 'modified',
+          startLine: 22,
+          endLine: 28,
+          changeAmount: 3
+        },
+        calls: [],
+        timestamp: Date.now() - 32000,
+        isNew: false,
+        diff: `@@ -22,5 +22,8 @@ export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
++  pageSize: number;
++  hasMore: boolean;
+}`,
+        additions: 3,
+        deletions: 0
+      },
+      {
+        filePath: 'src/types/api.types.ts',
+        symbol: {
+          type: 'constant',
+          name: 'DEFAULT_PAGE_SIZE',
+          changeType: 'added',
+          startLine: 31,
+          endLine: 31,
+          changeAmount: 1
+        },
+        calls: [],
+        timestamp: Date.now() - 18000,
+        isNew: false,
+        diff: `@@ -31,0 +31,1 @@
++export const DEFAULT_PAGE_SIZE = 20;`,
+        additions: 1,
+        deletions: 0
+      }
+    ];
+
+    (function() {
+      console.log('[Demo] IIFE started');
+      
+      // Utility functions
+      function getFileName(filePath) {
+        const normalized = filePath.replace(/\\/g, '/');
+        return normalized.split('/').pop() || filePath;
+      }
+      
+      function splitPathIntoDirectoryAndFile(filePath) {
+        const normalized = filePath.replace(/\\/g, '/');
+        const parts = normalized.split('/');
+        
+        if (parts.length === 1) {
+          return { directory: '', filename: parts[0] };
+        }
+        
+        const filename = parts[parts.length - 1];
+        const directory = parts.slice(0, -1).join('/');
+        
+        return { directory, filename };
+      }
+      
+      function formatTimeSince(timestamp) {
+        const now = Date.now();
+        const diff = now - timestamp;
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        
+        if (days > 0) return days + 'd';
+        if (hours > 0) return hours + 'h';
+        if (minutes > 0) return minutes + 'm';
+        if (seconds > 0) return seconds + 's';
+        return 'now';
+      }
+      
+      function updateAllTimeLabels() {
+        const timeLabels = document.querySelectorAll('.symbol-time-label');
+        timeLabels.forEach(label => {
+          const timestamp = parseInt(label.dataset.timestamp || '0', 10);
+          if (timestamp > 0) {
+            label.textContent = formatTimeSince(timestamp);
+          }
+        });
+      }
+      
+      setInterval(updateAllTimeLabels, 30000);
+      
+      const container = document.getElementById('container');
+      const canvas = document.getElementById('canvas');
+      const svg = document.getElementById('connections');
+      const zoomLevelEl = document.getElementById('zoom-level');
+
+      if (!container || !canvas || !svg || !zoomLevelEl) {
+        console.error('[Demo] Failed to find required DOM elements');
+        return;
+      }
+
+      console.log('[Demo] DOM elements found successfully');
+
+      let scale = 1;
+      let translateX = 0;
+      let translateY = 0;
+      let isPanning = false;
+      let startX = 0;
+      let startY = 0;
+
+      const fileGroups = new Map();
+      const fileOrder = [];
+      let nextX = 100;
+      let lastGlowingBox = null;
+      let autoFocusEnabled = true;
+
+      function updateTransform() {
+        canvas.style.transform = 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')';
+        zoomLevelEl.textContent = Math.round(scale * 100) + '%';
+      }
+
+      function focusOnElement(element) {
+        if (!autoFocusEnabled || !element) return;
+        
+        const rect = element.getBoundingClientRect();
+        const canvasRect = canvas.getBoundingClientRect();
+        
+        const elementCenterX = (rect.left + rect.width / 2 - canvasRect.left) / scale;
+        const elementCenterY = (rect.top + rect.height / 2 - canvasRect.top) / scale;
+        
+        const viewportCenterX = container.clientWidth / 2;
+        const viewportCenterY = container.clientHeight / 2;
+        
+        translateX = viewportCenterX - elementCenterX * scale;
+        translateY = viewportCenterY - elementCenterY * scale;
+        
+        canvas.classList.remove('no-transition');
+        updateTransform();
+      }
+
+      function repositionFileSymbols(group) {
+        if (group.symbols.size === 0) {
+          let labelMinWidth = 255;
+          if (group.fileLabel) {
+            const measured = group.fileLabel.scrollWidth || 0;
+            const estimate = (group.fileLabel.textContent || '').length * 8 + 20;
+            labelMinWidth = Math.max(255, measured || estimate);
+          }
+          group.fileContainer.style.width = labelMinWidth + 'px';
+          group.fileContainer.style.height = '100px';
+          group.width = labelMinWidth;
+          return;
+        }
+        
+        const symbolsArray = [];
+        for (const [symbolKey, elements] of group.symbols.entries()) {
+          if (elements && elements.length > 0) {
+            const box = elements[0];
+            const timestamp = parseInt(box.dataset.timestamp || '0', 10);
+            symbolsArray.push({ key: symbolKey, element: box, timestamp });
+          }
+        }
+        
+        symbolsArray.sort((a, b) => b.timestamp - a.timestamp);
+        
+        symbolsArray.forEach(symbolData => {
+          const box = symbolData.element;
+          if (box.parentNode === group.fileContainer) {
+            group.fileContainer.appendChild(box);
+          }
+        });
+        
+        let currentY = 0;
+        const BOX_HEIGHT = 60;
+        const BOX_MARGIN = 8;
+        let maxWidth = 340;
+        
+        for (const symbolData of symbolsArray) {
+          const box = symbolData.element;
+          const boxWidth = box.offsetWidth || 200;
+          maxWidth = Math.max(maxWidth, boxWidth + 8);
+          currentY += BOX_HEIGHT + BOX_MARGIN;
+        }
+        
+        const maxHeight = currentY;
+        
+        let labelMinWidth = 255;
+        if (group.fileLabel) {
+          const measured = group.fileLabel.scrollWidth || 0;
+          const estimate = (group.fileLabel.textContent || '').length * 8 + 20;
+          labelMinWidth = Math.max(255, measured || estimate);
+        }
+        
+        const finalWidth = Math.max(maxWidth, labelMinWidth);
+        const finalHeight = maxHeight + 85 + 8 + 4;
+        
+        group.fileContainer.style.width = finalWidth + 'px';
+        group.fileContainer.style.height = finalHeight + 'px';
+        group.width = finalWidth;
+      }
+
+      function repositionAllFiles() {
+        const FILE_WIDTH = 340; // Fixed width for all file containers
+        const FILE_SPACING = 40; // Gap between files
+        const START_X = 100;
+        const START_Y = 50;
+        
+        const fileCount = fileOrder.length;
+        if (fileCount === 0) return;
+        
+        // Determine number of columns using sqrt to balance rows/columns
+        const columns = Math.max(1, Math.ceil(Math.sqrt(fileCount)));
+        
+        // Calculate files per column for balanced distribution
+        const filesPerColumn = Math.ceil(fileCount / columns);
+        
+        console.log('[Demo] File count:', fileCount, 'Columns:', columns, 'Files per column:', filesPerColumn);
+        
+        // Track current Y position for each column
+        const columnYPositions = Array(columns).fill(START_Y);
+        
+        fileOrder.forEach((filePath, index) => {
+          const group = fileGroups.get(filePath);
+          if (!group) return;
+          
+          repositionFileSymbols(group);
+          
+          // Get the actual current height of the container
+          const styleHeight = parseInt(group.fileContainer.style.height);
+          const containerHeight = !isNaN(styleHeight) && styleHeight > 0 ? styleHeight : (group.fileContainer.offsetHeight || 200);
+          
+          // Determine which column this file goes in
+          // Fill columns top-to-bottom: first filesPerColumn files go to col 0, next to col 1, etc.
+          const col = Math.floor(index / filesPerColumn);
+          
+          // Calculate position
+          const x = START_X + (col * (FILE_WIDTH + FILE_SPACING));
+          const y = columnYPositions[col];
+          
+          console.log('[Demo] File', index, '(' + filePath + '): col=' + col + ', x=' + x + ', y=' + y + ', height=' + containerHeight);
+          
+          // Update group position
+          group.x = x;
+          group.y = y;
+          group.fileContainer.style.left = x + 'px';
+          group.fileContainer.style.top = y + 'px';
+          group.fileContainer.style.width = FILE_WIDTH + 'px';
+          group.width = FILE_WIDTH;
+          
+          // Update column Y position for next file in this column
+          columnYPositions[col] += containerHeight + FILE_SPACING;
+        });
+      }
+
+      function handleSingleSymbolChange(data) {
+        console.log('[Demo] handleSingleSymbolChange called', data);
+        const { filePath, symbol, calls, timestamp, isNew, diff, additions, deletions } = data;
+
+        if (!fileGroups.has(filePath)) {
+          const fileContainer = document.createElement('div');
+          fileContainer.className = 'file-container';
+          fileContainer.style.left = nextX + 'px';
+          fileContainer.style.top = '50px';
+          canvas.appendChild(fileContainer);
+          
+          const fileLabel = document.createElement('div');
+          fileLabel.className = 'file-path-label';
+          
+          const { directory, filename } = splitPathIntoDirectoryAndFile(filePath);
+          
+          if (directory) {
+            const directoryElement = document.createElement('div');
+            directoryElement.className = 'file-directory-path';
+            directoryElement.textContent = directory;
+            fileLabel.appendChild(directoryElement);
+          }
+          
+          const filenameElement = document.createElement('div');
+          filenameElement.className = 'file-name';
+          filenameElement.textContent = filename + (isNew ? ' (new)' : '');
+          fileLabel.appendChild(filenameElement);
+          
+          fileContainer.appendChild(fileLabel);
+          
+          const totalLinesContainer = document.createElement('div');
+          totalLinesContainer.className = 'file-total-lines';
+          totalLinesContainer.textContent = '0';
+          fileContainer.appendChild(totalLinesContainer);
+          
+          const newGroup = { 
+            symbols: new Map(), 
+            symbolPositions: new Map(),
+            x: nextX,
+            y: 50,
+            width: 340,
+            elements: [], 
+            fileLabel: fileLabel,
+            fileContainer: fileContainer,
+            totalLinesElement: totalLinesContainer,
+            stats: { additions: 0, deletions: 0 }
+          };
+          fileGroups.set(filePath, newGroup);
+          fileOrder.push(filePath);
+        }
+
+        const group = fileGroups.get(filePath);
+        
+        if (group.totalLinesElement && symbol.endLine) {
+          const currentMax = parseInt(group.totalLinesElement.textContent || '0', 10);
+          const newMax = Math.max(currentMax, symbol.endLine);
+          group.totalLinesElement.textContent = newMax.toString();
+        }
+        
+        if (additions > 0) {
+          group.stats.additions += additions;
+        }
+        if (deletions > 0) {
+          group.stats.deletions += deletions;
+        }
+        
+        if (group.stats.additions > 0 || group.stats.deletions > 0) {
+          let statsContainer = group.fileContainer.querySelector('.file-stats');
+          
+          if (!statsContainer) {
+            statsContainer = document.createElement('div');
+            statsContainer.className = 'file-stats';
+            group.fileContainer.appendChild(statsContainer);
+          } else {
+            statsContainer.innerHTML = '';
+          }
+          
+          if (group.stats.additions > 0) {
+            const addSpan = document.createElement('span');
+            addSpan.className = 'stat-additions';
+            addSpan.textContent = '+' + group.stats.additions;
+            statsContainer.appendChild(addSpan);
+          }
+          
+          if (group.stats.deletions > 0) {
+            const delSpan = document.createElement('span');
+            delSpan.className = 'stat-deletions';
+            delSpan.textContent = '-' + group.stats.deletions;
+            statsContainer.appendChild(delSpan);
+          }
+        }
+        
+        const symbolKey = symbol.type + ':' + symbol.name;
+        
+        if (group.symbols.has(symbolKey)) {
+          const oldElements = group.symbols.get(symbolKey);
+          oldElements.forEach(el => el.remove());
+          group.symbols.delete(symbolKey);
+        }
+        
+        const newElements = [];
+        const box = document.createElement('div');
+        box.className = 'symbol-box ' + symbol.type;
+        
+        const changeAmount = symbol.changeAmount || 1;
+        box.dataset.changeAmount = String(changeAmount);
+        box.dataset.changeType = symbol.changeType;
+        box.dataset.timestamp = String(timestamp || Date.now());
+        box.dataset.diff = diff || '';
+        box.dataset.comments = '[]';
+        
+        const displayName = (symbol.type === 'function' || symbol.type === 'method') 
+          ? symbol.name + '()' 
+          : symbol.name;
+        
+        const typeLabel = document.createElement('div');
+        typeLabel.className = 'symbol-type-label';
+        
+        let changeTypeText = '';
+        if (symbol.changeType === 'added') changeTypeText = 'Added';
+        else if (symbol.changeType === 'modified') changeTypeText = 'Changed';
+        else if (symbol.changeType === 'deleted') changeTypeText = 'Deleted';
+        else if (symbol.changeType === 'value_changed') changeTypeText = 'Changed';
+        
+        typeLabel.textContent = changeTypeText + ' ' + symbol.type;
+        box.appendChild(typeLabel);
+        
+        const lineChanges = document.createElement('div');
+        lineChanges.className = 'symbol-line-changes';
+        
+        if (additions > 0) {
+          const addSpan = document.createElement('span');
+          addSpan.className = 'additions';
+          addSpan.textContent = '+' + additions;
+          lineChanges.appendChild(addSpan);
+        }
+        
+        if (deletions > 0) {
+          const delSpan = document.createElement('span');
+          delSpan.className = 'deletions';
+          delSpan.textContent = '-' + deletions;
+          lineChanges.appendChild(delSpan);
+        }
+        
+        if (additions > 0 || deletions > 0) {
+          box.appendChild(lineChanges);
+        }
+        
+        const timeLabel = document.createElement('div');
+        timeLabel.className = 'symbol-time-label';
+        timeLabel.dataset.timestamp = String(timestamp || Date.now());
+        timeLabel.textContent = formatTimeSince(timestamp || Date.now());
+        box.appendChild(timeLabel);
+        
+        setTimeout(() => {
+          const hasLineChanges = lineChanges.parentNode !== null;
+          
+          if (hasLineChanges) {
+            const lineChangesWidth = lineChanges.offsetWidth;
+            const gap = 4;
+            timeLabel.style.right = (8 + lineChangesWidth + gap) + 'px';
+          } else {
+            timeLabel.style.right = '8px';
+          }
+        }, 10);
+        
+        const contentWrapper = document.createElement('div');
+        contentWrapper.className = 'symbol-content';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'symbol-name';
+        nameSpan.textContent = displayName;
+
+        contentWrapper.appendChild(nameSpan);
+        box.appendChild(contentWrapper);
+        
+        const iconsContainer = document.createElement('div');
+        iconsContainer.className = 'symbol-icons';
+        
+        const commentIcon = document.createElement('div');
+        commentIcon.className = 'symbol-icon comment-icon';
+        commentIcon.textContent = '//';
+        commentIcon.title = 'Show comments';
+        iconsContainer.appendChild(commentIcon);
+        
+        const codeIcon = document.createElement('div');
+        codeIcon.className = 'symbol-icon code-icon';
+        codeIcon.textContent = '#';
+        codeIcon.title = 'Show code changes';
+        iconsContainer.appendChild(codeIcon);
+        
+        box.appendChild(iconsContainer);
+        
+        let codePopup = null;
+        let codeHoverTimeout = null;
+        let isHoveringCodePopup = false;
+        
+        codeIcon.addEventListener('mouseenter', (e) => {
+          e.stopPropagation();
+          codeHoverTimeout = setTimeout(() => {
+            const diffText = box.dataset.diff || '';
+            if (diffText) {
+              codePopup = document.createElement('div');
+              codePopup.className = 'hover-popup code-popup';
+              
+              const lines = diffText.split('\n');
+              lines.forEach(line => {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'diff-line';
+                
+                if (line.startsWith('+')) {
+                  lineDiv.classList.add('addition');
+                } else if (line.startsWith('-')) {
+                  lineDiv.classList.add('deletion');
+                } else {
+                  lineDiv.classList.add('context');
+                }
+                
+                lineDiv.textContent = line;
+                codePopup.appendChild(lineDiv);
+              });
+              
+              document.body.appendChild(codePopup);
+              
+              const boxRect = box.getBoundingClientRect();
+              const fileContainerRect = box.closest('.file-container').getBoundingClientRect();
+              codePopup.style.left = (fileContainerRect.left + (fileContainerRect.width - 600) / 2) + 'px';
+              codePopup.style.top = (fileContainerRect.top + 20) + 'px';
+              
+              setTimeout(() => codePopup.classList.add('visible'), 10);
+              
+              codePopup.addEventListener('mouseenter', () => {
+                isHoveringCodePopup = true;
+              });
+              
+              codePopup.addEventListener('mouseleave', () => {
+                isHoveringCodePopup = false;
+                codePopup.classList.remove('visible');
+                setTimeout(() => {
+                  if (codePopup && codePopup.parentNode && !isHoveringCodePopup) {
+                    codePopup.remove();
+                    codePopup = null;
+                  }
+                }, 200);
+              });
+            }
+          }, 400);
+        });
+        
+        codeIcon.addEventListener('mouseleave', (e) => {
+          e.stopPropagation();
+          if (codeHoverTimeout) {
+            clearTimeout(codeHoverTimeout);
+            codeHoverTimeout = null;
+          }
+          setTimeout(() => {
+            if (codePopup && !isHoveringCodePopup) {
+              codePopup.classList.remove('visible');
+              setTimeout(() => {
+                if (codePopup && codePopup.parentNode && !isHoveringCodePopup) {
+                  codePopup.remove();
+                  codePopup = null;
+                }
+              }, 200);
+            }
+          }, 100);
+        });
+        
+        group.fileContainer.appendChild(box);
+        group.elements.push(box);
+        newElements.push(box);
+          
+        if (lastGlowingBox) {
+          lastGlowingBox.classList.remove('added', 'modified', 'deleted', 'value_changed');
+        }
+        
+        box.classList.add(symbol.changeType);
+        lastGlowingBox = box;
+        
+        setTimeout(() => {
+          box.classList.remove('added', 'modified', 'deleted', 'value_changed');
+        }, 3000);
+        
+        box.classList.add('change-detected');
+        
+        setTimeout(() => {
+          box.classList.remove('change-detected');
+        }, 4000);
+        
+        let glowCount = 0;
+        const glowInterval = setInterval(() => {
+          box.classList.add('highlight');
+          setTimeout(() => {
+            box.classList.remove('highlight');
+          }, 500);
+          
+          glowCount++;
+          if (glowCount >= 3) {
+            clearInterval(glowInterval);
+          }
+        }, 1000);
+        
+        setTimeout(() => {
+          focusOnElement(box);
+        }, 100);
+        
+        box.addEventListener('click', (e) => {
+          e.stopPropagation();
+          console.log('[Demo] Clicked symbol:', symbol.name, 'at line', symbol.startLine);
+        });
+        
+        group.symbols.set(symbolKey, newElements);
+        
+        requestAnimationFrame(() => {
+          repositionFileSymbols(group);
+          
+          requestAnimationFrame(() => {
+            repositionAllFiles();
+          });
+        });
+      }
+
+      // Pan handlers
+      container.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.zoom-button') || e.target.closest('#clear-button') || 
+            e.target.closest('#auto-focus-toggle') || e.target.closest('#load-demo-button')) {
+          return;
+        }
+        isPanning = true;
+        startX = e.clientX - translateX;
+        startY = e.clientY - translateY;
+        container.classList.add('panning');
+        canvas.classList.add('no-transition');
+      });
+
+      container.addEventListener('mousemove', (e) => {
+        if (!isPanning) return;
+        translateX = e.clientX - startX;
+        translateY = e.clientY - startY;
+        updateTransform();
+      });
+
+      container.addEventListener('mouseup', () => {
+        if (isPanning) {
+          isPanning = false;
+          container.classList.remove('panning');
+          canvas.classList.remove('no-transition');
+        }
+      });
+
+      container.addEventListener('mouseleave', () => {
+        if (isPanning) {
+          isPanning = false;
+          container.classList.remove('panning');
+          canvas.classList.remove('no-transition');
+        }
+      });
+
+      // Zoom with mouse wheel
+      container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        
+        const delta = -e.deltaY;
+        const baseScaleBy = delta > 0 ? 1.03 : 0.97;
+        const scaleBy = e.shiftKey ? (delta > 0 ? 1.09 : 0.91) : baseScaleBy;
+        const newScale = Math.max(0.1, Math.min(5, scale * scaleBy));
+        
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        const canvasX = (mouseX - translateX) / scale;
+        const canvasY = (mouseY - translateY) / scale;
+        
+        scale = newScale;
+        
+        translateX = mouseX - canvasX * scale;
+        translateY = mouseY - canvasY * scale;
+        
+        updateTransform();
+      }, { passive: false });
+
+      // Zoom buttons
+      document.getElementById('zoom-in').addEventListener('click', () => {
+        scale = Math.min(5, scale * 1.2);
+        updateTransform();
+      });
+
+      document.getElementById('zoom-out').addEventListener('click', () => {
+        scale = Math.max(0.1, scale / 1.2);
+        updateTransform();
+      });
+
+      document.getElementById('zoom-reset').addEventListener('click', () => {
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        updateTransform();
+      });
+
+      // Clear button
+      document.getElementById('clear-button').addEventListener('click', () => {
+        fileGroups.forEach(group => {
+          if (group.fileContainer) {
+            group.fileContainer.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            group.fileContainer.style.opacity = '0';
+            group.fileContainer.style.transform = 'scale(0.95)';
+            setTimeout(() => group.fileContainer.remove(), 300);
+          }
+          
+          group.elements.forEach(el => {
+            if (el && el.parentNode && el.parentNode !== group.fileContainer) {
+              el.style.transition = 'opacity 0.3s ease';
+              el.style.opacity = '0';
+              setTimeout(() => el.remove(), 300);
+            }
+          });
+        });
+
+        const allLines = Array.from(svg.querySelectorAll('path'));
+        allLines.forEach(line => {
+          line.style.transition = 'opacity 0.3s ease';
+          line.style.opacity = '0';
+          setTimeout(() => line.remove(), 300);
+        });
+
+        fileGroups.clear();
+        fileOrder.length = 0;
+        nextX = 80;
+
+        console.log('[Demo] Cleared all symbols');
+      });
+
+      // Auto-focus toggle
+      const autoFocusToggle = document.getElementById('auto-focus-toggle');
+      if (autoFocusToggle) {
+        const toggleCheckbox = autoFocusToggle.querySelector('.toggle-checkbox');
+        
+        autoFocusToggle.classList.add('active');
+        if (toggleCheckbox) {
+          toggleCheckbox.textContent = '✓';
+        }
+        
+        autoFocusToggle.addEventListener('click', () => {
+          autoFocusEnabled = !autoFocusEnabled;
+          
+          if (autoFocusEnabled) {
+            autoFocusToggle.classList.add('active');
+            if (toggleCheckbox) {
+              toggleCheckbox.textContent = '✓';
+            }
+          } else {
+            autoFocusToggle.classList.remove('active');
+            if (toggleCheckbox) {
+              toggleCheckbox.textContent = '';
+            }
+          }
+          
+          console.log('[Demo] Auto-focus', autoFocusEnabled ? 'enabled' : 'disabled');
+        });
+      }
+
+      // Load demo data button
+      document.getElementById('load-demo-button').addEventListener('click', () => {
+        console.log('[Demo] Loading mock data...');
+        
+        // Clear existing data first
+        fileGroups.forEach(group => {
+          if (group.fileContainer) {
+            group.fileContainer.remove();
+          }
+        });
+        fileGroups.clear();
+        fileOrder.length = 0;
+        nextX = 80;
+        
+        // Load mock data with delays to simulate real-time changes
+        MOCK_DATA.forEach((data, index) => {
+          setTimeout(() => {
+            handleSingleSymbolChange(data);
+          }, index * 800); // 800ms delay between each symbol
+        });
+      });
+
+      // Auto-load demo data on page load
+      setTimeout(() => {
+        console.log('[Demo] Auto-loading mock data...');
+        MOCK_DATA.forEach((data, index) => {
+          setTimeout(() => {
+            handleSingleSymbolChange(data);
+          }, index * 800); // 800ms delay between each symbol
+        });
+      }, 500);
+
+      console.log('[Demo] View initialized successfully');
+    })();
+  </script>
+</body>
+</html>
+

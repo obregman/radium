@@ -84,11 +84,21 @@ export class SymbolChangesPanel {
             // Convert it to the platform-specific path
             const normalizedPath = message.filePath.replace(/\\/g, '/');
             const filePath = path.join(this.workspaceRoot, normalizedPath);
+            
             try {
               // Use Uri.file() for proper cross-platform path handling
               const fileUri = vscode.Uri.file(filePath);
+              
+              // Use VSCode's workspace API to read the file instead of opening it directly
+              // This avoids file locking issues on Windows
               const document = await vscode.workspace.openTextDocument(fileUri);
-              const editor = await vscode.window.showTextDocument(document);
+              
+              // Show the document with preview mode to avoid locking
+              const editor = await vscode.window.showTextDocument(document, {
+                preview: false, // Open in a regular tab, not preview
+                preserveFocus: false
+              });
+              
               // Navigate to the line (convert to 0-based index)
               const line = Math.max(0, (message.line || 1) - 1);
               const position = new vscode.Position(line, 0);
@@ -98,9 +108,24 @@ export class SymbolChangesPanel {
                 vscode.TextEditorRevealType.InCenter
               );
               this.log(`Opened ${message.filePath} at line ${message.line}`);
-            } catch (error) {
-              this.log(`Failed to open file ${message.filePath}: ${error}`);
-              vscode.window.showErrorMessage(`Failed to open file: ${message.filePath}`);
+            } catch (error: any) {
+              const errorMsg = error?.message || String(error);
+              this.log(`Failed to open file ${message.filePath}: ${errorMsg}`);
+              
+              // Provide more helpful error message
+              if (errorMsg.includes('EBUSY') || errorMsg.includes('EPERM')) {
+                vscode.window.showErrorMessage(
+                  `File is currently locked: ${message.filePath}. Please close any programs that might be using this file.`
+                );
+              } else if (errorMsg.includes('ENOENT')) {
+                vscode.window.showErrorMessage(
+                  `File not found: ${message.filePath}`
+                );
+              } else {
+                vscode.window.showErrorMessage(
+                  `Failed to open file: ${message.filePath}`
+                );
+              }
             }
             break;
           case 'revertSymbolChange':
@@ -184,6 +209,20 @@ export class SymbolChangesPanel {
 
   private log(message: string) {
     SymbolChangesPanel.outputChannel.appendLine(`[${new Date().toLocaleTimeString()}] ${message}`);
+  }
+
+  /**
+   * Read file content using VSCode's API to avoid file locking issues on Windows
+   */
+  private async readFileContent(filePath: string): Promise<string | null> {
+    try {
+      const fileUri = vscode.Uri.file(filePath);
+      const fileData = await vscode.workspace.fs.readFile(fileUri);
+      return Buffer.from(fileData).toString('utf8');
+    } catch (error) {
+      this.log(`Failed to read file ${filePath}: ${error}`);
+      return null;
+    }
   }
 
   private startWatching() {
@@ -327,21 +366,23 @@ export class SymbolChangesPanel {
         }
         
         try {
-          const content = fs.readFileSync(filePath, 'utf8');
-          this.baselineFileStates.set(relativePath, content);
-          this.lastKnownFileStates.set(relativePath, content);
-          
-          // Also parse and store symbols for deletion detection
-          try {
-            const parseResult = await this.parser.parseFile(filePath, content);
-            if (parseResult && parseResult.symbols.length > 0) {
-              this.lastKnownSymbols.set(relativePath, parseResult.symbols);
+          const content = await this.readFileContent(filePath);
+          if (content !== null) {
+            this.baselineFileStates.set(relativePath, content);
+            this.lastKnownFileStates.set(relativePath, content);
+            
+            // Also parse and store symbols for deletion detection
+            try {
+              const parseResult = await this.parser.parseFile(filePath, content);
+              if (parseResult && parseResult.symbols.length > 0) {
+                this.lastKnownSymbols.set(relativePath, parseResult.symbols);
+              }
+            } catch (parseError) {
+              // Silently ignore parse errors during snapshot
             }
-          } catch (parseError) {
-            // Silently ignore parse errors during snapshot
+            
+            snapshotCount++;
           }
-          
-          snapshotCount++;
         } catch (error) {
           this.log(`Failed to snapshot ${relativePath}: ${error}`);
         }
@@ -404,10 +445,12 @@ export class SymbolChangesPanel {
       this.log(`First time seeing ${relativePath}, storing as baseline without showing changes`);
       try {
         if (fs.existsSync(fullPath)) {
-          const currentContent = fs.readFileSync(fullPath, 'utf8');
-          this.baselineFileStates.set(relativePath, currentContent);
-          this.lastKnownFileStates.set(relativePath, currentContent);
-          this.log(`Stored baseline for ${relativePath}`);
+          const currentContent = await this.readFileContent(fullPath);
+          if (currentContent !== null) {
+            this.baselineFileStates.set(relativePath, currentContent);
+            this.lastKnownFileStates.set(relativePath, currentContent);
+            this.log(`Stored baseline for ${relativePath}`);
+          }
         }
       } catch (error) {
         this.log(`Failed to store initial file state for ${relativePath}: ${error}`);
@@ -447,8 +490,10 @@ export class SymbolChangesPanel {
     let fileLineCount = 0;
     try {
       if (fs.existsSync(fullPath)) {
-        const currentContent = fs.readFileSync(fullPath, 'utf8');
-        fileLineCount = currentContent.split('\n').length;
+        const currentContent = await this.readFileContent(fullPath);
+        if (currentContent !== null) {
+          fileLineCount = currentContent.split('\n').length;
+        }
       }
     } catch (error) {
       this.log(`Failed to count lines in ${relativePath}: ${error}`);
@@ -530,8 +575,10 @@ export class SymbolChangesPanel {
       let fileLineCount = 0;
       try {
         if (fs.existsSync(fullPath)) {
-          const currentContent = fs.readFileSync(fullPath, 'utf8');
-          fileLineCount = currentContent.split('\n').length;
+          const currentContent = await this.readFileContent(fullPath);
+          if (currentContent !== null) {
+            fileLineCount = currentContent.split('\n').length;
+          }
         }
       } catch (error) {
         this.log(`Failed to count lines in ${relativePath}: ${error}`);
@@ -562,10 +609,12 @@ export class SymbolChangesPanel {
     // This ensures each change is isolated and not cumulative
     try {
       if (fs.existsSync(fullPath)) {
-        const currentContent = fs.readFileSync(fullPath, 'utf8');
-        this.baselineFileStates.set(relativePath, currentContent);
-        this.lastKnownFileStates.set(relativePath, currentContent);
-        this.log(`Updated baseline for ${relativePath} to current state`);
+        const currentContent = await this.readFileContent(fullPath);
+        if (currentContent !== null) {
+          this.baselineFileStates.set(relativePath, currentContent);
+          this.lastKnownFileStates.set(relativePath, currentContent);
+          this.log(`Updated baseline for ${relativePath} to current state`);
+        }
       }
     } catch (error) {
       this.log(`Failed to update baseline for ${relativePath}: ${error}`);
@@ -613,41 +662,44 @@ export class SymbolChangesPanel {
 
     try {
       if (fs.existsSync(fullPath)) {
-        currentContent = fs.readFileSync(fullPath, 'utf8');
-        this.log(`Parsing file ${filePath}, content length: ${currentContent.length}`);
-        
-        // Check file extension
-        const ext = filePath.split('.').pop();
-        this.log(`File extension: ${ext}`);
-        
-        // Check for lambda expressions in C# files
-        if (ext === 'cs' && currentContent.includes('=>')) {
-          this.log(`[C#] File contains lambda expressions (=>)`);
-          const lambdaCount = (currentContent.match(/=>/g) || []).length;
-          this.log(`[C#] Lambda count: ${lambdaCount}`);
-        }
-        
-        this.log(`Calling parser.parseFile for ${fullPath}`);
-        const parseResult = await this.parser.parseFile(fullPath, currentContent);
-        this.log(`Parser returned: ${parseResult ? 'result object' : 'null'}`);
-        
-        if (parseResult) {
-          this.log(`Parse result: ${parseResult.symbols.length} symbols, ${parseResult.calls.length} calls`);
-          if (parseResult.symbols.length > 0) {
-            this.log(`First few symbols: ${parseResult.symbols.slice(0, 3).map(s => `${s.kind}:${s.name}`).join(', ')}`);
-            
-            // Extra logging for C# files with lambdas
-            if (ext === 'cs' && currentContent.includes('=>')) {
-              this.log(`[C#] All symbols detected: ${parseResult.symbols.map(s => `${s.kind}:${s.name} (lines ${this.byteOffsetToLineNumber(fullPath, s.range.start)}-${this.byteOffsetToLineNumber(fullPath, s.range.end)})`).join(', ')}`);
-            }
-          } else {
-            this.log(`No symbols found - checking why...`);
-            this.log(`Parse result hash: ${parseResult.hash}`);
+        const content = await this.readFileContent(fullPath);
+        if (content !== null) {
+          currentContent = content;
+          this.log(`Parsing file ${filePath}, content length: ${currentContent.length}`);
+          
+          // Check file extension
+          const ext = filePath.split('.').pop();
+          this.log(`File extension: ${ext}`);
+          
+          // Check for lambda expressions in C# files
+          if (ext === 'cs' && currentContent.includes('=>')) {
+            this.log(`[C#] File contains lambda expressions (=>)`);
+            const lambdaCount = (currentContent.match(/=>/g) || []).length;
+            this.log(`[C#] Lambda count: ${lambdaCount}`);
           }
-          currentSymbols = parseResult.symbols;
-          currentCalls = parseResult.calls;
-        } else {
-          this.log(`Parse result is null for ${filePath} - language not supported?`);
+          
+          this.log(`Calling parser.parseFile for ${fullPath}`);
+          const parseResult = await this.parser.parseFile(fullPath, currentContent);
+          this.log(`Parser returned: ${parseResult ? 'result object' : 'null'}`);
+          
+          if (parseResult) {
+            this.log(`Parse result: ${parseResult.symbols.length} symbols, ${parseResult.calls.length} calls`);
+            if (parseResult.symbols.length > 0) {
+              this.log(`First few symbols: ${parseResult.symbols.slice(0, 3).map(s => `${s.kind}:${s.name}`).join(', ')}`);
+              
+              // Extra logging for C# files with lambdas
+              if (ext === 'cs' && currentContent.includes('=>')) {
+                this.log(`[C#] All symbols detected: ${parseResult.symbols.map(s => `${s.kind}:${s.name} (lines ${this.byteOffsetToLineNumber(fullPath, s.range.start, currentContent)}-${this.byteOffsetToLineNumber(fullPath, s.range.end, currentContent)})`).join(', ')}`);
+              }
+            } else {
+              this.log(`No symbols found - checking why...`);
+              this.log(`Parse result hash: ${parseResult.hash}`);
+            }
+            currentSymbols = parseResult.symbols;
+            currentCalls = parseResult.calls;
+          } else {
+            this.log(`Parse result is null for ${filePath} - language not supported?`);
+          }
         }
       }
     } catch (error) {
@@ -1574,14 +1626,25 @@ export class SymbolChangesPanel {
     return 'file-level';
   }
 
-  private byteOffsetToLineNumber(filePath: string, byteOffset: number): number {
+  private byteOffsetToLineNumber(filePath: string, byteOffset: number, content?: string): number {
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
+      // Use provided content or read from lastKnownFileStates cache to avoid file locking
+      let fileContent = content;
+      if (!fileContent) {
+        const relativePath = path.relative(this.workspaceRoot, filePath);
+        fileContent = this.lastKnownFileStates.get(relativePath);
+        if (!fileContent) {
+          // Fallback to synchronous read only if absolutely necessary
+          // This should rarely happen since we cache content
+          fileContent = fs.readFileSync(filePath, 'utf8');
+        }
+      }
+      
       // Count actual newlines in the content up to the byte offset
       // This handles both LF (\n) and CRLF (\r\n) correctly
       let lineCount = 1; // Start at line 1
-      for (let i = 0; i < Math.min(byteOffset, content.length); i++) {
-        if (content[i] === '\n') {
+      for (let i = 0; i < Math.min(byteOffset, fileContent.length); i++) {
+        if (fileContent[i] === '\n') {
           lineCount++;
         }
       }
@@ -1614,7 +1677,10 @@ export class SymbolChangesPanel {
         const baselineContent = this.baselineFileStates.get(filePath)!;
         
         if (fs.existsSync(fullPath)) {
-          const currentContent = fs.readFileSync(fullPath, 'utf8');
+          const currentContent = await this.readFileContent(fullPath);
+          if (currentContent === null) {
+            return 'Error reading file';
+          }
           
           // Check if content actually changed from baseline
           if (baselineContent === currentContent) {
@@ -1635,7 +1701,10 @@ export class SymbolChangesPanel {
       
       // If no baseline, treat as new file
       if (fs.existsSync(fullPath)) {
-        const content = fs.readFileSync(fullPath, 'utf8');
+        const content = await this.readFileContent(fullPath);
+        if (content === null) {
+          return 'Error reading file';
+        }
         const lines = content.split('\n');
         const diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n` + 
                      lines.map(line => `+${line}`).join('\n') + '\n';
@@ -1680,7 +1749,12 @@ export class SymbolChangesPanel {
       }
 
       // Read current file content
-      const currentContent = fs.readFileSync(fullPath, 'utf8');
+      const currentContent = await this.readFileContent(fullPath);
+      if (currentContent === null) {
+        vscode.window.showErrorMessage(`Cannot read file: ${symbolName}`);
+        this.log(`Failed to read file ${fullPath}`);
+        return;
+      }
       const currentLines = currentContent.split('\n');
       
       // Get baseline lines
@@ -1928,6 +2002,17 @@ export class SymbolChangesPanel {
     .symbol-icon:hover {
       background-color: #4477CC;
       transform: scale(1.1);
+    }
+    
+    .symbol-icon.disabled {
+      background-color: #666666;
+      cursor: default;
+      opacity: 0.5;
+    }
+    
+    .symbol-icon.disabled:hover {
+      background-color: #666666;
+      transform: none;
     }
 
     /* Base styles for all symbol types */
@@ -3674,14 +3759,20 @@ export class SymbolChangesPanel {
       const commentIcon = document.createElement('div');
       commentIcon.className = 'symbol-icon comment-icon';
       commentIcon.textContent = '//';
-      commentIcon.title = 'Show comments';
+      
+      // Check if there are comments and apply disabled style if not
+      const commentsStr = box.dataset.comments || '[]';
+      const comments = JSON.parse(commentsStr);
+      if (!comments || comments.length === 0) {
+        commentIcon.classList.add('disabled');
+      }
+      
       iconsContainer.appendChild(commentIcon);
       
-      // Code icon (#) - right icon
+      // Code icon (c) - right icon
       const codeIcon = document.createElement('div');
       codeIcon.className = 'symbol-icon code-icon';
-      codeIcon.textContent = '#';
-      codeIcon.title = 'Show code changes';
+      codeIcon.textContent = 'c';
       iconsContainer.appendChild(codeIcon);
       
       box.appendChild(iconsContainer);

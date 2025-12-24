@@ -282,6 +282,17 @@
       background-color: #4477CC;
       transform: scale(1.1);
     }
+    
+    .symbol-icon.disabled {
+      background-color: #666666;
+      cursor: default;
+      opacity: 0.5;
+    }
+    
+    .symbol-icon.disabled:hover {
+      background-color: #666666;
+      transform: none;
+    }
 
     .symbol-box.function,
     .symbol-box.class,
@@ -1780,13 +1791,19 @@
         const commentIcon = document.createElement('div');
         commentIcon.className = 'symbol-icon comment-icon';
         commentIcon.textContent = '//';
-        commentIcon.title = 'Show comments';
+        
+        // Check if there are comments and apply disabled style if not
+        const commentsStr = box.dataset.comments || '[]';
+        const comments = JSON.parse(commentsStr);
+        if (!comments || comments.length === 0) {
+          commentIcon.classList.add('disabled');
+        }
+        
         iconsContainer.appendChild(commentIcon);
         
         const codeIcon = document.createElement('div');
         codeIcon.className = 'symbol-icon code-icon';
-        codeIcon.textContent = '#';
-        codeIcon.title = 'Show code changes';
+        codeIcon.textContent = 'c';
         iconsContainer.appendChild(codeIcon);
         
         box.appendChild(iconsContainer);
@@ -2078,7 +2095,7 @@
         MOCK_DATA.forEach((data, index) => {
           setTimeout(() => {
             handleSingleSymbolChange(data);
-          }, index * 800); // 800ms delay between each symbol
+          }, index * 200); // 200ms delay between each symbol
         });
       });
 
@@ -2088,7 +2105,7 @@
         MOCK_DATA.forEach((data, index) => {
           setTimeout(() => {
             handleSingleSymbolChange(data);
-          }, index * 800); // 800ms delay between each symbol
+          }, index * 200); // 200ms delay between each symbol
         });
       }, 500);
 

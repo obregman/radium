@@ -45,16 +45,6 @@
         "command": "radium.symbolChanges",
         "title": "Radium: Real-time Symbol Visualization",
         "icon": "$(symbol-class)"
-      },
-      {
-        "command": "radium.detailedCodeChanges",
-        "title": "Radium: Detailed Code Changes",
-        "icon": "$(symbol-class)"
-      },
-      {
-        "command": "radium.semanticChanges",
-        "title": "Radium: Semantic Changes",
-        "icon": "$(search-view-icon)"
       }
     ],
     "viewsContainers": {

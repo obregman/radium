@@ -2180,7 +2180,7 @@ export class SymbolChangesPanel {
       border: 2px solid var(--vscode-panel-border);
       border-radius: 8px;
       background-color: #4c4d4c;
-      padding: 85px 4px 8px 4px;
+      padding: 105px 4px 12px 4px;
       box-sizing: border-box;
       /* Make this the positioning context for child symbol boxes */
       /* Child elements with position:absolute will be relative to this container */
@@ -2232,19 +2232,17 @@ export class SymbolChangesPanel {
 
     .file-path-label {
       position: absolute;
-      top: 30px;
-      left: 50%;
-      transform: translateX(-50%);
+      top: 38px;
+      left: 8px;
+      right: 8px;
       font-family: var(--vscode-font-family);
       color: #FFFFFF;
       text-align: center;
       cursor: default;
-      max-width: calc(100% - 140px);
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 4px;
-      margin-bottom: 12px;
     }
     
     .file-directory-path {
@@ -2257,6 +2255,7 @@ export class SymbolChangesPanel {
       text-overflow: ellipsis;
       max-width: 100%;
       order: 1;
+      margin-top: 4px;
     }
     
     .file-name {
@@ -2266,6 +2265,11 @@ export class SymbolChangesPanel {
       white-space: nowrap;
       max-width: 100%;
       order: 2;
+      cursor: pointer;
+    }
+    
+    .file-name:hover {
+      opacity: 0.8;
     }
     
     .file-name.small {
@@ -3388,12 +3392,11 @@ export class SymbolChangesPanel {
           // Since symbols are positioned in the content area, we set container size to exactly match packed size.
           // Add extra padding to ensure symbols don't touch borders or overflow
           // IMPORTANT: With box-sizing: border-box, the total height must account for:
-          //   - 85px top padding (where label and stats live)
+          //   - 105px top padding (where label and stats live)
           //   - maxHeight (actual symbol content height)
-          //   - 8px bottom padding
-          //   - 4px borders (2px top + 2px bottom)
+          //   - 12px bottom padding
           const finalWidth = Math.max(maxWidth, labelMinWidth); // Use calculated max width
-          const finalHeight = maxHeight + 85 + 8 + 4; // 85px label padding + 8px bottom padding + 4px borders
+          const finalHeight = maxHeight + 105 + 6; // 105px label padding + 6px bottom padding
           
           console.log('[Layout] Final container size:', finalWidth, 'x', finalHeight, '(label min:', labelMinWidth, ', content height:', maxHeight, ')');
           group.fileContainer.style.width = finalWidth + 'px';
@@ -3472,6 +3475,16 @@ export class SymbolChangesPanel {
         const filenameElement = document.createElement('div');
         filenameElement.className = 'file-name';
         filenameElement.textContent = filename + (isNew ? ' (new)' : '');
+        
+        // Add click handler to open file
+        filenameElement.addEventListener('click', (e) => {
+          e.stopPropagation();
+          vscode.postMessage({
+            type: 'openFile',
+            filePath: filePath,
+            line: 1
+          });
+        });
         
         // Add tooltip on hover for filename (always show after 500ms)
         let filenameTooltipTimeout = null;

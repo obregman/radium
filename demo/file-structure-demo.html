@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<!--
+  Radium File Structure Visualization - Standalone Demo
+  
+  This is a self-contained demo of the Radium VSCode extension's File Structure view.
+  
+  HOW TO USE:
+  1. Open this file in any modern web browser
+  2. The demo data loads automatically
+  3. Use mouse wheel to zoom in/out
+  4. Click and drag to pan around
+  5. Click on any file name to see the simulated file opening action
+  
+  FEATURES DEMONSTRATED:
+  - Graphical directory hierarchy visualization
+  - Top-level directories as colored boxes
+  - Subdirectories with their files
+  - Zoom and pan controls
+  - Interactive file clicking
+  
+  This demo uses the exact same visualization code as the VSCode extension,
+  just with mock data instead of real file system access.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radium File Structure - Demo</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* ============================================
+       DEMO-SPECIFIC STYLES
+       ============================================ */
+    :root {
+      --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      --vscode-editor-background: #1e1e1e;
+      --vscode-editor-foreground: #d4d4d4;
+    }
+
+    #demo-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px 20px;
+      z-index: 1000;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #demo-header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    #demo-header .subtitle {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-top: 2px;
+    }
+
+    #demo-notification {
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      background: rgba(30, 30, 30, 0.95);
+      color: #d4d4d4;
+      padding: 12px 20px;
+      border-radius: 4px;
+      border: 1px solid #555;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    #demo-notification.visible {
+      opacity: 1;
+    }
+
+    /* ============================================
+       FILE STRUCTURE VIEW STYLES (from extension)
+       ============================================ */
+    body {
+      margin: 0;
+      padding: 0;
+      padding-top: 70px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+    }
+    
+    #graph {
+      width: 100vw;
+      height: calc(100vh - 70px);
+    }
+    
+    .root-box {
+      stroke: #666;
+      stroke-width: 3;
+    }
+    
+    .root-label {
+      fill: #000;
+      font-size: 24px;
+      font-weight: bold;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+    
+    .category-box {
+      stroke: #555;
+      stroke-width: 2;
+      cursor: pointer;
+    }
+    
+    .category-label {
+      fill: #000;
+      font-size: 16px;
+      font-weight: 600;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+    
+    .subdir-box {
+      stroke: #555;
+      stroke-width: 2;
+      cursor: pointer;
+    }
+    
+    .subdir-label {
+      fill: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+    
+    .file-box {
+      fill: #2d2d2d;
+      stroke: #555;
+      stroke-width: 2;
+      cursor: pointer;
+    }
+    
+    .file-box:hover {
+      fill: #3d3d3d;
+    }
+    
+    .file-text {
+      fill: #d4d4d4;
+      font-size: 12px;
+      cursor: pointer;
+      text-anchor: start;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Demo Header -->
+  <div id="demo-header">
+    <div>
+      <h1>🎨 Radium File Structure - Interactive Demo</h1>
+      <div class="subtitle">Graphical directory hierarchy visualization • Zoom with mouse wheel • Pan by dragging</div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="demo-notification"></div>
+
+  <!-- File Structure View -->
+  <svg id="graph"></svg>
+  
+  <script>
+    // ============================================
+    // DEMO-SPECIFIC CODE
+    // ============================================
+    
+    // Mock VSCode API for demo
+    const vscode = {
+      postMessage: function(message) {
+        if (message.type === 'file:open') {
+          showNotification(`📄 Opening: ${message.filePath}`);
+          console.log('File open requested:', message.filePath);
+        }
+      }
+    };
+
+    function showNotification(message) {
+      const notification = document.getElementById('demo-notification');
+      notification.textContent = message;
+      notification.classList.add('visible');
+      
+      setTimeout(() => {
+        notification.classList.remove('visible');
+      }, 2000);
+    }
+
+    // Mock data generator - creates hierarchical structure
+    function generateMockStructure() {
+      // Helper to create directory node
+      function createDir(name, path, files = [], subdirs = {}) {
+        return {
+          name,
+          path,
+          files,
+          subdirectories: subdirs
+        };
+      }
+
+      return {
+        root: createDir('Stormline.Game', '', [], {
+          'Views': createDir('Views', 'Views', ['ViewManager.cs', 'BaseView.cs'], {
+            'Screens': createDir('Screens', 'Views/Screens', ['MainWindow.cs', 'GameWindow.cs', 'SettingsWindow.cs'], {
+              'Dialogs': createDir('Dialogs', 'Views/Screens/Dialogs', ['ConfirmDialog.cs', 'AlertDialog.cs'])
+            }),
+            'Panels': createDir('Panels', 'Views/Panels', ['UnitPanel.cs', 'InventoryPanel.cs', 'MapPanel.cs']),
+            'Components': createDir('Components', 'Views/Components', ['Button.cs', 'Label.cs', 'Icon.cs'], {
+              'Advanced': createDir('Advanced', 'Views/Components/Advanced', ['DataGrid.cs', 'TreeView.cs'])
+            })
+          }),
+          'Services': createDir('Services', 'Services', ['ServiceA.cs', 'ServiceB.cs', 'ServiceC.cs', 'ServiceRegistry.cs'], {
+            'Network': createDir('Network', 'Services/Network', ['ApiClient.cs', 'WebSocketManager.cs'], {
+              'Protocols': createDir('Protocols', 'Services/Network/Protocols', ['HttpProtocol.cs', 'WsProtocol.cs'])
+            }),
+            'Storage': createDir('Storage', 'Services/Storage', ['DatabaseService.cs', 'CacheService.cs'])
+          }),
+          'Utilities': createDir('Utilities', 'Utilities', ['Files.cs', 'Logger.cs', 'Config.cs'], {
+            'Helpers': createDir('Helpers', 'Utilities/Helpers', ['StringHelper.cs', 'DateHelper.cs', 'MathHelper.cs']),
+            'Extensions': createDir('Extensions', 'Utilities/Extensions', ['ListExtensions.cs', 'StringExtensions.cs'])
+          }),
+          'Data': createDir('Data', 'Data', ['Data1.json', 'Data2.json', 'Data3.json', 'Data4.json'], {
+            'Models': createDir('Models', 'Data/Models', ['User.cs', 'Product.cs', 'Order.cs'], {
+              'Entities': createDir('Entities', 'Data/Models/Entities', ['BaseEntity.cs'])
+            }),
+            'DTOs': createDir('DTOs', 'Data/DTOs', ['UserDTO.cs', 'ProductDTO.cs'])
+          }),
+          'Controllers': createDir('Controllers', 'Controllers', ['BaseController.cs'], {
+            'API': createDir('API', 'Controllers/API', ['UserController.cs', 'ProductController.cs']),
+            'Web': createDir('Web', 'Controllers/Web', ['HomeController.cs', 'AccountController.cs'])
+          })
+        })
+      };
+    }
+
+    // ============================================
+    // FILE STRUCTURE VIEW CODE (from extension)
+    // ============================================
+    
+    let svg, g, zoom;
+    
+    // Initialize
+    function init() {
+      svg = d3.select('#graph');
+      const width = window.innerWidth;
+      const height = window.innerHeight - 70;
+      
+      svg.attr('width', width).attr('height', height);
+      
+      // Add zoom behavior
+      zoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (event) => {
+          g.attr('transform', event.transform);
+        });
+      
+      svg.call(zoom);
+      
+      g = svg.append('g');
+      
+      // Auto-load demo data
+      const structure = generateMockStructure();
+      renderStructure(structure);
+    }
+    
+    function renderStructure(structure) {
+      g.selectAll('*').remove();
+      
+      if (!structure || !structure.root) {
+        return;
+      }
+      
+      const root = structure.root;
+      const boxWidth = 250;
+      const boxHeight = 40;
+      const fileBoxHeight = 35;
+      const rootX = 100;
+      const rootY = 50;
+      
+      // Calculate columns for top-level directories
+      const topLevelDirs = Object.keys(root.subdirectories).sort();
+      
+      if (topLevelDirs.length === 0 && root.files.length === 0) {
+        return;
+      }
+      
+      // We'll calculate the actual root width after rendering
+      const rootHeight = 60;
+      const contentStartY = rootY + rootHeight;
+      
+      // Helper function to calculate width recursively (bottom-up)
+      function calculateWidth(dirNode) {
+        const subdirNames = Object.keys(dirNode.subdirectories).sort();
+        const hasFiles = dirNode.files.length > 0;
+        
+        // Calculate total width of all subdirectories (recursive)
+        let totalSubdirWidth = 0;
+        subdirNames.forEach((name) => {
+          const subdir = dirNode.subdirectories[name];
+          totalSubdirWidth += calculateWidth(subdir);
+        });
+        
+        // Width = files column (if any) + sum of subdirectory widths
+        const filesWidth = hasFiles ? boxWidth : 0;
+        return Math.max(filesWidth + totalSubdirWidth, boxWidth);
+      }
+      
+      // Recursive function to render a directory and its contents
+      // Returns { width, height } - the dimensions this directory occupies
+      function renderDirectory(dirNode, x, y, depth) {
+        const subdirNames = Object.keys(dirNode.subdirectories).sort();
+        const hasFiles = dirNode.files.length > 0;
+        
+        // Calculate directory box width recursively (bottom-up)
+        const dirWidth = calculateWidth(dirNode);
+        
+        // Calculate gray shade based on depth (lighter = higher level)
+        const grayShade = Math.max(160 - depth * 20, 80);
+        const fillColor = `rgb(${grayShade}, ${grayShade}, ${grayShade})`;
+        const textColor = depth === 0 ? '#000' : '#fff';
+        
+        // Draw directory box
+        g.append('rect')
+          .attr('class', depth === 0 ? 'category-box' : 'subdir-box')
+          .attr('x', x)
+          .attr('y', y)
+          .attr('width', dirWidth)
+          .attr('height', boxHeight)
+          .attr('rx', 0)
+          .attr('fill', fillColor);
+        
+        g.append('text')
+          .attr('class', depth === 0 ? 'category-label' : 'subdir-label')
+          .attr('x', x + dirWidth / 2)
+          .attr('y', y + boxHeight / 2 + 5)
+          .attr('fill', textColor)
+          .text(dirNode.name + '/');
+        
+        const contentY = y + boxHeight;
+        let currentX = x;
+        let maxHeight = 0;
+        
+        // Render files column (if there are files)
+        if (hasFiles) {
+          let fileY = contentY;
+          dirNode.files.forEach((file) => {
+            const fullPath = dirNode.path ? dirNode.path + '/' + file : file;
+            
+            g.append('rect')
+              .attr('class', 'file-box')
+              .attr('x', currentX)
+              .attr('y', fileY)
+              .attr('width', boxWidth)
+              .attr('height', fileBoxHeight)
+              .attr('rx', 0)
+              .style('cursor', 'pointer')
+              .on('click', () => {
+                vscode.postMessage({ type: 'file:open', filePath: fullPath });
+              });
+            
+            g.append('text')
+              .attr('class', 'file-text')
+              .attr('x', currentX + 10)
+              .attr('y', fileY + fileBoxHeight / 2 + 4)
+              .text(file)
+              .style('cursor', 'pointer')
+              .on('click', () => {
+                vscode.postMessage({ type: 'file:open', filePath: fullPath });
+              });
+            
+            fileY += fileBoxHeight;
+          });
+          
+          maxHeight = fileY - contentY;
+          currentX += boxWidth;
+        }
+        
+        // Render subdirectories as columns (side by side with files column)
+        subdirNames.forEach((name, index) => {
+          const subdir = dirNode.subdirectories[name];
+          const result = renderDirectory(subdir, currentX, contentY, depth + 1);
+          maxHeight = Math.max(maxHeight, result.height);
+          currentX += result.width; // Move to the right by the subdirectory's actual width
+        });
+        
+        const totalHeight = boxHeight + maxHeight;
+        return { width: dirWidth, height: totalHeight };
+      }
+      
+      // Calculate root width using the same recursive calculation
+      const rootWidth = calculateWidth(root);
+      
+      // Draw root box
+      g.append('rect')
+        .attr('class', 'root-box')
+        .attr('x', rootX)
+        .attr('y', rootY)
+        .attr('width', rootWidth)
+        .attr('height', rootHeight)
+        .attr('rx', 0)
+        .attr('fill', '#c0c0c0');
+      
+      g.append('text')
+        .attr('class', 'root-label')
+        .attr('x', rootX + rootWidth / 2)
+        .attr('y', rootY + rootHeight / 2 + 8)
+        .text(root.name + '/');
+      
+      // Render root files and top-level directories as columns
+      let currentX = rootX;
+      let maxHeight = 0;
+      
+      // Render root files column if any
+      if (root.files.length > 0) {
+        let fileY = contentStartY;
+        root.files.forEach((file) => {
+          g.append('rect')
+            .attr('class', 'file-box')
+            .attr('x', currentX)
+            .attr('y', fileY)
+            .attr('width', boxWidth)
+            .attr('height', fileBoxHeight)
+            .attr('rx', 0)
+            .style('cursor', 'pointer')
+            .on('click', () => {
+              vscode.postMessage({ type: 'file:open', filePath: file });
+            });
+          
+          g.append('text')
+            .attr('class', 'file-text')
+            .attr('x', currentX + 10)
+            .attr('y', fileY + fileBoxHeight / 2 + 4)
+            .text(file)
+            .style('cursor', 'pointer')
+            .on('click', () => {
+              vscode.postMessage({ type: 'file:open', filePath: file });
+            });
+          
+          fileY += fileBoxHeight;
+        });
+        
+        maxHeight = fileY - contentStartY;
+        currentX += boxWidth;
+      }
+      
+      // Render top-level directories as columns
+      topLevelDirs.forEach((dirName) => {
+        const dirNode = root.subdirectories[dirName];
+        const result = renderDirectory(dirNode, currentX, contentStartY, 0);
+        currentX += result.width; // Next top-level dir starts after this one
+        maxHeight = Math.max(maxHeight, result.height);
+      });
+      
+      // Center the view
+      const bounds = g.node().getBBox();
+      const fullWidth = bounds.width;
+      const fullHeight = bounds.height;
+      const midX = bounds.x + fullWidth / 2;
+      const midY = bounds.y + fullHeight / 2;
+      
+      const scale = 0.9 / Math.max(fullWidth / window.innerWidth, fullHeight / (window.innerHeight - 70));
+      const translate = [
+        window.innerWidth / 2 - scale * midX,
+        (window.innerHeight - 70) / 2 - scale * midY
+      ];
+      
+      svg.call(zoom.transform, d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale));
+    }
+    
+    // Initialize on load
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>

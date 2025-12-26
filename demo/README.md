@@ -1,16 +1,24 @@
-# Radium Symbol Changes Demo
+# Radium Demos
 
-This directory contains a standalone demo of the Radium Symbol Changes visualization.
+This directory contains standalone demos of Radium visualizations.
 
-## What is this?
+## Available Demos
 
-The Symbol Changes visualization is a real-time view that tracks code changes at the symbol level (functions, classes, methods, variables, etc.) as they happen in your codebase. This demo lets you see what it looks like without installing the VSCode extension.
+### 1. Symbol Changes Demo (`symbol-changes-demo.html`)
+A real-time view that tracks code changes at the symbol level (functions, classes, methods, variables, etc.) as they happen in your codebase.
+
+### 2. File Structure Demo (`file-structure-demo.html`)
+A graphical visualization showing your codebase organized by directory hierarchy with zoom and pan controls.
 
 ## Quick Start
 
-**Just open `symbol-changes-demo.html` in your browser and click "Load Demo Data"!**
+**Just open any `.html` file in your browser!**
 
-No installation, no setup, no dependencies required.
+Demo data loads automatically. No installation, no setup, no dependencies required.
+
+---
+
+## Symbol Changes Demo
 
 ## How to use
 
@@ -68,6 +76,69 @@ The demo does not include:
 - Opening files at specific lines
 - Context menu actions (explain/revert)
 - Clipboard integration
+
+Everything else is identical to the actual extension!
+
+---
+
+## File Structure Demo
+
+### What is this?
+
+The File Structure view provides a graphical visualization of your codebase, organizing files by their directory hierarchy with interactive zoom and pan controls. This demo lets you see what it looks like without installing the VSCode extension.
+
+### How to use
+
+1. **Open the demo**: Simply open `file-structure-demo.html` in any modern web browser
+2. **Demo loads automatically**: The Stormline.Game project structure appears immediately
+3. **Zoom**: Use mouse wheel to zoom in/out
+4. **Pan**: Click and drag to move around
+5. **Explore**: Click on file names to see simulated file opening actions
+
+### Features demonstrated
+
+#### Visual Elements
+- **Root box**: Large gray box showing the project/workspace name
+- **Category boxes**: Purple boxes for each top-level directory
+- **Subdirectory boxes**: Dark boxes with blue borders containing files
+- **Files**: Clickable text items listed within subdirectories
+- **Graphical layout**: Visual hierarchy with boxes and spacing
+
+#### Interactive Features
+- **Zoom**: Mouse wheel to zoom in/out (0.1x to 4x)
+- **Pan**: Click and drag to move around the canvas
+- **Click files**: Simulates opening files (shows notification)
+- **Auto-load**: Demo data loads automatically on page open
+- **Smooth interactions**: D3.js-powered zoom and pan
+
+### Mock Data
+
+The demo displays a realistic project structure:
+
+**Stormline.Game** - A C# game project with:
+   - Views/ (Screens, Panels, Components)
+   - Services/ (Network, Storage)
+   - Utilities/ (Helpers, Extensions)
+   - Data/ (Models, DTOs)
+   - Controllers/ (API, Web)
+
+### Technical Details
+
+This is a completely standalone HTML file that:
+- Uses D3.js v7 for graphical rendering and zoom/pan
+- Uses the exact same rendering logic as the VSCode extension
+- Removes VSCode-specific API calls
+- Includes mock data instead of real file system access
+- Works in any modern browser (Chrome, Firefox, Safari, Edge)
+
+### Differences from the Extension
+
+The demo does not include:
+- Real file system access
+- Integration with VSCode
+- Actually opening files in an editor
+- Radiumignore filtering
+- Dynamic reloading on file changes
 
 Everything else is identical to the actual extension!
 

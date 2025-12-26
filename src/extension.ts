@@ -7,6 +7,7 @@ import { LLMOrchestrator, LLMPlan } from './orchestrator/llm-orchestrator';
 import { MapPanel } from './views/codebase-map-panel';
 import { FeaturesMapPanel } from './views/features-map-panel';
 import { FilesMapPanel } from './views/files-map-panel';
+import { FileStructurePanel } from './views/file-structure-panel';
 import { SymbolChangesPanel } from './views/symbol-changes-panel';
 import { GitDiffTracker } from './git/git-diff-tracker';
 import { RadiumConfigLoader } from './config/radium-config';
@@ -216,6 +217,14 @@ function registerCommands(context: vscode.ExtensionContext) {
         return;
       }
       FilesMapPanel.createOrShow(context.extensionUri, store);
+    }),
+
+    vscode.commands.registerCommand('radium.openFileStructure', () => {
+      if (!store) {
+        vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
+        return;
+      }
+      FileStructurePanel.createOrShow(context.extensionUri, store);
     }),
 
     vscode.commands.registerCommand('radium.reindex', async () => {

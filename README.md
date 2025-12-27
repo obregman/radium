@@ -20,12 +20,11 @@ Radium indexes your codebase and creates a visual map showing files, their relat
 
 ## Demos
 
-Want to see what Radium looks like before installing? Check out the standalone demos:
+Want to see what Radium looks like before installing? Check out the standalone demo:
 
 - **[Symbol Changes Demo](demo/symbol-changes-demo.html)** - Real-time symbol tracking visualization
-- **[File Structure Demo](demo/file-structure-demo.html)** - Table-based directory hierarchy view
 
-Simply open any HTML file in your browser. No installation required!
+Simply open the HTML file in your browser. No installation required!
 
 ## Usage
 
@@ -51,7 +50,6 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 - `Radium: Codebase Map` - Show the codebase graph
 - `Radium: Features Map` - Visualize features and their relationships
 - `Radium: Files Map` - View files as size-weighted rectangles with relationship arrows
-- `Radium: File Structure` - View files organized in a table by directory hierarchy
 - `Radium: Real-time Symbol Visualization` - Visualize code changes as symbols (functions, classes) with call relationships
 - `Radium: Semantic Changes` - Track semantic changes by category (logic, API calls, file I/O, etc.)
 
@@ -123,40 +121,6 @@ Toggle between three visualization modes using the button bar at the top:
 - Identify files with code smells that may need refactoring (use "Color by Code Smell" mode)
 
 To use: Run `Radium: Files Map` from the command palette.
-
-### File Structure
-
-The File Structure view provides a graphical visualization of your codebase, organizing files by their directory hierarchy in a clean, visual layout:
-
-**Layout:**
-- **Root Box**: Large gray box at the top showing the workspace/project name
-- **Category Boxes**: Purple boxes for each top-level directory (Views, Services, Utilities, Data, etc.)
-- **Subdirectory Boxes**: Dark boxes with blue borders containing groups of files
-- **Files**: Listed as clickable text within their subdirectories
-
-**Visual Features:**
-- Graphical boxes representing the directory hierarchy
-- Color-coded elements (gray root, purple categories, blue subdirectories)
-- Zoom in/out with mouse wheel
-- Pan by clicking and dragging
-- Files are clickable to open in the editor
-- Organized in columns for easy scanning
-
-**Interactions:**
-- **Zoom**: Use mouse wheel to zoom in/out
-- **Pan**: Click and drag to move around
-- **Click files**: Click any file name to open it in the editor
-- **Hover**: Boxes highlight on hover
-
-**Use Cases:**
-- Get a visual overview of project organization
-- Understand directory structure at a glance
-- Navigate to files by their logical location
-- Compare file distribution across different modules
-- Identify which directories contain the most files
-- Zoom in to see details or zoom out for the big picture
-
-To use: Run `Radium: File Structure` from the command palette.
 
 ### Symbol Changes
 

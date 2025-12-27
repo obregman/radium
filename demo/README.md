@@ -7,8 +7,8 @@ This directory contains standalone demos of Radium visualizations.
 ### 1. Symbol Changes Demo (`symbol-changes-demo.html`)
 A real-time view that tracks code changes at the symbol level (functions, classes, methods, variables, etc.) as they happen in your codebase.
 
-### 2. File Structure Demo (`file-structure-demo.html`)
-A graphical visualization showing your codebase organized by directory hierarchy with zoom and pan controls.
+### 2. Files Map Demo (`file-map-demo.html`)
+An interactive dependency graph showing files and directories with their relationships, symbol usage, and code quality metrics.
 
 ## Quick Start
 
@@ -81,64 +81,70 @@ Everything else is identical to the actual extension!
 
 ---
 
-## File Structure Demo
+## Files Map Demo
 
-### What is this?
+## How to use
 
-The File Structure view provides a graphical visualization of your codebase, organizing files by their directory hierarchy with interactive zoom and pan controls. This demo lets you see what it looks like without installing the VSCode extension.
+1. **Open the demo**: Simply open `file-map-demo.html` in any modern web browser
+2. **Explore the graph**: Demo data loads automatically showing a sample project structure
+3. **Interact**: Use the controls to explore files, directories, and their relationships
 
-### How to use
+## Features demonstrated
 
-1. **Open the demo**: Simply open `file-structure-demo.html` in any modern web browser
-2. **Demo loads automatically**: The Stormline.Game project structure appears immediately
-3. **Zoom**: Use mouse wheel to zoom in/out
-4. **Pan**: Click and drag to move around
-5. **Explore**: Click on file names to see simulated file opening actions
+### Visual Elements
+- **File nodes**: Colored rectangles representing files, sized by line count
+- **Directory nodes**: Hexagonal containers grouping related files
+- **Edges**: Lines showing containment and dependency relationships
+- **Symbol indicators**: Small icons (f, v, t) showing functions, variables, and types
+- **Code smell panel**: Metrics displayed when zooming into a file
 
-### Features demonstrated
+### Color Modes
+- **By Directory**: Files colored by their parent directory (default)
+- **By Symbol Use**: Files colored by how many symbols they export (green = more exports)
+- **By Code Smell**: Files colored by code quality score (green = clean, red = high smell)
 
-#### Visual Elements
-- **Root box**: Large gray box showing the project/workspace name
-- **Category boxes**: Purple boxes for each top-level directory
-- **Subdirectory boxes**: Dark boxes with blue borders containing files
-- **Files**: Clickable text items listed within subdirectories
-- **Graphical layout**: Visual hierarchy with boxes and spacing
+### Interactive Controls
+- **Pan**: Click and drag to move around the graph
+- **Zoom**: Use mouse wheel to zoom in/out
+- **Search**: Type in the search box to filter files and directories
+- **Drag directories**: Click and drag directory nodes to reposition them (they'll stay pinned)
+- **Click files**: Single click to zoom to a file, double click to "open" it (shows alert in demo)
+- **Hover symbols**: Hover over f/v/t icons to see lists of functions, variables, or types
+- **Copy path**: When zoomed in on a file, a copy button appears to copy the file path
 
-#### Interactive Features
-- **Zoom**: Mouse wheel to zoom in/out (0.1x to 4x)
-- **Pan**: Click and drag to move around the canvas
-- **Click files**: Simulates opening files (shows notification)
-- **Auto-load**: Demo data loads automatically on page open
-- **Smooth interactions**: D3.js-powered zoom and pan
+### Graph Layout
+- **Force-directed**: Files orbit around their parent directories
+- **Hierarchical**: Directories show parent-child relationships
+- **Collision detection**: Nodes avoid overlapping
+- **Pinnable**: Drag directories to pin them in place
 
-### Mock Data
+## Mock Data
 
-The demo displays a realistic project structure:
+The demo includes a realistic sample project:
+- Multiple directories (src, services, models, utils, controllers)
+- 7 TypeScript files with varying sizes and complexity
+- Different code smell scores (10-55)
+- Symbol lists for each file
+- Directory hierarchy with containment edges
 
-**Stormline.Game** - A C# game project with:
-   - Views/ (Screens, Panels, Components)
-   - Services/ (Network, Storage)
-   - Utilities/ (Helpers, Extensions)
-   - Data/ (Models, DTOs)
-   - Controllers/ (API, Web)
-
-### Technical Details
+## Technical Details
 
 This is a completely standalone HTML file that:
-- Uses D3.js v7 for graphical rendering and zoom/pan
-- Uses the exact same rendering logic as the VSCode extension
+- Uses the exact same D3.js force-directed graph code as the VSCode extension
+- Uses the exact same CSS styling
 - Removes VSCode-specific API calls
-- Includes mock data instead of real file system access
+- Includes mock data instead of real workspace indexing
 - Works in any modern browser (Chrome, Firefox, Safari, Edge)
 
-### Differences from the Extension
+## Differences from the Extension
 
 The demo does not include:
-- Real file system access
+- Real-time workspace indexing
 - Integration with VSCode
-- Actually opening files in an editor
-- Radiumignore filtering
-- Dynamic reloading on file changes
+- Opening files in the editor
+- Actual clipboard integration
+- Persistent layout saving (resets on page reload)
+- Real dependency analysis
 
 Everything else is identical to the actual extension!
 

@@ -1,0 +1,2669 @@
+<!DOCTYPE html>
+<!--
+  Radium Files Map Visualization - Standalone Demo
+  
+  This is a self-contained demo of the Radium VSCode extension's Files Map view.
+  
+  HOW TO USE:
+  1. Open this file in any modern web browser
+  2. Demo data loads automatically
+  3. Explore the interactive file and directory graph
+  4. Use mouse to pan/zoom, click files to see details
+  
+  FEATURES DEMONSTRATED:
+  - Interactive file and directory graph with force-directed layout
+  - Color modes: by directory, by symbol usage, by code smell
+  - File size visualization (based on line count)
+  - Directory grouping with pinnable positions
+  - Search functionality
+  - Symbol lists (functions, variables, types)
+  - Code smell metrics
+  
+  This demo uses the exact same visualization code as the VSCode extension,
+  just with mock data instead of real workspace indexing.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radium Files Map - Demo</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* ============================================
+       DEMO-SPECIFIC STYLES
+       ============================================ */
+    :root {
+      --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #demo-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px 20px;
+      z-index: 10000;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #demo-header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    #demo-header .subtitle {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-top: 2px;
+    }
+
+    #demo-info {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      padding-top: 70px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      font-family: var(--vscode-font-family);
+      overflow: hidden;
+    }
+
+    /* ============================================
+       ORIGINAL FILES MAP PANEL STYLES
+       ============================================ */
+    
+    #controls {
+      position: absolute;
+      top: 80px;
+      left: 10px;
+      z-index: 1000;
+      background: rgba(30, 30, 30, 0.95);
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    #search-box {
+      background: #2d2d2d;
+      color: #d4d4d4;
+      border: 1px solid #555;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      width: 250px;
+      outline: none;
+    }
+    
+    #search-box:focus {
+      border-color: #007acc;
+      background: #3d3d3d;
+    }
+    
+    #search-box::placeholder {
+      color: #888;
+    }
+    
+    #color-mode-select {
+      background: #2d2d2d;
+      color: #d4d4d4;
+      border: 1px solid #555;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      outline: none;
+      min-width: 180px;
+    }
+    
+    #color-mode-select:hover {
+      background: #3d3d3d;
+      border-color: #666;
+    }
+    
+    #color-mode-select:focus {
+      border-color: #007acc;
+    }
+    
+    #graph {
+      width: 100vw;
+      height: calc(100vh - 70px);
+    }
+    
+    .node-file {
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    
+    .node-file:hover {
+      opacity: 1;
+    }
+    
+    .node-directory {
+      cursor: move;
+    }
+    
+    .node-directory:hover {
+      opacity: 1;
+    }
+    
+    g.nodes g:hover {
+      filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.5));
+    }
+    
+    .edge-file {
+      fill: none;
+      stroke-width: 1.5;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    
+    .edge-file:hover {
+      opacity: 1;
+      stroke-width: 2.5;
+    }
+    
+    .edge-directory {
+      fill: none;
+      stroke: #4a9eff;
+      stroke-width: 3;
+      opacity: 0.8;
+    }
+    
+    .node-label {
+      font-size: 11px;
+      text-anchor: middle;
+      pointer-events: none;
+      user-select: none;
+    }
+    
+    .node-sublabel {
+      font-size: 9px;
+      fill: #999;
+      text-anchor: middle;
+      pointer-events: none;
+      user-select: none;
+    }
+    
+    .copy-button {
+      opacity: 0;
+      transition: opacity 0.3s;
+      cursor: pointer;
+      pointer-events: none;
+    }
+    
+    .copy-button.visible {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .copy-button rect {
+      pointer-events: all;
+      cursor: pointer;
+    }
+    
+    .pin-indicator {
+      opacity: 0;
+      transition: opacity 0.3s;
+      cursor: pointer;
+      pointer-events: none;
+    }
+    
+    .pin-indicator.visible {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .pin-indicator circle {
+      pointer-events: all;
+      cursor: pointer;
+      transition: fill 0.2s;
+    }
+    
+    .pin-indicator:hover circle {
+      fill: #ff6b6b;
+    }
+    
+    .arrow {
+      fill: currentColor;
+    }
+    
+    #tooltip {
+      position: absolute;
+      background: rgba(30, 30, 30, 0.95);
+      color: #d4d4d4;
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #555;
+      font-size: 13px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 2000;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    }
+    
+    #tooltip.visible {
+      opacity: 1;
+    }
+    
+    .tooltip-filename {
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+    
+    .tooltip-lines {
+      font-size: 11px;
+      color: #999;
+    }
+    
+    .smell-details-panel {
+      background: rgba(30, 30, 30, 0.95);
+      color: #d4d4d4;
+      padding: 8px 12px;
+      font-size: 13px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      text-align: left;
+      border-radius: 6px;
+      border: 1px solid #555;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      width: 100%;
+      box-sizing: border-box;
+    }
+    
+    .smell-details-panel.visible {
+      opacity: 1;
+    }
+    
+    .smell-header {
+      font-size: 13px;
+      margin-bottom: 3px;
+      white-space: nowrap;
+    }
+    
+    .smell-score {
+      font-weight: bold;
+    }
+    
+    .smell-score.clean { color: #52B788; }
+    .smell-score.minor { color: #98D8C8; }
+    .smell-score.moderate { color: #F7DC6F; }
+    .smell-score.significant { color: #FFA07A; }
+    .smell-score.high { color: #E63946; }
+    
+    .smell-metrics {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      align-items: flex-start;
+    }
+    
+    .smell-metric {
+      font-size: 13px;
+      color: #d4d4d4;
+      text-align: left;
+      white-space: nowrap;
+    }
+    
+    .smell-metric-value {
+      font-weight: bold;
+    }
+    
+    .symbol-triangle {
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      cursor: pointer;
+    }
+    
+    .symbol-triangle.visible {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .symbol-triangle rect {
+      fill: #F7DC6F;
+      stroke: #000;
+      stroke-width: 1;
+      transition: fill 0.3s;
+    }
+    
+    .symbol-triangle.empty rect {
+      fill: #666;
+    }
+    
+    .symbol-list-panel {
+      background: #4a4a4a;
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      border: 2px solid #ffffff;
+      font-size: 9px;
+      max-height: 120px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      width: fit-content;
+      min-width: 80px;
+    }
+    
+    .symbol-list-panel::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    .symbol-list-panel::-webkit-scrollbar-track {
+      background: #2a2a2a;
+      border-radius: 3px;
+    }
+    
+    .symbol-list-panel::-webkit-scrollbar-thumb {
+      background: #666;
+      border-radius: 3px;
+    }
+    
+    .symbol-list-panel::-webkit-scrollbar-thumb:hover {
+      background: #888;
+    }
+    
+    .symbol-list-item {
+      padding: 1px 0;
+      white-space: nowrap;
+      font-family: 'Courier New', monospace;
+    }
+  </style>
+</head>
+<body>
+  <div id="demo-header">
+    <div>
+      <h1>🗺️ Radium Files Map Visualization</h1>
+      <div class="subtitle">Interactive file and directory dependency graph</div>
+    </div>
+    <div id="demo-info">
+      <span>📊 Demo Mode - Sample Project Loaded</span>
+    </div>
+  </div>
+
+  <div id="controls">
+    <input type="text" id="search-box" placeholder="Search files and directories..." />
+    <select id="color-mode-select">
+      <option value="directory">Color by Parent Directory</option>
+      <option value="symbol">Color by Symbol Use</option>
+      <option value="smell">Color by Code Smell</option>
+    </select>
+  </div>
+  <div id="tooltip">
+    <div class="tooltip-filename"></div>
+    <div class="tooltip-lines"></div>
+  </div>
+  <svg id="graph"></svg>
+  
+  <script>
+    console.log('[Files Map Demo] Starting...');
+    
+    // Mock vscode API for demo
+    const vscode = {
+      postMessage: (message) => {
+        console.log('[Demo] Message:', message);
+        
+        // Handle messages that would normally go to the extension
+        if (message.type === 'ready') {
+          // Send initial graph data
+          setTimeout(() => {
+            window.dispatchEvent(new MessageEvent('message', {
+              data: { type: 'graph:update', data: MOCK_GRAPH_DATA }
+            }));
+          }, 100);
+        } else if (message.type === 'file:open') {
+          alert(`In the VSCode extension, this would open:\n${message.filePath}`);
+        } else if (message.type === 'file:copy') {
+          alert(`Copied to clipboard:\n${message.filePath}`);
+        } else if (message.type === 'dir:unpin') {
+          // Simulate unpinning
+          window.dispatchEvent(new MessageEvent('message', {
+            data: { type: 'dir:unpinned', dirPath: message.dirPath }
+          }));
+        }
+      }
+    };
+    
+    // Mock graph data
+    const MOCK_GRAPH_DATA = {
+      nodes: [
+        // Directory nodes
+        { id: 'dir:src', type: 'directory', label: 'src', path: 'src', fileCount: 25, depth: 0 },
+        { id: 'dir:src/services', type: 'directory', label: 'src/services', path: 'src/services', fileCount: 12, depth: 1 },
+        { id: 'dir:src/models', type: 'directory', label: 'src/models', path: 'src/models', fileCount: 1, depth: 1 },
+        { id: 'dir:src/utils', type: 'directory', label: 'src/utils', path: 'src/utils', fileCount: 2, depth: 1 },
+        { id: 'dir:src/controllers', type: 'directory', label: 'src/controllers', path: 'src/controllers', fileCount: 11, depth: 1 },
+        
+        // File nodes - src/services
+        {
+          id: 'src/services/user-service.ts',
+          type: 'file',
+          label: 'user-service.ts',
+          path: 'src/services/user-service.ts',
+          lines: 150,
+          lang: 'typescript',
+          size: 200,
+          exportedSymbols: 5,
+          smellScore: 35,
+          smellDetails: {
+            functionCount: 8,
+            avgFunctionLength: 15,
+            maxFunctionLength: 45,
+            maxNestingDepth: 3,
+            importCount: 6
+          },
+          functions: ['authenticateUser()', 'createUser()', 'updateUser()', 'deleteUser()', 'findUserById()'],
+          variables: ['userCache', 'sessionStore'],
+          types: ['UserRepository']
+        },
+        {
+          id: 'src/services/auth-service.ts',
+          type: 'file',
+          label: 'auth-service.ts',
+          path: 'src/services/auth-service.ts',
+          lines: 95,
+          lang: 'typescript',
+          size: 170,
+          exportedSymbols: 3,
+          smellScore: 20,
+          smellDetails: {
+            functionCount: 5,
+            avgFunctionLength: 12,
+            maxFunctionLength: 28,
+            maxNestingDepth: 2,
+            importCount: 4
+          },
+          functions: ['generateToken()', 'validateToken()', 'refreshToken()'],
+          variables: ['tokenSecret'],
+          types: ['TokenPayload']
+        },
+        {
+          id: 'src/services/email-service.ts',
+          type: 'file',
+          label: 'email-service.ts',
+          path: 'src/services/email-service.ts',
+          lines: 180,
+          lang: 'typescript',
+          size: 210,
+          exportedSymbols: 4,
+          smellScore: 42,
+          smellDetails: {
+            functionCount: 9,
+            avgFunctionLength: 18,
+            maxFunctionLength: 52,
+            maxNestingDepth: 3,
+            importCount: 7
+          },
+          functions: ['sendEmail()', 'sendWelcomeEmail()', 'sendPasswordReset()', 'sendVerification()'],
+          variables: ['smtpConfig', 'emailQueue'],
+          types: ['EmailTemplate']
+        },
+        {
+          id: 'src/services/payment-service.ts',
+          type: 'file',
+          label: 'payment-service.ts',
+          path: 'src/services/payment-service.ts',
+          lines: 220,
+          lang: 'typescript',
+          size: 235,
+          exportedSymbols: 6,
+          smellScore: 58,
+          smellDetails: {
+            functionCount: 12,
+            avgFunctionLength: 22,
+            maxFunctionLength: 65,
+            maxNestingDepth: 4,
+            importCount: 9
+          },
+          functions: ['processPayment()', 'refundPayment()', 'validateCard()', 'getTransactionHistory()'],
+          variables: ['stripeClient', 'paymentCache'],
+          types: ['PaymentIntent', 'PaymentMethod']
+        },
+        {
+          id: 'src/services/notification-service.ts',
+          type: 'file',
+          label: 'notification-service.ts',
+          path: 'src/services/notification-service.ts',
+          lines: 145,
+          lang: 'typescript',
+          size: 195,
+          exportedSymbols: 5,
+          smellScore: 38,
+          smellDetails: {
+            functionCount: 8,
+            avgFunctionLength: 16,
+            maxFunctionLength: 42,
+            maxNestingDepth: 3,
+            importCount: 5
+          },
+          functions: ['sendNotification()', 'sendPushNotification()', 'sendSMS()', 'scheduleNotification()'],
+          variables: ['notificationQueue', 'fcmClient'],
+          types: ['Notification']
+        },
+        {
+          id: 'src/services/storage-service.ts',
+          type: 'file',
+          label: 'storage-service.ts',
+          path: 'src/services/storage-service.ts',
+          lines: 165,
+          lang: 'typescript',
+          size: 200,
+          exportedSymbols: 7,
+          smellScore: 32,
+          smellDetails: {
+            functionCount: 10,
+            avgFunctionLength: 14,
+            maxFunctionLength: 38,
+            maxNestingDepth: 2,
+            importCount: 6
+          },
+          functions: ['uploadFile()', 'downloadFile()', 'deleteFile()', 'listFiles()', 'getFileUrl()'],
+          variables: ['s3Client', 'bucketName'],
+          types: ['StorageConfig', 'FileMetadata']
+        },
+        {
+          id: 'src/services/cache-service.ts',
+          type: 'file',
+          label: 'cache-service.ts',
+          path: 'src/services/cache-service.ts',
+          lines: 110,
+          lang: 'typescript',
+          size: 175,
+          exportedSymbols: 4,
+          smellScore: 22,
+          smellDetails: {
+            functionCount: 7,
+            avgFunctionLength: 11,
+            maxFunctionLength: 25,
+            maxNestingDepth: 2,
+            importCount: 3
+          },
+          functions: ['get()', 'set()', 'delete()', 'clear()', 'has()'],
+          variables: ['redisClient', 'defaultTTL'],
+          types: ['CacheOptions']
+        },
+        {
+          id: 'src/services/analytics-service.ts',
+          type: 'file',
+          label: 'analytics-service.ts',
+          path: 'src/services/analytics-service.ts',
+          lines: 190,
+          lang: 'typescript',
+          size: 215,
+          exportedSymbols: 5,
+          smellScore: 48,
+          smellDetails: {
+            functionCount: 11,
+            avgFunctionLength: 19,
+            maxFunctionLength: 55,
+            maxNestingDepth: 4,
+            importCount: 8
+          },
+          functions: ['trackEvent()', 'trackPageView()', 'trackUser()', 'generateReport()'],
+          variables: ['analyticsClient', 'eventQueue'],
+          types: ['AnalyticsEvent', 'UserMetrics']
+        },
+        {
+          id: 'src/services/search-service.ts',
+          type: 'file',
+          label: 'search-service.ts',
+          path: 'src/services/search-service.ts',
+          lines: 205,
+          lang: 'typescript',
+          size: 225,
+          exportedSymbols: 6,
+          smellScore: 52,
+          smellDetails: {
+            functionCount: 13,
+            avgFunctionLength: 20,
+            maxFunctionLength: 58,
+            maxNestingDepth: 3,
+            importCount: 7
+          },
+          functions: ['search()', 'indexDocument()', 'deleteDocument()', 'updateIndex()', 'suggest()'],
+          variables: ['elasticClient', 'indexName'],
+          types: ['SearchQuery', 'SearchResult']
+        },
+        {
+          id: 'src/services/webhook-service.ts',
+          type: 'file',
+          label: 'webhook-service.ts',
+          path: 'src/services/webhook-service.ts',
+          lines: 135,
+          lang: 'typescript',
+          size: 185,
+          exportedSymbols: 3,
+          smellScore: 36,
+          smellDetails: {
+            functionCount: 8,
+            avgFunctionLength: 15,
+            maxFunctionLength: 40,
+            maxNestingDepth: 3,
+            importCount: 5
+          },
+          functions: ['registerWebhook()', 'triggerWebhook()', 'validateSignature()', 'retryWebhook()'],
+          variables: ['webhookQueue', 'secretKey'],
+          types: ['WebhookPayload']
+        },
+        {
+          id: 'src/services/rate-limiter-service.ts',
+          type: 'file',
+          label: 'rate-limiter-service.ts',
+          path: 'src/services/rate-limiter-service.ts',
+          lines: 88,
+          lang: 'typescript',
+          size: 160,
+          exportedSymbols: 2,
+          smellScore: 18,
+          smellDetails: {
+            functionCount: 5,
+            avgFunctionLength: 10,
+            maxFunctionLength: 22,
+            maxNestingDepth: 2,
+            importCount: 3
+          },
+          functions: ['checkLimit()', 'incrementCounter()', 'resetCounter()'],
+          variables: ['rateLimits'],
+          types: ['RateLimitConfig']
+        },
+        
+        // File nodes - src/models
+        {
+          id: 'src/models/user.model.ts',
+          type: 'file',
+          label: 'user.model.ts',
+          path: 'src/models/user.model.ts',
+          lines: 45,
+          lang: 'typescript',
+          size: 150,
+          exportedSymbols: 2,
+          smellScore: 10,
+          smellDetails: {
+            functionCount: 0,
+            avgFunctionLength: 0,
+            maxFunctionLength: 0,
+            maxNestingDepth: 0,
+            importCount: 1
+          },
+          functions: [],
+          variables: [],
+          types: ['User', 'UserSession']
+        },
+        
+        // File nodes - src/utils
+        {
+          id: 'src/utils/validation.ts',
+          type: 'file',
+          label: 'validation.ts',
+          path: 'src/utils/validation.ts',
+          lines: 85,
+          lang: 'typescript',
+          size: 165,
+          exportedSymbols: 4,
+          smellScore: 25,
+          smellDetails: {
+            functionCount: 6,
+            avgFunctionLength: 8,
+            maxFunctionLength: 15,
+            maxNestingDepth: 2,
+            importCount: 2
+          },
+          functions: ['validateEmail()', 'validatePassword()', 'validateUsername()'],
+          variables: [],
+          types: []
+        },
+        {
+          id: 'src/utils/logger.ts',
+          type: 'file',
+          label: 'logger.ts',
+          path: 'src/utils/logger.ts',
+          lines: 120,
+          lang: 'typescript',
+          size: 185,
+          exportedSymbols: 1,
+          smellScore: 45,
+          smellDetails: {
+            functionCount: 10,
+            avgFunctionLength: 8,
+            maxFunctionLength: 20,
+            maxNestingDepth: 3,
+            importCount: 3
+          },
+          functions: ['log()', 'warn()', 'error()', 'debug()', 'info()'],
+          variables: ['logLevel', 'logFile'],
+          types: ['LogLevel']
+        },
+        
+        // File nodes - src/controllers
+        {
+          id: 'src/controllers/auth.controller.ts',
+          type: 'file',
+          label: 'auth.controller.ts',
+          path: 'src/controllers/auth.controller.ts',
+          lines: 120,
+          lang: 'typescript',
+          size: 190,
+          exportedSymbols: 1,
+          smellScore: 55,
+          smellDetails: {
+            functionCount: 7,
+            avgFunctionLength: 18,
+            maxFunctionLength: 35,
+            maxNestingDepth: 4,
+            importCount: 8
+          },
+          functions: ['login()', 'register()', 'logout()', 'refreshToken()'],
+          variables: [],
+          types: ['AuthController']
+        },
+        {
+          id: 'src/controllers/user.controller.ts',
+          type: 'file',
+          label: 'user.controller.ts',
+          path: 'src/controllers/user.controller.ts',
+          lines: 185,
+          lang: 'typescript',
+          size: 215,
+          exportedSymbols: 1,
+          smellScore: 62,
+          smellDetails: {
+            functionCount: 10,
+            avgFunctionLength: 20,
+            maxFunctionLength: 48,
+            maxNestingDepth: 4,
+            importCount: 10
+          },
+          functions: ['getUser()', 'updateUser()', 'deleteUser()', 'listUsers()', 'searchUsers()'],
+          variables: [],
+          types: ['UserController']
+        },
+        {
+          id: 'src/controllers/product.controller.ts',
+          type: 'file',
+          label: 'product.controller.ts',
+          path: 'src/controllers/product.controller.ts',
+          lines: 210,
+          lang: 'typescript',
+          size: 230,
+          exportedSymbols: 1,
+          smellScore: 68,
+          smellDetails: {
+            functionCount: 12,
+            avgFunctionLength: 22,
+            maxFunctionLength: 55,
+            maxNestingDepth: 5,
+            importCount: 11
+          },
+          functions: ['getProduct()', 'createProduct()', 'updateProduct()', 'deleteProduct()', 'listProducts()'],
+          variables: [],
+          types: ['ProductController']
+        },
+        {
+          id: 'src/controllers/order.controller.ts',
+          type: 'file',
+          label: 'order.controller.ts',
+          path: 'src/controllers/order.controller.ts',
+          lines: 245,
+          lang: 'typescript',
+          size: 255,
+          exportedSymbols: 1,
+          smellScore: 72,
+          smellDetails: {
+            functionCount: 14,
+            avgFunctionLength: 24,
+            maxFunctionLength: 62,
+            maxNestingDepth: 5,
+            importCount: 13
+          },
+          functions: ['createOrder()', 'getOrder()', 'updateOrder()', 'cancelOrder()', 'listOrders()'],
+          variables: [],
+          types: ['OrderController']
+        },
+        {
+          id: 'src/controllers/payment.controller.ts',
+          type: 'file',
+          label: 'payment.controller.ts',
+          path: 'src/controllers/payment.controller.ts',
+          lines: 165,
+          lang: 'typescript',
+          size: 200,
+          exportedSymbols: 1,
+          smellScore: 58,
+          smellDetails: {
+            functionCount: 9,
+            avgFunctionLength: 19,
+            maxFunctionLength: 45,
+            maxNestingDepth: 4,
+            importCount: 9
+          },
+          functions: ['processPayment()', 'refundPayment()', 'getPaymentStatus()', 'listPayments()'],
+          variables: [],
+          types: ['PaymentController']
+        },
+        {
+          id: 'src/controllers/notification.controller.ts',
+          type: 'file',
+          label: 'notification.controller.ts',
+          path: 'src/controllers/notification.controller.ts',
+          lines: 130,
+          lang: 'typescript',
+          size: 180,
+          exportedSymbols: 1,
+          smellScore: 45,
+          smellDetails: {
+            functionCount: 7,
+            avgFunctionLength: 16,
+            maxFunctionLength: 38,
+            maxNestingDepth: 3,
+            importCount: 7
+          },
+          functions: ['sendNotification()', 'getNotifications()', 'markAsRead()', 'deleteNotification()'],
+          variables: [],
+          types: ['NotificationController']
+        },
+        {
+          id: 'src/controllers/analytics.controller.ts',
+          type: 'file',
+          label: 'analytics.controller.ts',
+          path: 'src/controllers/analytics.controller.ts',
+          lines: 195,
+          lang: 'typescript',
+          size: 220,
+          exportedSymbols: 1,
+          smellScore: 64,
+          smellDetails: {
+            functionCount: 11,
+            avgFunctionLength: 21,
+            maxFunctionLength: 52,
+            maxNestingDepth: 4,
+            importCount: 10
+          },
+          functions: ['getAnalytics()', 'trackEvent()', 'generateReport()', 'exportData()'],
+          variables: [],
+          types: ['AnalyticsController']
+        },
+        {
+          id: 'src/controllers/search.controller.ts',
+          type: 'file',
+          label: 'search.controller.ts',
+          path: 'src/controllers/search.controller.ts',
+          lines: 155,
+          lang: 'typescript',
+          size: 195,
+          exportedSymbols: 1,
+          smellScore: 52,
+          smellDetails: {
+            functionCount: 8,
+            avgFunctionLength: 18,
+            maxFunctionLength: 42,
+            maxNestingDepth: 3,
+            importCount: 8
+          },
+          functions: ['search()', 'advancedSearch()', 'getSuggestions()', 'reindex()'],
+          variables: [],
+          types: ['SearchController']
+        },
+        {
+          id: 'src/controllers/webhook.controller.ts',
+          type: 'file',
+          label: 'webhook.controller.ts',
+          path: 'src/controllers/webhook.controller.ts',
+          lines: 140,
+          lang: 'typescript',
+          size: 185,
+          exportedSymbols: 1,
+          smellScore: 48,
+          smellDetails: {
+            functionCount: 8,
+            avgFunctionLength: 17,
+            maxFunctionLength: 40,
+            maxNestingDepth: 3,
+            importCount: 7
+          },
+          functions: ['registerWebhook()', 'handleWebhook()', 'listWebhooks()', 'deleteWebhook()'],
+          variables: [],
+          types: ['WebhookController']
+        },
+        {
+          id: 'src/controllers/admin.controller.ts',
+          type: 'file',
+          label: 'admin.controller.ts',
+          path: 'src/controllers/admin.controller.ts',
+          lines: 280,
+          lang: 'typescript',
+          size: 280,
+          exportedSymbols: 1,
+          smellScore: 78,
+          smellDetails: {
+            functionCount: 16,
+            avgFunctionLength: 26,
+            maxFunctionLength: 72,
+            maxNestingDepth: 6,
+            importCount: 15
+          },
+          functions: ['manageUsers()', 'manageProducts()', 'viewLogs()', 'systemSettings()', 'backupData()'],
+          variables: [],
+          types: ['AdminController']
+        }
+      ],
+      edges: [
+        // Directory hierarchy
+        { source: 'dir:src', target: 'dir:src/services', type: 'contains' },
+        { source: 'dir:src', target: 'dir:src/models', type: 'contains' },
+        { source: 'dir:src', target: 'dir:src/utils', type: 'contains' },
+        { source: 'dir:src', target: 'dir:src/controllers', type: 'contains' },
+        
+        // Directory to file containment
+        { source: 'dir:src/services', target: 'src/services/user-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/auth-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/email-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/payment-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/notification-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/storage-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/cache-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/analytics-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/search-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/webhook-service.ts', type: 'contains' },
+        { source: 'dir:src/services', target: 'src/services/rate-limiter-service.ts', type: 'contains' },
+        { source: 'dir:src/models', target: 'src/models/user.model.ts', type: 'contains' },
+        { source: 'dir:src/utils', target: 'src/utils/validation.ts', type: 'contains' },
+        { source: 'dir:src/utils', target: 'src/utils/logger.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/auth.controller.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/user.controller.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/product.controller.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/order.controller.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/payment.controller.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/notification.controller.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/analytics.controller.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/search.controller.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/webhook.controller.ts', type: 'contains' },
+        { source: 'dir:src/controllers', target: 'src/controllers/admin.controller.ts', type: 'contains' }
+      ]
+    };
+  </script>
+  
+  <!-- Include the actual files map visualization code from the extension -->
+  <script>
+    // This is the exact same JavaScript code from files-map-panel.ts getHtmlContent()
+    // but adapted to work standalone without VSCode API dependencies
+    
+    let graphData = null;
+    let simulation = null;
+    let svg = null;
+    let g = null;
+    let zoom = null;
+    let colorMode = 'directory';
+    let searchQuery = '';
+    let savedLayout = {};
+    let tooltipTimeout = null;
+    let tooltip = null;
+    let isDragging = false;
+    let currentSmellDetailsNode = null;
+    let currentCenteredNode = null;
+    let updateDirectorySizes = null;
+    let updatePinIndicators = null;
+    
+    // 30 predefined distinct colors for directories
+    const directoryColors = [
+      '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F',
+      '#BB8FCE', '#85C1E2', '#F8B739', '#52B788', '#E63946', '#06FFA5',
+      '#FFB4A2', '#B5838D', '#6C5B7B', '#C06C84', '#F67280', '#355C7D',
+      '#99B898', '#FECEAB', '#FF8C94', '#5DADE2', '#F39C12', '#A569BD',
+      '#48C9B0', '#F4D03F', '#EC7063', '#85929E', '#58D68D', '#AF7AC5'
+    ];
+    
+    function hashString(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      return Math.abs(hash);
+    }
+    
+    function getDirectoryColor(dirPath) {
+      const hash = hashString(dirPath);
+      const colorIndex = hash % directoryColors.length;
+      return directoryColors[colorIndex];
+    }
+    
+    function getFileColorByDirectory(filePath) {
+      if (!filePath) return directoryColors[0];
+      const lastSlashIndex = filePath.lastIndexOf('/');
+      if (lastSlashIndex === -1) return directoryColors[0];
+      const dirPath = filePath.substring(0, lastSlashIndex);
+      if (!dirPath) return directoryColors[0];
+      return getDirectoryColor(dirPath);
+    }
+    
+    function getFileColorBySymbols(exportedSymbols) {
+      if (exportedSymbols === 0) return '#999';
+      if (exportedSymbols <= 3) return '#ffd700';
+      if (exportedSymbols <= 6) return '#adff2f';
+      if (exportedSymbols <= 9) return '#90ee90';
+      return '#4caf50';
+    }
+    
+    function getFileColorBySmell(smellScore) {
+      if (smellScore <= 20) return '#52B788';
+      if (smellScore <= 40) return '#98D8C8';
+      if (smellScore <= 60) return '#F7DC6F';
+      if (smellScore <= 80) return '#FFA07A';
+      return '#E63946';
+    }
+    
+    function getFileColor(node) {
+      if (colorMode === 'directory') {
+        return getFileColorByDirectory(node.path);
+      } else if (colorMode === 'smell') {
+        return getFileColorBySmell(node.smellScore);
+      } else {
+        return getFileColorBySymbols(node.exportedSymbols);
+      }
+    }
+    
+    function getDirBoxColor(dirPath) {
+      if (colorMode === 'directory') {
+        return getDirectoryColor(dirPath);
+      } else {
+        return '#fff';
+      }
+    }
+    
+    function getTextColor(node) {
+      if (colorMode === 'directory') {
+        return '#000';
+      } else if (colorMode === 'smell') {
+        const smellScore = node.smellScore;
+        if (smellScore <= 40) return '#000';
+        if (smellScore <= 80) return '#333';
+        return '#fff';
+      } else {
+        const exportedSymbols = node.exportedSymbols;
+        if (exportedSymbols === 0) return '#d4d4d4';
+        if (exportedSymbols <= 9) return '#333';
+        return '#d4d4d4';
+      }
+    }
+    
+    const edgeColors = {
+      imports: '#4a9eff',
+      calls: '#4caf50',
+      inherits: '#ff9800',
+      defines: '#9c27b0',
+      modifies: '#f44336'
+    };
+    
+    function init() {
+      svg = d3.select('#graph');
+      const width = window.innerWidth;
+      const height = window.innerHeight - 70;
+      
+      svg.attr('width', width).attr('height', height);
+      
+      zoom = d3.zoom()
+        .scaleExtent([0.01, 4])
+        .on('zoom', (event) => {
+          g.attr('transform', event.transform);
+          if (updateDirectorySizes) {
+            updateDirectorySizes(event.transform.k);
+          }
+          if (updatePinIndicators) {
+            updatePinIndicators(event.transform.k);
+          }
+          updateCenteredElements();
+        });
+      
+      svg.call(zoom);
+      
+      svg.on('click', (event) => {
+        if (event.target.tagName === 'svg') {
+          hideSmellDetails();
+        }
+      });
+      
+      g = svg.append('g');
+      tooltip = document.getElementById('tooltip');
+      
+      const searchBox = document.getElementById('search-box');
+      searchBox.addEventListener('input', (e) => {
+        searchQuery = e.target.value.toLowerCase();
+        applySearchFilter();
+      });
+      
+      const colorModeSelect = document.getElementById('color-mode-select');
+      colorModeSelect.addEventListener('change', (e) => {
+        const mode = e.target.value;
+        if (mode !== colorMode) {
+          colorMode = mode;
+          updateColors();
+          checkAndShowCenteredFile();
+        }
+      });
+      
+      const defs = svg.append('defs');
+      for (const [type, color] of Object.entries(edgeColors)) {
+        defs.append('marker')
+          .attr('id', `arrow-${type}`)
+          .attr('viewBox', '0 -5 10 10')
+          .attr('refX', 20)
+          .attr('refY', 0)
+          .attr('markerWidth', 6)
+          .attr('markerHeight', 6)
+          .attr('orient', 'auto')
+          .append('path')
+          .attr('d', 'M0,-5L10,0L0,5')
+          .attr('class', 'arrow')
+          .style('fill', color);
+      }
+      
+      vscode.postMessage({ type: 'ready' });
+    }
+    
+    function showTooltip(event, node) {
+      if (!tooltip) return;
+      
+      const filenameEl = tooltip.querySelector('.tooltip-filename');
+      const linesEl = tooltip.querySelector('.tooltip-lines');
+      
+      if (node.type === 'copy-button') {
+        filenameEl.textContent = node.label;
+        linesEl.textContent = '';
+      } else if (node.type === 'pin-indicator') {
+        filenameEl.textContent = node.label;
+        linesEl.textContent = '';
+      } else if (node.type === 'file') {
+        filenameEl.textContent = node.label;
+        let details = node.lines + ' lines';
+        if (colorMode === 'smell') {
+          const score = node.smellScore || 0;
+          let rating = 'Clean';
+          if (score > 80) rating = 'High';
+          else if (score > 60) rating = 'Significant';
+          else if (score > 40) rating = 'Moderate';
+          else if (score > 20) rating = 'Minor';
+          details += ' | Smell: ' + rating + ' (' + score + ')';
+        }
+        linesEl.textContent = details;
+      } else if (node.type === 'directory') {
+        filenameEl.textContent = node.path;
+        linesEl.textContent = '';
+      }
+      
+      updateTooltipPosition(event);
+      tooltip.classList.add('visible');
+    }
+    
+    function updateTooltipPosition(event) {
+      if (!tooltip) return;
+      const offset = 10;
+      tooltip.style.left = (event.pageX + offset) + 'px';
+      tooltip.style.top = (event.pageY + offset) + 'px';
+    }
+    
+    function hideTooltip() {
+      if (!tooltip) return;
+      tooltip.classList.remove('visible');
+    }
+    
+    let currentSymbolListNode = null;
+    let symbolListHideTimeout = null;
+    
+    function showSymbolList(node, symbolType) {
+      if (symbolListHideTimeout) {
+        clearTimeout(symbolListHideTimeout);
+        symbolListHideTimeout = null;
+      }
+      
+      hideTooltip();
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+        tooltipTimeout = null;
+      }
+      
+      if (currentSymbolListNode === node.id + '-' + symbolType) {
+        return;
+      }
+      
+      d3.selectAll('.symbol-list-group').remove();
+      currentSymbolListNode = node.id + '-' + symbolType;
+      
+      const symbols = symbolType === 'functions' ? node.functions : 
+                      symbolType === 'variables' ? node.variables : 
+                      node.types;
+      if (symbols.length === 0) return;
+      
+      const listGroup = g.append('g')
+        .attr('class', 'symbol-list-group')
+        .attr('transform', `translate(${node.x}, ${node.y})`);
+      
+      const fileBoxHeight = node.size / 2;
+      const tooltipHeight = 200;
+      
+      const longestSymbol = symbols.reduce((max, s) => s.length > max.length ? s : max, '');
+      const estimatedWidth = Math.max(
+        longestSymbol.length * 5.4 + 30,
+        80
+      );
+      const tooltipWidth = Math.min(Math.ceil(estimatedWidth), 200);
+      
+      const squareOffsetFromBox = 15;
+      const squareSize = 16;
+      const gapFromSquare = 15;
+      
+      let offsetX, offsetY;
+      
+      if (symbolType === 'variables') {
+        offsetX = -node.size / 2 - squareOffsetFromBox - squareSize / 2 - gapFromSquare - tooltipWidth;
+        offsetY = -fileBoxHeight / 2;
+      } else if (symbolType === 'functions') {
+        offsetX = node.size / 2 + squareOffsetFromBox + squareSize / 2 + gapFromSquare;
+        offsetY = -fileBoxHeight / 2;
+      } else {
+        offsetX = -tooltipWidth / 2;
+        const iconCenterY = -fileBoxHeight / 2 - squareOffsetFromBox;
+        const iconTopY = iconCenterY - squareSize / 2;
+        const estimatedContentHeight = Math.min(symbols.length * 10 + 12, 120);
+        offsetY = iconTopY - gapFromSquare - estimatedContentHeight - 5;
+      }
+      
+      const symbolsHTML = symbols.map(s => `<div class="symbol-list-item">${s}</div>`).join('');
+      const panelHTML = `<div class="symbol-list-panel">${symbolsHTML}</div>`;
+      
+      const foreignObj = listGroup.append('foreignObject')
+        .attr('x', offsetX)
+        .attr('y', offsetY)
+        .attr('width', tooltipWidth)
+        .attr('height', tooltipHeight)
+        .style('pointer-events', 'all')
+        .style('overflow', 'visible')
+        .html(panelHTML);
+      
+      setTimeout(() => {
+        const panel = foreignObj.node().querySelector('.symbol-list-panel');
+        if (panel) {
+          panel.addEventListener('mouseenter', function() {
+            if (symbolListHideTimeout) {
+              clearTimeout(symbolListHideTimeout);
+              symbolListHideTimeout = null;
+            }
+          });
+          
+          panel.addEventListener('mouseleave', function() {
+            hideSymbolListWithDelay();
+          });
+          
+          panel.addEventListener('wheel', function(e) {
+            e.stopPropagation();
+          });
+        }
+      }, 10);
+    }
+    
+    function hideSymbolListWithDelay() {
+      symbolListHideTimeout = setTimeout(() => {
+        d3.selectAll('.symbol-list-group').remove();
+        currentSymbolListNode = null;
+        symbolListHideTimeout = null;
+      }, 300);
+    }
+    
+    function hideSymbolListImmediately() {
+      if (symbolListHideTimeout) {
+        clearTimeout(symbolListHideTimeout);
+        symbolListHideTimeout = null;
+      }
+      d3.selectAll('.symbol-list-group').remove();
+      currentSymbolListNode = null;
+    }
+    
+    function showSmellDetails(node) {
+      if (node.type !== 'file') return;
+      
+      hideSmellDetails();
+      
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      
+      if (scale < 0.5) return;
+      
+      currentSmellDetailsNode = node;
+      
+      const score = node.smellScore || 0;
+      const details = node.smellDetails;
+      
+      const panelGroup = g.append('g')
+        .attr('class', 'smell-details-group')
+        .attr('transform', `translate(${node.x}, ${node.y + node.size / 4 + 20})`);
+      
+      let metricsHTML = '';
+      if (details) {
+        metricsHTML = `
+          <div class="smell-metric">Functions: <span class="smell-metric-value">${details.functionCount}</span></div>
+          <div class="smell-metric">Avg func len: <span class="smell-metric-value">${Math.round(details.avgFunctionLength)}</span></div>
+          <div class="smell-metric">Max func len: <span class="smell-metric-value">${details.maxFunctionLength}</span></div>
+          <div class="smell-metric">Max nesting: <span class="smell-metric-value">${details.maxNestingDepth}</span></div>
+          <div class="smell-metric">Imports: <span class="smell-metric-value">${details.importCount}</span></div>
+        `;
+      } else {
+        metricsHTML = `<div class="smell-metric">No data available</div>`;
+      }
+      
+      let scoreClass = 'clean';
+      if (score > 80) scoreClass = 'high';
+      else if (score > 60) scoreClass = 'significant';
+      else if (score > 40) scoreClass = 'moderate';
+      else if (score > 20) scoreClass = 'minor';
+      
+      const panelHTML = `
+        <div class="smell-details-panel visible">
+          <div class="smell-header">Code smell score: <span class="smell-score ${scoreClass}">${score}</span></div>
+          <div class="smell-metrics">
+            ${metricsHTML}
+          </div>
+        </div>
+      `;
+      
+      const lines = [
+        `Code smell score: ${score}`,
+        `Functions: ${details?.functionCount || 0}`,
+        `Avg func len: ${details ? Math.round(details.avgFunctionLength) : 0}`,
+        `Max func len: ${details?.maxFunctionLength || 0}`,
+        `Max nesting: ${details?.maxNestingDepth || 0}`,
+        `Imports: ${details?.importCount || 0}`
+      ];
+      const longestLine = lines.reduce((max, line) => line.length > max.length ? line : max, '');
+      
+      const estimatedWidth = Math.max(
+        longestLine.length * 7 + 26,
+        180
+      );
+      const panelWidth = Math.min(Math.ceil(estimatedWidth), 350);
+      const panelHeight = 130;
+      
+      panelGroup.append('foreignObject')
+        .attr('x', -panelWidth / 2)
+        .attr('y', 0)
+        .attr('width', panelWidth)
+        .attr('height', panelHeight)
+        .style('overflow', 'visible')
+        .html(panelHTML);
+    }
+    
+    function hideSmellDetails() {
+      d3.selectAll('.smell-details-group').remove();
+      currentSmellDetailsNode = null;
+    }
+    
+    function updateSmellDetailsPosition() {
+      checkAndShowCenteredFile();
+      
+      if (currentSmellDetailsNode) {
+        const node = currentSmellDetailsNode;
+        d3.selectAll('.smell-details-group')
+          .attr('transform', `translate(${node.x}, ${node.y + node.size / 4 + 20})`);
+      }
+    }
+    
+    function updateSymbolTrianglesVisibility() {
+      if (!graphData) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight - 70;
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      
+      d3.selectAll('.symbol-triangle').classed('visible', false);
+      
+      if (scale < 1.0) return;
+      
+      const centerX = (width / 2 - currentTransform.x) / scale;
+      const centerY = ((height + 70) / 2 - currentTransform.y) / scale;
+      
+      let closestNode = null;
+      let minDistance = Infinity;
+      
+      graphData.nodes.forEach(node => {
+        if (node.type !== 'file') return;
+        
+        const dx = node.x - centerX;
+        const dy = node.y - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < node.size && distance < minDistance) {
+          minDistance = distance;
+          closestNode = node;
+        }
+      });
+      
+      if (closestNode) {
+        d3.selectAll('.symbol-triangle')
+          .filter(function() {
+            const node = d3.select(this.parentNode).datum();
+            return node === closestNode;
+          })
+          .classed('visible', true);
+      }
+    }
+    
+    function updateCenteredElements() {
+      updateCopyButtonVisibility();
+      updatePinIndicatorVisibility();
+      updateSmellDetailsPosition();
+      updateSymbolTrianglesVisibility();
+      
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      if (scale < 1.0) {
+        hideSymbolListImmediately();
+      }
+    }
+    
+    function checkAndShowCenteredFile() {
+      if (!graphData) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight - 70;
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      
+      if (scale < 1.0) {
+        hideSmellDetails();
+        return;
+      }
+      
+      const centerX = (width / 2 - currentTransform.x) / scale;
+      const centerY = ((height + 70) / 2 - currentTransform.y) / scale;
+      
+      let closestNode = null;
+      let minDistance = Infinity;
+      
+      graphData.nodes.forEach(node => {
+        if (node.type !== 'file') return;
+        
+        const dx = node.x - centerX;
+        const dy = node.y - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < node.size && distance < minDistance) {
+          minDistance = distance;
+          closestNode = node;
+        }
+      });
+      
+      if (!closestNode) {
+        hideSmellDetails();
+        return;
+      }
+      
+      if (closestNode !== currentSmellDetailsNode) {
+        hideSmellDetails();
+        showSmellDetails(closestNode);
+      }
+    }
+    
+    function updateCopyButtonVisibility() {
+      if (!graphData) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight - 70;
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      
+      if (scale < 1.0) {
+        d3.selectAll('.copy-button').classed('visible', false);
+        currentCenteredNode = null;
+        return;
+      }
+      
+      const centerX = (width / 2 - currentTransform.x) / scale;
+      const centerY = ((height + 70) / 2 - currentTransform.y) / scale;
+      
+      let closestNode = null;
+      let minDistance = Infinity;
+      
+      graphData.nodes.forEach(node => {
+        if (node.type !== 'file') return;
+        
+        const dx = node.x - centerX;
+        const dy = node.y - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < node.size && distance < minDistance) {
+          minDistance = distance;
+          closestNode = node;
+        }
+      });
+      
+      if (closestNode !== currentCenteredNode) {
+        d3.selectAll('.copy-button').classed('visible', false);
+        
+        if (closestNode) {
+          d3.selectAll('.copy-button')
+            .filter(function() {
+              const node = d3.select(this.parentNode).datum();
+              return node === closestNode;
+            })
+            .classed('visible', true);
+        }
+        
+        currentCenteredNode = closestNode;
+      }
+    }
+    
+    function updatePinIndicatorVisibility() {
+      if (!graphData) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight - 70;
+      const currentTransform = d3.zoomTransform(svg.node());
+      const scale = currentTransform.k;
+      
+      const centerX = (width / 2 - currentTransform.x) / scale;
+      const centerY = ((height + 70) / 2 - currentTransform.y) / scale;
+      
+      let closestDir = null;
+      let minDistance = Infinity;
+      
+      graphData.nodes.forEach(node => {
+        if (node.type !== 'directory') return;
+        if (node.fx == null || node.fy == null) return;
+        
+        const dx = node.x - centerX;
+        const dy = node.y - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        const MIN_DIR_SCALE = 0.4;
+        const MAX_DIR_SCALE = 2.0;
+        let dirSizeMultiplier = 1;
+        if (scale > 1) {
+          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(scale));
+        } else if (scale < 1) {
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / scale));
+        }
+        
+        const fontSizes = [84, 60, 36, 22];
+        const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+        const parts = node.label.split('/');
+        const dirName = parts[parts.length - 1];
+        const dirNameWidth = dirName.length * fontSize * 0.5;
+        const calculatedWidth = dirNameWidth + 60;
+        const minWidths = [400, 250, 180, 140];
+        const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
+        const dirWidth = Math.max(calculatedWidth, minWidth);
+        const dirHeight = fontSize * 1.8;
+        const dirSize = Math.max(dirWidth, dirHeight);
+        
+        if (distance < dirSize && distance < minDistance) {
+          minDistance = distance;
+          closestDir = node;
+        }
+      });
+      
+      d3.selectAll('.pin-indicator').classed('visible', false);
+      
+      if (closestDir) {
+        d3.selectAll('.pin-indicator')
+          .filter(function() {
+            const node = d3.select(this.parentNode).datum();
+            return node === closestDir;
+          })
+          .classed('visible', true);
+      }
+    }
+    
+    function zoomToNode(node) {
+      if (!svg || !zoom) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight - 70;
+      
+      const scale = 1.2;
+      const x = width / 2 - node.x * scale;
+      const y = (height + 70) / 2 - node.y * scale;
+      
+      if (simulation) {
+        simulation.stop();
+      }
+      
+      svg.transition()
+        .duration(750)
+        .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+    }
+    
+    function nodeMatchesSearch(node) {
+      if (!searchQuery) return true;
+      const label = node.label.toLowerCase();
+      return label.includes(searchQuery);
+    }
+    
+    function applySearchFilter() {
+      if (!graphData) return;
+      
+      d3.selectAll('.file-rect')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return getFileColor(node);
+          }
+          return '#444';
+        });
+      
+      d3.selectAll('.file-label')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return getTextColor(node);
+          }
+          return '#888';
+        });
+      
+      d3.selectAll('.dir-rect')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return getDirBoxColor(node.path);
+          }
+          return '#444';
+        });
+      
+      d3.selectAll('.directory-name')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return '#000';
+          }
+          return '#888';
+        });
+      
+      d3.selectAll('.node-sublabel')
+        .transition()
+        .duration(200)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (nodeMatchesSearch(node)) {
+            return '#999';
+          }
+          return '#666';
+        });
+    }
+    
+    function updateColors() {
+      if (!graphData) return;
+      
+      d3.selectAll('.file-rect')
+        .transition()
+        .duration(300)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (!nodeMatchesSearch(node)) return '#444';
+          return getFileColor(node);
+        });
+      
+      d3.selectAll('.file-label')
+        .transition()
+        .duration(300)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (!nodeMatchesSearch(node)) return '#888';
+          return getTextColor(node);
+        });
+      
+      d3.selectAll('.dir-rect')
+        .transition()
+        .duration(300)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (!nodeMatchesSearch(node)) return '#444';
+          return getDirBoxColor(node.path);
+        });
+      
+      d3.selectAll('.directory-name')
+        .transition()
+        .duration(300)
+        .style('fill', function() {
+          const node = d3.select(this.parentNode).datum();
+          if (!nodeMatchesSearch(node)) return '#888';
+          return '#000';
+        });
+    }
+    
+    function renderGraph(data) {
+      graphData = data;
+      
+      const nodes = data.nodes;
+      const edges = data.edges;
+      
+      nodes.forEach(node => {
+        if (node.type === 'directory' && savedLayout[node.path]) {
+          node.fx = savedLayout[node.path].x;
+          node.fy = savedLayout[node.path].y;
+        }
+      });
+      
+      console.log('[Files Map Demo] Total nodes:', nodes.length);
+      console.log('[Files Map Demo] File nodes:', nodes.filter(n => n.type === 'file').length);
+      console.log('[Files Map Demo] Directory nodes:', nodes.filter(n => n.type === 'directory').length);
+      
+      g.selectAll('*').remove();
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight - 70;
+      
+      const containmentEdges = edges.filter(e => e.type === 'contains');
+      
+      function getDirSize(depth) {
+        const baseSizes = [400, 300, 220, 160];
+        return baseSizes[Math.min(depth, baseSizes.length - 1)];
+      }
+      
+      function getDirFontSize(depth) {
+        const fontSizes = [64, 44, 28, 18];
+        return fontSizes[Math.min(depth, fontSizes.length - 1)];
+      }
+      
+      function getTextWidth(text, fontSize) {
+        const parts = text.split('/');
+        const dirName = parts[parts.length - 1];
+        const dirNameWidth = dirName.length * fontSize * 0.5;
+        const calculatedWidth = dirNameWidth + 60;
+        const minWidths = [400, 250, 180, 140];
+        const minWidth = minWidths[Math.min(parts.length - 1, minWidths.length - 1)];
+        return Math.max(calculatedWidth, minWidth);
+      }
+      
+      updateDirectorySizes = function(zoomScale) {
+        if (zoomScale === undefined) return;
+        
+        const MIN_DIR_SCALE = 0.4;
+        const MAX_DIR_SCALE = 2.0;
+        
+        let dirSizeMultiplier = 1;
+        
+        if (zoomScale > 1) {
+          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(zoomScale));
+        } else if (zoomScale < 1) {
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / zoomScale));
+        }
+        
+        d3.selectAll('.dir-rect')
+          .attr('d', function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            
+            const fontSizes = [84, 60, 36, 22];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            
+            const parts = node.label.split('/');
+            const dirName = parts[parts.length - 1];
+            const dirNameWidth = dirName.length * fontSize * 0.5;
+            const calculatedWidth = dirNameWidth + 60;
+            
+            const minWidths = [400, 250, 180, 140];
+            const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
+            
+            const width = Math.max(calculatedWidth, minWidth);
+            const height = fontSize * 1.8;
+            
+            const indent = height * 0.4;
+            const halfWidth = width / 2;
+            const halfHeight = height / 2;
+            
+            return `
+              M ${-halfWidth + indent},${-halfHeight}
+              L ${halfWidth - indent},${-halfHeight}
+              L ${halfWidth},0
+              L ${halfWidth - indent},${halfHeight}
+              L ${-halfWidth + indent},${halfHeight}
+              L ${-halfWidth},0
+              Z
+            `;
+          });
+        
+        d3.selectAll('.directory-name')
+          .style('font-size', function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            const fontSizes = [64, 44, 28, 18];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            return fontSize + 'px';
+          });
+      }
+      
+      updatePinIndicators = function(zoomScale) {
+        if (zoomScale === undefined) return;
+        
+        const MIN_DIR_SCALE = 0.4;
+        const MAX_DIR_SCALE = 2.0;
+        
+        let dirSizeMultiplier = 1;
+        
+        if (zoomScale > 1) {
+          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(zoomScale));
+        } else if (zoomScale < 1) {
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / zoomScale));
+        }
+        
+        d3.selectAll('.pin-indicator')
+          .attr('transform', function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            
+            const fontSizes = [84, 60, 36, 22];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            
+            const parts = node.label.split('/');
+            const dirName = parts[parts.length - 1];
+            const dirNameWidth = dirName.length * fontSize * 0.5;
+            const calculatedWidth = dirNameWidth + 60;
+            
+            const minWidths = [400, 250, 180, 140];
+            const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
+            
+            const width = Math.max(calculatedWidth, minWidth);
+            const height = fontSize * 1.8;
+            
+            const x = width / 2 - 15;
+            const y = -height / 2 - 15;
+            
+            return `translate(${x}, ${y})`;
+          });
+        
+        d3.selectAll('.pin-indicator circle')
+          .attr('r', function() {
+            const node = d3.select(this.parentNode.parentNode).datum();
+            if (!node || node.type !== 'directory') return null;
+            
+            const fontSizes = [84, 60, 36, 22];
+            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            const height = fontSize * 1.8;
+            return height * 0.12;
+          });
+      }
+      
+      const dirToFiles = new Map();
+      const dirNodeMap = new Map();
+      
+      nodes.forEach(node => {
+        if (node.type === 'directory') {
+          dirNodeMap.set(node.path, node);
+        }
+      });
+      
+      nodes.forEach(node => {
+        if (node.type === 'file') {
+          const fileDir = node.path.substring(0, node.path.lastIndexOf('/'));
+          if (!dirToFiles.has(fileDir)) {
+            dirToFiles.set(fileDir, []);
+          }
+          dirToFiles.get(fileDir).push(node);
+        }
+      });
+      
+      let dirIndex = 0;
+      const dirCount = dirNodeMap.size;
+      dirNodeMap.forEach((dirNode, dirPath) => {
+        if (dirNode.fx === undefined && dirNode.fy === undefined) {
+          const cols = Math.ceil(Math.sqrt(dirCount));
+          const row = Math.floor(dirIndex / cols);
+          const col = dirIndex % cols;
+          const spacing = 600;
+          dirNode.x = width / 2 + (col - cols / 2) * spacing;
+          dirNode.y = height / 2 + (row - Math.ceil(dirCount / cols) / 2) * spacing;
+        } else {
+          dirNode.x = dirNode.fx;
+          dirNode.y = dirNode.fy;
+        }
+        dirIndex++;
+      });
+      
+      const ORBIT_RADIUS = 350;
+      dirToFiles.forEach((files, dirPath) => {
+        const parentDir = dirNodeMap.get(dirPath);
+        const angleStep = (2 * Math.PI) / files.length;
+        
+        files.forEach((file, index) => {
+          file.targetAngle = index * angleStep;
+          
+          if (parentDir) {
+            file.x = parentDir.x + Math.cos(file.targetAngle) * ORBIT_RADIUS;
+            file.y = parentDir.y + Math.sin(file.targetAngle) * ORBIT_RADIUS;
+          } else {
+            file.x = width / 2 + (Math.random() - 0.5) * 200;
+            file.y = height / 2 + (Math.random() - 0.5) * 200;
+          }
+        });
+      });
+      
+      simulation = d3.forceSimulation(nodes)
+        .velocityDecay(0.7)
+        .force('link', d3.forceLink(containmentEdges.filter(e => {
+            const source = typeof e.source === 'object' ? e.source : nodes.find(n => n.id === e.source);
+            const target = typeof e.target === 'object' ? e.target : nodes.find(n => n.id === e.target);
+            return source && target && source.type === 'directory' && target.type === 'directory';
+          }))
+          .id(d => d.id)
+          .distance(d => {
+            const source = d.source;
+            const parentDepth = source.depth || 0;
+            const distances = [250, 200, 150, 120];
+            return distances[Math.min(parentDepth, distances.length - 1)];
+          })
+          .strength(0.5)
+        )
+        .force('charge', alpha => {
+          nodes.forEach((nodeA, i) => {
+            nodes.slice(i + 1).forEach(nodeB => {
+              const dx = nodeB.x - nodeA.x;
+              const dy = nodeB.y - nodeA.y;
+              const distSq = dx * dx + dy * dy;
+              if (distSq === 0) return;
+              
+              const dist = Math.sqrt(distSq);
+              
+              let strength = 0;
+              
+              if (nodeA.type === 'directory' && nodeB.type === 'directory') {
+                const depthA = nodeA.depth || 0;
+                const repulsions = [4000, 2500, 1500, 1000];
+                strength = repulsions[Math.min(depthA, repulsions.length - 1)];
+              }
+              else if (nodeA.type === 'file' && nodeB.type === 'file') {
+                // Very weak repulsion between files in same directory
+                const fileDirA = nodeA.path.substring(0, nodeA.path.lastIndexOf('/'));
+                const fileDirB = nodeB.path.substring(0, nodeB.path.lastIndexOf('/'));
+                if (fileDirA === fileDirB) {
+                  strength = 5; // Minimal repulsion for files in same directory
+                } else {
+                  strength = 20;
+                }
+              }
+              else {
+                return;
+              }
+              
+              const force = strength / distSq;
+              const fx = (dx / dist) * force;
+              const fy = (dy / dist) * force;
+              
+              nodeB.vx += fx;
+              nodeB.vy += fy;
+              nodeA.vx -= fx;
+              nodeA.vy -= fy;
+            });
+          });
+        })
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide()
+          .radius(d => {
+            if (d.type === 'directory') {
+              const fontSize = getDirFontSize(d.depth || 0);
+              const width = getTextWidth(d.label, fontSize);
+              const height = fontSize * 1.8;
+              return Math.sqrt(width * width + height * height) / 2 + 50;
+            }
+            const boxWidth = d.size;
+            const boxHeight = d.size / 2;
+            return Math.sqrt(boxWidth * boxWidth + boxHeight * boxHeight) / 2 + 5;
+          })
+          .strength(0.3)
+          .iterations(1)
+        )
+        .force('orbit', alpha => {
+          const ORBIT_RADIUS = 350;
+          
+          nodes.forEach(node => {
+            if (node.type !== 'file' || node.targetAngle === undefined) return;
+            
+            const fileDir = node.path.substring(0, node.path.lastIndexOf('/'));
+            const parentDir = dirNodeMap.get(fileDir);
+            if (!parentDir) return;
+            
+            const targetX = parentDir.x + Math.cos(node.targetAngle) * ORBIT_RADIUS;
+            const targetY = parentDir.y + Math.sin(node.targetAngle) * ORBIT_RADIUS;
+            
+            // Strong orbit force with slightly reduced strength
+            const strength = 2.0;
+            node.vx += (targetX - node.x) * strength;
+            node.vy += (targetY - node.y) * strength;
+          });
+        })
+        .force('x', d3.forceX(width / 2).strength(d => d.type === 'directory' ? 0.02 : 0))
+        .force('y', d3.forceY(height / 2).strength(d => d.type === 'directory' ? 0.02 : 0));
+      
+      const edgeGroup = g.append('g').attr('class', 'edges');
+      
+      const edgeElements = edgeGroup.selectAll('path')
+        .data(containmentEdges)
+        .enter()
+        .append('path')
+        .attr('class', 'edge-directory')
+        .style('stroke', d => {
+          const source = d.source;
+          const target = d.target;
+          if (source.type === 'directory' && target.type === 'directory') {
+            return '#4a9eff';
+          }
+          return '#888';
+        })
+        .style('stroke-width', d => {
+          const source = d.source;
+          const target = d.target;
+          if (source.type === 'directory' && target.type === 'directory') {
+            return 3;
+          }
+          return 1.5;
+        })
+        .style('opacity', d => {
+          const source = d.source;
+          const target = d.target;
+          if (source.type === 'directory' && target.type === 'directory') {
+            return 0.9;
+          }
+          return 0.5;
+        });
+      
+      const nodeGroup = g.append('g').attr('class', 'nodes');
+      
+      // Separate file and directory nodes for proper layering
+      const fileNodes = nodes.filter(n => n.type === 'file');
+      const dirNodes = nodes.filter(n => n.type === 'directory');
+      
+      // Create file nodes first (will be rendered behind)
+      const fileElements = nodeGroup.selectAll('g.node-file')
+        .data(fileNodes)
+        .enter()
+        .append('g')
+        .attr('class', 'node-file')
+        .on('click', function(event, d) {
+          if (simulation) {
+            simulation.stop();
+          }
+          zoomToNode(d);
+        })
+        .on('dblclick', (event, d) => {
+          event.stopPropagation();
+          vscode.postMessage({ type: 'file:open', filePath: d.path });
+        })
+        .on('mouseenter', function(event, d) {
+          if (isDragging) return;
+          if (currentSymbolListNode) return;
+          
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+          }
+          
+          tooltipTimeout = setTimeout(() => {
+            if (!isDragging && !currentSymbolListNode) {
+              showTooltip(event, d);
+            }
+          }, 200);
+        })
+        .on('mousemove', function(event, d) {
+          if (tooltip && tooltip.classList.contains('visible')) {
+            updateTooltipPosition(event);
+          }
+        })
+        .on('mouseleave', function(event, d) {
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+            tooltipTimeout = null;
+          }
+          hideTooltip();
+        });
+      
+      // Create directory nodes second (will be rendered on top)
+      const dirElements = nodeGroup.selectAll('g.node-directory')
+        .data(dirNodes)
+        .enter()
+        .append('g')
+        .attr('class', 'node-directory')
+        .call(d3.drag()
+          .on('start', dragStarted)
+          .on('drag', dragged)
+          .on('end', dragEnded)
+        )
+        .on('click', function(event, d) {
+          if (simulation) {
+            simulation.stop();
+          }
+          zoomToNode(d);
+        })
+        .on('mouseenter', function(event, d) {
+          if (isDragging) return;
+          if (currentSymbolListNode) return;
+          
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+          }
+          
+          tooltipTimeout = setTimeout(() => {
+            if (!isDragging && !currentSymbolListNode) {
+              showTooltip(event, d);
+            }
+          }, 200);
+        })
+        .on('mousemove', function(event, d) {
+          if (tooltip && tooltip.classList.contains('visible')) {
+            updateTooltipPosition(event);
+          }
+        })
+        .on('mouseleave', function(event, d) {
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+            tooltipTimeout = null;
+          }
+          hideTooltip();
+        });
+      
+      // Combine both for unified access
+      const nodeElements = nodeGroup.selectAll('g.node-file, g.node-directory')
+      
+      console.log('[Files Map Demo] Creating file rectangles for', fileElements.size(), 'files');
+      
+      const fileRects = fileElements
+        .append('rect')
+        .attr('width', d => d.size)
+        .attr('height', d => d.size / 2)
+        .attr('x', d => -d.size / 2)
+        .attr('y', d => -d.size / 4)
+        .attr('rx', 4)
+        .attr('ry', 4)
+        .attr('class', 'file-rect')
+        .style('fill', d => getFileColor(d));
+      
+      console.log('[Files Map Demo] File rectangles created:', fileRects.size());
+
+      const dirRects = dirElements
+        .append('path')
+        .attr('d', d => {
+          const fontSize = getDirFontSize(d.depth || 0);
+          const width = getTextWidth(d.label, fontSize);
+          const height = fontSize * 1.8;
+          
+          const indent = height * 0.4;
+          const halfWidth = width / 2;
+          const halfHeight = height / 2;
+          
+          return `
+            M ${-halfWidth + indent},${-halfHeight}
+            L ${halfWidth - indent},${-halfHeight}
+            L ${halfWidth},0
+            L ${halfWidth - indent},${halfHeight}
+            L ${-halfWidth + indent},${halfHeight}
+            L ${-halfWidth},0
+            Z
+          `;
+        })
+        .attr('class', 'dir-rect')
+        .style('fill', d => getDirBoxColor(d.path))
+        .style('stroke', '#fff')
+        .style('stroke-width', 3);
+      
+      // Add file badges and symbols
+      fileElements.append('rect')
+        .attr('class', 'line-count-badge')
+        .attr('width', d => {
+          const text = String(d.lines);
+          return Math.max(30, text.length * 7 + 10);
+        })
+        .attr('height', 16)
+        .attr('x', d => {
+          const text = String(d.lines);
+          const badgeWidth = Math.max(30, text.length * 7 + 10);
+          return -badgeWidth / 2;
+        })
+        .attr('y', d => -d.size / 4 + 2)
+        .attr('rx', 8)
+        .attr('ry', 8)
+        .style('fill', 'rgba(0, 0, 0, 0.6)')
+        .style('stroke', 'rgba(255, 255, 255, 0.3)')
+        .style('stroke-width', 1);
+      
+      fileElements.append('text')
+        .attr('class', 'node-sublabel')
+        .attr('x', 0)
+        .attr('y', d => -d.size / 4 + 14)
+        .text(d => `${d.lines}`);
+      
+      const functionsTriangle = fileElements.append('g')
+        .attr('class', d => {
+          const baseClass = 'symbol-triangle functions-triangle';
+          return d.functions.length === 0 ? baseClass + ' empty' : baseClass;
+        })
+        .attr('transform', d => {
+          const x = d.size / 2 + 15;
+          const y = 0;
+          return `translate(${x}, ${y})`;
+        })
+        .on('mouseenter', function(event, d) {
+          if (d.functions.length > 0) {
+            if (symbolListHideTimeout) {
+              clearTimeout(symbolListHideTimeout);
+              symbolListHideTimeout = null;
+            }
+            showSymbolList(d, 'functions');
+          }
+        })
+        .on('mouseleave', function(event, d) {
+          hideSymbolListWithDelay();
+        });
+      
+      functionsTriangle.append('rect')
+        .attr('x', -8)
+        .attr('y', -8)
+        .attr('width', 16)
+        .attr('height', 16)
+        .attr('rx', 3)
+        .attr('ry', 3);
+      
+      functionsTriangle.append('text')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', '10px')
+        .style('font-weight', 'bold')
+        .style('fill', '#000')
+        .style('pointer-events', 'none')
+        .text('f');
+      
+      const variablesTriangle = fileElements.append('g')
+        .attr('class', d => {
+          const baseClass = 'symbol-triangle variables-triangle';
+          return d.variables.length === 0 ? baseClass + ' empty' : baseClass;
+        })
+        .attr('transform', d => {
+          const x = -d.size / 2 - 15;
+          const y = 0;
+          return `translate(${x}, ${y})`;
+        })
+        .on('mouseenter', function(event, d) {
+          if (d.variables.length > 0) {
+            if (symbolListHideTimeout) {
+              clearTimeout(symbolListHideTimeout);
+              symbolListHideTimeout = null;
+            }
+            showSymbolList(d, 'variables');
+          }
+        })
+        .on('mouseleave', function(event, d) {
+          hideSymbolListWithDelay();
+        });
+      
+      variablesTriangle.append('rect')
+        .attr('x', -8)
+        .attr('y', -8)
+        .attr('width', 16)
+        .attr('height', 16)
+        .attr('rx', 3)
+        .attr('ry', 3);
+      
+      variablesTriangle.append('text')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', '10px')
+        .style('font-weight', 'bold')
+        .style('fill', '#000')
+        .style('pointer-events', 'none')
+        .text('v');
+      
+      const typesTriangle = fileElements.append('g')
+        .attr('class', d => {
+          const baseClass = 'symbol-triangle types-triangle';
+          return d.types.length === 0 ? baseClass + ' empty' : baseClass;
+        })
+        .attr('transform', d => {
+          const x = 0;
+          const y = -d.size / 4 - 15;
+          return `translate(${x}, ${y})`;
+        })
+        .on('mouseenter', function(event, d) {
+          if (d.types.length > 0) {
+            if (symbolListHideTimeout) {
+              clearTimeout(symbolListHideTimeout);
+              symbolListHideTimeout = null;
+            }
+            showSymbolList(d, 'types');
+          }
+        })
+        .on('mouseleave', function(event, d) {
+          hideSymbolListWithDelay();
+        });
+      
+      typesTriangle.append('rect')
+        .attr('x', -8)
+        .attr('y', -8)
+        .attr('width', 16)
+        .attr('height', 16)
+        .attr('rx', 3)
+        .attr('ry', 3);
+      
+      typesTriangle.append('text')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', '10px')
+        .style('font-weight', 'bold')
+        .style('fill', '#000')
+        .style('pointer-events', 'none')
+        .text('t');
+      
+      const copyButtonGroup = fileElements.append('g')
+        .attr('class', 'copy-button')
+        .attr('transform', d => {
+          const margin = 12;
+          const x = d.size / 2 - margin;
+          const y = d.size / 4 - margin;
+          return `translate(${x}, ${y})`;
+        })
+        .on('click', function(event, d) {
+          event.stopPropagation();
+          vscode.postMessage({ type: 'file:copy', filePath: d.path });
+        })
+        .on('mouseenter', function(event, d) {
+          showTooltip(event, { type: 'copy-button', label: 'Copy file path' });
+        })
+        .on('mousemove', function(event, d) {
+          updateTooltipPosition(event);
+        })
+        .on('mouseleave', function(event, d) {
+          hideTooltip();
+        });
+      
+      copyButtonGroup.append('rect')
+        .attr('class', 'copy-button-icon')
+        .attr('x', -4)
+        .attr('y', -3)
+        .attr('width', 7)
+        .attr('height', 8)
+        .attr('rx', 1)
+        .attr('ry', 1)
+        .style('fill', 'none')
+        .style('stroke', '#fff')
+        .style('stroke-width', 1.2);
+      
+      copyButtonGroup.append('rect')
+        .attr('class', 'copy-button-icon')
+        .attr('x', -1)
+        .attr('y', -6)
+        .attr('width', 7)
+        .attr('height', 8)
+        .attr('rx', 1)
+        .attr('ry', 1)
+        .style('fill', 'none')
+        .style('stroke', '#fff')
+        .style('stroke-width', 1.2);
+      
+      dirElements
+        .append('text')
+        .attr('class', 'node-label directory-name')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', d => {
+          const fontSizes = [84, 60, 36, 22];
+          const fontSize = fontSizes[Math.min(d.depth || 0, fontSizes.length - 1)];
+          return `${fontSize}px`;
+        })
+        .style('fill', '#000')
+        .style('font-weight', 'bold')
+        .text(d => {
+          const parts = d.label.split('/');
+          return parts[parts.length - 1];
+        });
+      
+      const pinIndicatorGroup = dirElements
+        .append('g')
+        .attr('class', 'pin-indicator')
+        .style('pointer-events', 'none');
+      
+      pinIndicatorGroup.append('circle')
+        .attr('r', d => {
+          const fontSize = getDirFontSize(d.depth || 0);
+          const height = fontSize * 1.8;
+          return height * 0.12;
+        })
+        .style('fill', '#007acc')
+        .style('cursor', 'pointer')
+        .style('pointer-events', 'all')
+        .on('click', function(event, d) {
+          event.stopPropagation();
+          vscode.postMessage({ type: 'dir:unpin', dirPath: d.path });
+        })
+        .on('mouseenter', function(event, d) {
+          event.stopPropagation();
+          showTooltip(event, { type: 'pin-indicator', label: 'Click to unpin the box' });
+        })
+        .on('mousemove', function(event, d) {
+          event.stopPropagation();
+          updateTooltipPosition(event);
+        })
+        .on('mouseleave', function(event, d) {
+          event.stopPropagation();
+          hideTooltip();
+        });
+      
+      fileElements
+        .append('text')
+        .attr('class', 'node-label')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('class', 'file-label')
+        .style('fill', d => getTextColor(d))
+        .style('font-weight', 'normal')
+        .text(d => d.label)
+        .each(function(d) {
+          const textElement = this;
+          const padding = 8;
+          const availableWidth = d.size - (padding * 2);
+          
+          let fontSize = 16;
+          const minFontSize = 8;
+          
+          let low = minFontSize;
+          let high = fontSize;
+          
+          while (high - low > 0.5) {
+            fontSize = (low + high) / 2;
+            textElement.style.fontSize = fontSize + 'px';
+            const textWidth = textElement.getComputedTextLength();
+            
+            if (textWidth > availableWidth) {
+              high = fontSize;
+            } else {
+              low = fontSize;
+            }
+          }
+          
+          fontSize = low;
+          textElement.style.fontSize = fontSize + 'px';
+        });
+      
+      simulation.on('tick', () => {
+        edgeElements.attr('d', d => {
+          const dx = d.target.x - d.source.x;
+          const dy = d.target.y - d.source.y;
+          const dr = Math.sqrt(dx * dx + dy * dy) * 2;
+          return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+        });
+        
+        nodeElements.attr('transform', d => `translate(${d.x},${d.y})`);
+        
+        updateCenteredElements();
+      });
+      
+      if (updatePinIndicators) {
+        const currentTransform = d3.zoomTransform(svg.node());
+        updatePinIndicators(currentTransform.k);
+      }
+    }
+    
+    function saveLayout() {
+      if (!graphData) return;
+      
+      const layout = {};
+      
+      graphData.nodes.forEach(node => {
+        if (node.type === 'directory' && node.fx !== undefined && node.fy !== undefined) {
+          layout[node.path] = { x: node.fx, y: node.fy };
+        }
+      });
+      
+      vscode.postMessage({
+        type: 'layout:save',
+        layout
+      });
+    }
+    
+    function dragStarted(event, d) {
+      d.dragStartX = event.x;
+      d.dragStartY = event.y;
+      d.wasDragged = false;
+      
+      isDragging = true;
+      hideTooltip();
+      
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+        tooltipTimeout = null;
+      }
+      
+      d.fx = d.x;
+      d.fy = d.y;
+      
+      if (simulation) {
+        simulation.alphaTarget(0.1).restart();
+      }
+    }
+    
+    function dragged(event, d) {
+      const dx = event.x - d.dragStartX;
+      const dy = event.y - d.dragStartY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      const DEADZONE = 10;
+      
+      if (distance > DEADZONE) {
+        d.wasDragged = true;
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+    }
+    
+    function dragEnded(event, d) {
+      isDragging = false;
+      
+      if (simulation) {
+        simulation.alphaTarget(0);
+      }
+      
+      if (d.type === 'directory' && d.wasDragged) {
+        saveLayout();
+      }
+      
+      if (d.wasDragged) {
+        event.sourceEvent.stopPropagation();
+      }
+    }
+    
+    window.addEventListener('message', event => {
+      const message = event.data;
+      
+      switch (message.type) {
+        case 'graph:update':
+          renderGraph(message.data);
+          break;
+        case 'layout:loaded':
+          savedLayout = message.layout || {};
+          console.log('[Files Map Demo] Layout loaded with', Object.keys(savedLayout).length, 'directory positions');
+          if (graphData) {
+            graphData.nodes.forEach(node => {
+              if (node.type === 'directory' && savedLayout[node.path]) {
+                node.fx = savedLayout[node.path].x;
+                node.fy = savedLayout[node.path].y;
+                node.x = savedLayout[node.path].x;
+                node.y = savedLayout[node.path].y;
+              }
+            });
+            if (simulation) {
+              simulation.alpha(0.3).restart();
+            }
+          }
+          break;
+        case 'dir:unpinned':
+          if (savedLayout[message.dirPath]) {
+            delete savedLayout[message.dirPath];
+          }
+          
+          if (graphData) {
+            const node = graphData.nodes.find(n => n.type === 'directory' && n.path === message.dirPath);
+            if (node) {
+              node.fx = null;
+              node.fy = null;
+              
+              updatePinIndicatorVisibility();
+              
+              if (simulation) {
+                simulation.alpha(0.5).restart();
+              }
+            }
+          }
+          break;
+      }
+    });
+    
+    window.addEventListener('resize', () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight - 70;
+      svg.attr('width', width).attr('height', height);
+      
+      if (simulation) {
+        simulation.force('center', d3.forceCenter(width / 2, height / 2));
+        simulation.alpha(0.3).restart();
+      }
+    });
+    
+    init();
+  </script>
+</body>
+</html>
+

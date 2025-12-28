@@ -2088,92 +2088,116 @@ export class FilesMapPanel {
         if (dirNode.fx === undefined && dirNode.fy === undefined) {
           dirNode.x = width / 2;
           dirNode.y = height / 2;
+          dirNode.fx = dirNode.x;
+          dirNode.fy = dirNode.y;
         } else {
+          // Has saved position - use it
           dirNode.x = dirNode.fx;
           dirNode.y = dirNode.fy;
         }
-        dirNode.fx = dirNode.x;
-        dirNode.fy = dirNode.y;
       } else {
         // Multiple roots - position them far apart horizontally
-        // Calculate spacing based on each root's depth
-        const rootSpacing = [];
-        rootDirs.forEach(root => {
-          const depthFactor = (root.directoryDepth || 0) + 1;
-          const totalRadius = FILE_SPACE + (BASE_DIR_RADIUS * depthFactor);
-          rootSpacing.push(totalRadius * 2); // Double for full diameter
-        });
+        // Separate roots with saved positions from those without
+        const rootsWithoutSavedPos = rootDirs.filter(r => r.fx === undefined && r.fy === undefined);
+        const rootsWithSavedPos = rootDirs.filter(r => r.fx !== undefined && r.fy !== undefined);
         
-        // Calculate total width needed
-        const totalWidth = rootSpacing.reduce((sum, space) => sum + space, 0);
-        const padding = 2000; // Extra padding between graphs
-        const totalWithPadding = totalWidth + (padding * (rootDirs.length - 1));
-        
-        // Position roots horizontally with appropriate spacing
-        let currentX = width / 2 - totalWithPadding / 2;
-        
-        rootDirs.forEach((dirNode, index) => {
-          if (dirNode.fx === undefined && dirNode.fy === undefined) {
+        // Position roots that don't have saved positions
+        if (rootsWithoutSavedPos.length > 0) {
+          // Calculate spacing based on each root's depth
+          const rootSpacing = [];
+          rootsWithoutSavedPos.forEach(root => {
+            const depthFactor = (root.directoryDepth || 0) + 1;
+            const totalRadius = FILE_SPACE + (BASE_DIR_RADIUS * depthFactor);
+            rootSpacing.push(totalRadius * 2); // Double for full diameter
+          });
+          
+          // Calculate total width needed
+          const totalWidth = rootSpacing.reduce((sum, space) => sum + space, 0);
+          const padding = 2000; // Extra padding between graphs
+          const totalWithPadding = totalWidth + (padding * (rootsWithoutSavedPos.length - 1));
+          
+          // Position roots horizontally with appropriate spacing
+          let currentX = width / 2 - totalWithPadding / 2;
+          
+          rootsWithoutSavedPos.forEach((dirNode, index) => {
             // Move to center of this root's allocated space
             currentX += rootSpacing[index] / 2;
             dirNode.x = currentX;
             dirNode.y = height / 2;
+            dirNode.fx = dirNode.x;
+            dirNode.fy = dirNode.y;
             // Move to start of next root's space
             currentX += rootSpacing[index] / 2 + padding;
-          } else {
-            dirNode.x = dirNode.fx;
-            dirNode.y = dirNode.fy;
-          }
-          dirNode.fx = dirNode.x;
-          dirNode.fy = dirNode.y;
+          });
+        }
+        
+        // For roots with saved positions, just use their saved positions
+        rootsWithSavedPos.forEach(dirNode => {
+          dirNode.x = dirNode.fx;
+          dirNode.y = dirNode.fy;
         });
       }
       
       // Position child directories in circles around their parents with depth-based radius
-      dirHierarchy.forEach((childDirs, parentPath) => {
-        const parentDir = dirNodeMap.get(parentPath);
-        if (!parentDir) return;
+      // Process directories level by level to ensure parents are positioned before children
+      function positionChildrenRecursively(parentDir) {
+        const childDirs = dirHierarchy.get(parentDir.path);
+        if (!childDirs || childDirs.length === 0) return;
         
         childDirs.forEach((childDir, index) => {
-          if (childDir.fx === undefined && childDir.fy === undefined) {
-            // Calculate distance factor based on directory depth
-            // depth 0 (no child dirs) = factor 1
-            // depth 1 (1 level of dirs) = factor 2
-            // depth 2 (2 levels of dirs) = factor 3
-            // depth 3 (3 levels of dirs) = factor 4
-            const distanceFactor = (childDir.directoryDepth || 0) + 1;
-            
-            // Calculate radius: FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor)
-            const baseRadius = FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor);
-            
-            // Calculate which layer this directory belongs to
-            const layer = Math.floor(index / DIRS_PER_LAYER);
-            const indexInLayer = index % DIRS_PER_LAYER;
-            const dirsInThisLayer = Math.min(DIRS_PER_LAYER, childDirs.length - layer * DIRS_PER_LAYER);
-            
-            // Add layer spacing if multiple layers
-            const layerSpacing = layer * 500;
-            const radius = baseRadius + layerSpacing;
-            
-            // Calculate angle for this directory in its layer
-            const angleStep = (2 * Math.PI) / dirsInThisLayer;
-            const angle = indexInLayer * angleStep;
-            
-            // Set position around parent
-            childDir.x = parentDir.x + Math.cos(angle) * radius;
-            childDir.y = parentDir.y + Math.sin(angle) * radius;
-            
-            // Store the calculated values for debugging
-            childDir.calculatedRadius = radius;
-            childDir.distanceFactor = distanceFactor;
-          } else {
+          // Skip positioning if this child already has a saved position
+          if (childDir.fx !== undefined && childDir.fy !== undefined) {
+            // Use the saved position
             childDir.x = childDir.fx;
             childDir.y = childDir.fy;
+            
+            // Still recursively position this directory's children
+            positionChildrenRecursively(childDir);
+            return;
           }
-          // Fix child directories in place
+          
+          // Calculate distance factor based on directory depth
+          // depth 0 (no child dirs) = factor 1
+          // depth 1 (1 level of dirs) = factor 2
+          // depth 2 (2 levels of dirs) = factor 3
+          // depth 3 (3 levels of dirs) = factor 4
+          const distanceFactor = (childDir.directoryDepth || 0) + 1;
+          
+          // Calculate radius: FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor)
+          const baseRadius = FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor);
+          
+          // Calculate which layer this directory belongs to
+          const layer = Math.floor(index / DIRS_PER_LAYER);
+          const indexInLayer = index % DIRS_PER_LAYER;
+          const dirsInThisLayer = Math.min(DIRS_PER_LAYER, childDirs.length - layer * DIRS_PER_LAYER);
+          
+          // Add layer spacing if multiple layers
+          const layerSpacing = layer * 500;
+          const radius = baseRadius + layerSpacing;
+          
+          // Calculate angle for this directory in its layer
+          const angleStep = (2 * Math.PI) / dirsInThisLayer;
+          const angle = indexInLayer * angleStep;
+          
+          // Set position around parent's CURRENT position
+          // This ensures children follow their parent even if parent has a saved position
+          childDir.x = parentDir.x + Math.cos(angle) * radius;
+          childDir.y = parentDir.y + Math.sin(angle) * radius;
           childDir.fx = childDir.x;
           childDir.fy = childDir.y;
+          
+          // Store the calculated values for debugging
+          childDir.calculatedRadius = radius;
+          childDir.distanceFactor = distanceFactor;
+          
+          // Recursively position this directory's children
+          positionChildrenRecursively(childDir);
         });
+      }
+      
+      // Start positioning from root directories
+      rootDirs.forEach(rootDir => {
+        positionChildrenRecursively(rootDir);
       });
       
       // Assign initial angles and POSITIONS to files for multi-layer radial distribution
@@ -2238,6 +2262,33 @@ export class FilesMapPanel {
             file.y = height / 2 + (Math.random() - 0.5) * 200;
           }
         });
+      });
+      
+      // Collect all descendants for each directory (for group dragging)
+      function collectDescendants(dirNode) {
+        const descendants = [];
+        
+        // Get child directories
+        const childDirs = dirHierarchy.get(dirNode.path) || [];
+        childDirs.forEach(childDir => {
+          descendants.push(childDir);
+          // Recursively collect descendants of child directories
+          const childDescendants = collectDescendants(childDir);
+          descendants.push(...childDescendants);
+        });
+        
+        // Get files in this directory
+        const files = dirToFiles.get(dirNode.path) || [];
+        descendants.push(...files);
+        
+        return descendants;
+      }
+      
+      // Attach descendants to each directory node
+      nodes.forEach(node => {
+        if (node.type === 'directory') {
+          node.descendants = collectDescendants(node);
+        }
       });
       
       simulation = d3.forceSimulation(nodes)
@@ -2797,6 +2848,14 @@ export class FilesMapPanel {
       d.fx = d.x;
       d.fy = d.y;
       
+      // If dragging a directory, collect all descendants for group movement
+      if (d.type === 'directory' && d.descendants) {
+        d.descendants.forEach(descendant => {
+          descendant.dragOffsetX = descendant.x - d.x;
+          descendant.dragOffsetY = descendant.y - d.y;
+        });
+      }
+      
       // Restart simulation with very low alpha to prevent vibration
       if (simulation) {
         simulation.alphaTarget(0.1).restart();
@@ -2818,6 +2877,16 @@ export class FilesMapPanel {
         // Update position during drag (only after deadzone exceeded)
         d.fx = event.x;
         d.fy = event.y;
+        
+        // If dragging a directory, move all descendants with it
+        if (d.type === 'directory' && d.descendants) {
+          d.descendants.forEach(descendant => {
+            descendant.fx = event.x + descendant.dragOffsetX;
+            descendant.fy = event.y + descendant.dragOffsetY;
+            descendant.x = descendant.fx;
+            descendant.y = descendant.fy;
+          });
+        }
       }
     }
     

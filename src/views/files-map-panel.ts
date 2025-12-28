@@ -765,27 +765,6 @@ export class FilesMapPanel {
       cursor: pointer;
     }
     
-    .pin-indicator {
-      opacity: 0;
-      transition: opacity 0.3s;
-      cursor: pointer;
-      pointer-events: none;
-    }
-    
-    .pin-indicator.visible {
-      opacity: 1;
-      pointer-events: all;
-    }
-    
-    .pin-indicator circle {
-      pointer-events: all;
-      cursor: pointer;
-      transition: fill 0.2s;
-    }
-    
-    .pin-indicator:hover circle {
-      fill: #ff6b6b;
-    }
     
     .arrow {
       fill: currentColor;
@@ -969,7 +948,6 @@ export class FilesMapPanel {
     let currentSmellDetailsNode = null; // Track which node has smell details shown
     let currentCenteredNode = null; // Track which node is currently centered (for copy button)
     let updateDirectorySizes = null; // Function to update directory sizes on zoom (assigned in renderGraph)
-    let updatePinIndicators = null; // Function to update pin indicators on zoom (assigned in renderGraph)
     
     // 30 predefined distinct colors for directories
     const directoryColors = [
@@ -1122,11 +1100,7 @@ export class FilesMapPanel {
           if (updateDirectorySizes) {
             updateDirectorySizes(event.transform.k);
           }
-          // Update pin indicator positions when zoom changes
-          if (updatePinIndicators) {
-            updatePinIndicators(event.transform.k);
-          }
-          // Update copy button, pin indicators, and smell details based on zoom level
+          // Update copy button and smell details based on zoom level
           updateCenteredElements();
         });
       
@@ -2023,64 +1997,6 @@ export class FilesMapPanel {
           });
       }
       
-      // Update pin indicator positions based on zoom level (not visibility)
-      updatePinIndicators = function(zoomScale) {
-        // Only update if we have a valid scale
-        if (zoomScale === undefined) return;
-        
-        // Calculate directory size multiplier (same as updateDirectorySizes)
-        const MIN_DIR_SCALE = 0.4;
-        const MAX_DIR_SCALE = 2.0;
-        
-        let dirSizeMultiplier = 1;
-        
-        if (zoomScale > 1) {
-          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(zoomScale));
-        } else if (zoomScale < 1) {
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / zoomScale));
-        }
-        
-        // Update pin indicator positions and sizes
-        d3.selectAll('.pin-indicator')
-          .attr('transform', function() {
-            const node = d3.select(this.parentNode).datum();
-            if (!node || node.type !== 'directory') return null;
-            
-            // Calculate box dimensions
-            const fontSizes = [84, 60, 36, 22];
-            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
-            
-            const parts = node.label.split('/');
-            const dirName = parts[parts.length - 1];
-            const dirNameWidth = dirName.length * fontSize * 0.5;
-            const calculatedWidth = dirNameWidth + 60;
-            
-            const minWidths = [400, 250, 180, 140];
-            const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
-            
-            const width = Math.max(calculatedWidth, minWidth);
-            const height = fontSize * 1.8;
-            
-            // Position at top right corner, above the box
-            const x = width / 2 - 15; // 15px from the right edge
-            const y = -height / 2 - 15; // 15px above the top edge
-            
-            return \`translate(\${x}, \${y})\`;
-          });
-        
-        // Update pin indicator circle radius to maintain relative size
-        d3.selectAll('.pin-indicator circle')
-          .attr('r', function() {
-            const node = d3.select(this.parentNode.parentNode).datum();
-            if (!node || node.type !== 'directory') return null;
-            
-            // Calculate radius as a percentage of the directory box height
-            const fontSizes = [84, 60, 36, 22];
-            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
-            const height = fontSize * 1.8;
-            return height * 0.12; // 12% of box height
-          });
-      }
       
       // Create a map of directory -> files for radial positioning
       const dirToFiles = new Map();
@@ -2104,41 +2020,220 @@ export class FilesMapPanel {
         }
       });
       
-      // Initialize directory positions first (spread them out)
-      let dirIndex = 0;
-      const dirCount = dirNodeMap.size;
-      dirNodeMap.forEach((dirNode, dirPath) => {
+      // Build directory hierarchy
+      const dirHierarchy = new Map(); // parentPath -> [childDirs]
+      const rootDirs = [];
+      const dirToParentEdges = []; // Store directory-to-parent edges
+      
+      nodes.forEach(node => {
+        if (node.type === 'directory') {
+          const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
+          if (parentPath && dirNodeMap.has(parentPath)) {
+            if (!dirHierarchy.has(parentPath)) {
+              dirHierarchy.set(parentPath, []);
+            }
+            dirHierarchy.get(parentPath).push(node);
+            
+            // Create edge from parent to child directory
+            const parentNode = dirNodeMap.get(parentPath);
+            dirToParentEdges.push({
+              source: parentNode,
+              target: node,
+              type: 'contains'
+            });
+          } else {
+            rootDirs.push(node);
+          }
+        }
+      });
+      
+      // Position directories in circles around their parents with depth-based spacing
+      const BASE_DIR_RADIUS = 1800; // Base radius for all directories
+      const FILE_SPACE = 1000; // Space needed for files (max 3 layers = 1000px)
+      const DIRS_PER_LAYER = 8;
+      
+      // Calculate directory depth (how many levels of directories below this one)
+      function calculateDirectoryDepth(dirNode) {
+        const children = dirHierarchy.get(dirNode.path) || [];
+        
+        if (children.length === 0) {
+          // Leaf directory - no child directories
+          dirNode.directoryDepth = 0;
+          return 0;
+        }
+        
+        // Calculate depth for all children first (recursive)
+        let maxChildDepth = 0;
+        children.forEach(child => {
+          const childDepth = calculateDirectoryDepth(child);
+          maxChildDepth = Math.max(maxChildDepth, childDepth);
+        });
+        
+        // This directory's depth is 1 + max child depth
+        dirNode.directoryDepth = maxChildDepth + 1;
+        return dirNode.directoryDepth;
+      }
+      
+      // Calculate depth for all directories
+      nodes.forEach(node => {
+        if (node.type === 'directory') {
+          calculateDirectoryDepth(node);
+        }
+      });
+      
+      // Position root directories with significant separation for distinct graphs
+      if (rootDirs.length === 1) {
+        // Single root - center it
+        const dirNode = rootDirs[0];
         if (dirNode.fx === undefined && dirNode.fy === undefined) {
-          // Spread directories in a grid pattern
-          const cols = Math.ceil(Math.sqrt(dirCount));
-          const row = Math.floor(dirIndex / cols);
-          const col = dirIndex % cols;
-          const spacing = 600;
-          dirNode.x = width / 2 + (col - cols / 2) * spacing;
-          dirNode.y = height / 2 + (row - Math.ceil(dirCount / cols) / 2) * spacing;
+          dirNode.x = width / 2;
+          dirNode.y = height / 2;
         } else {
-          // Use fixed position
           dirNode.x = dirNode.fx;
           dirNode.y = dirNode.fy;
         }
-        dirIndex++;
+        dirNode.fx = dirNode.x;
+        dirNode.fy = dirNode.y;
+      } else {
+        // Multiple roots - position them far apart horizontally
+        // Calculate spacing based on each root's depth
+        const rootSpacing = [];
+        rootDirs.forEach(root => {
+          const depthFactor = (root.directoryDepth || 0) + 1;
+          const totalRadius = FILE_SPACE + (BASE_DIR_RADIUS * depthFactor);
+          rootSpacing.push(totalRadius * 2); // Double for full diameter
+        });
+        
+        // Calculate total width needed
+        const totalWidth = rootSpacing.reduce((sum, space) => sum + space, 0);
+        const padding = 2000; // Extra padding between graphs
+        const totalWithPadding = totalWidth + (padding * (rootDirs.length - 1));
+        
+        // Position roots horizontally with appropriate spacing
+        let currentX = width / 2 - totalWithPadding / 2;
+        
+        rootDirs.forEach((dirNode, index) => {
+          if (dirNode.fx === undefined && dirNode.fy === undefined) {
+            // Move to center of this root's allocated space
+            currentX += rootSpacing[index] / 2;
+            dirNode.x = currentX;
+            dirNode.y = height / 2;
+            // Move to start of next root's space
+            currentX += rootSpacing[index] / 2 + padding;
+          } else {
+            dirNode.x = dirNode.fx;
+            dirNode.y = dirNode.fy;
+          }
+          dirNode.fx = dirNode.x;
+          dirNode.fy = dirNode.y;
+        });
+      }
+      
+      // Position child directories in circles around their parents with depth-based radius
+      dirHierarchy.forEach((childDirs, parentPath) => {
+        const parentDir = dirNodeMap.get(parentPath);
+        if (!parentDir) return;
+        
+        childDirs.forEach((childDir, index) => {
+          if (childDir.fx === undefined && childDir.fy === undefined) {
+            // Calculate distance factor based on directory depth
+            // depth 0 (no child dirs) = factor 1
+            // depth 1 (1 level of dirs) = factor 2
+            // depth 2 (2 levels of dirs) = factor 3
+            // depth 3 (3 levels of dirs) = factor 4
+            const distanceFactor = (childDir.directoryDepth || 0) + 1;
+            
+            // Calculate radius: FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor)
+            const baseRadius = FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor);
+            
+            // Calculate which layer this directory belongs to
+            const layer = Math.floor(index / DIRS_PER_LAYER);
+            const indexInLayer = index % DIRS_PER_LAYER;
+            const dirsInThisLayer = Math.min(DIRS_PER_LAYER, childDirs.length - layer * DIRS_PER_LAYER);
+            
+            // Add layer spacing if multiple layers
+            const layerSpacing = layer * 500;
+            const radius = baseRadius + layerSpacing;
+            
+            // Calculate angle for this directory in its layer
+            const angleStep = (2 * Math.PI) / dirsInThisLayer;
+            const angle = indexInLayer * angleStep;
+            
+            // Set position around parent
+            childDir.x = parentDir.x + Math.cos(angle) * radius;
+            childDir.y = parentDir.y + Math.sin(angle) * radius;
+            
+            // Store the calculated values for debugging
+            childDir.calculatedRadius = radius;
+            childDir.distanceFactor = distanceFactor;
+          } else {
+            childDir.x = childDir.fx;
+            childDir.y = childDir.fy;
+          }
+          // Fix child directories in place
+          childDir.fx = childDir.x;
+          childDir.fy = childDir.y;
+        });
       });
       
-      // Assign initial angles and POSITIONS to files for radial distribution
-      const ORBIT_RADIUS = 250;
+      // Assign initial angles and POSITIONS to files for multi-layer radial distribution
+      // Layer configuration: [maxFiles, radius]
+      const LAYER_CONFIG = [
+        { maxFiles: 10, radius: 450 },   // Layer 1: closer, max 10 files
+        { maxFiles: 16, radius: 700 },   // Layer 2: max 16 files
+        { maxFiles: 28, radius: 1000 }   // Layer 3: max 28 files
+      ];
+      
       dirToFiles.forEach((files, dirPath) => {
         const parentDir = dirNodeMap.get(dirPath);
-        const angleStep = (2 * Math.PI) / files.length;
         
         files.forEach((file, index) => {
-          file.targetAngle = index * angleStep;
+          file.parentDir = parentDir; // Store direct reference to parent
           
-          // Set initial position around parent directory
           if (parentDir) {
-            file.x = parentDir.x + Math.cos(file.targetAngle) * ORBIT_RADIUS;
-            file.y = parentDir.y + Math.sin(file.targetAngle) * ORBIT_RADIUS;
+            // Determine which layer this file belongs to
+            let layer = 0;
+            let filesBeforeThisLayer = 0;
+            let cumulativeFiles = 0;
+            
+            for (let i = 0; i < LAYER_CONFIG.length; i++) {
+              cumulativeFiles += LAYER_CONFIG[i].maxFiles;
+              if (index < cumulativeFiles) {
+                layer = i;
+                filesBeforeThisLayer = cumulativeFiles - LAYER_CONFIG[i].maxFiles;
+                break;
+              }
+            }
+            
+            // If we exceed all configured layers, use the last layer config
+            if (index >= cumulativeFiles) {
+              layer = LAYER_CONFIG.length - 1;
+              filesBeforeThisLayer = cumulativeFiles - LAYER_CONFIG[layer].maxFiles;
+            }
+            
+            // Calculate position within the layer
+            const indexInLayer = index - filesBeforeThisLayer;
+            const filesInThisLayer = Math.min(
+              LAYER_CONFIG[layer].maxFiles,
+              files.length - filesBeforeThisLayer
+            );
+            
+            // Get radius for this layer
+            const radius = LAYER_CONFIG[layer].radius;
+            
+            // Calculate angle for this file in its layer
+            const angleStep = (2 * Math.PI) / filesInThisLayer;
+            const angle = indexInLayer * angleStep;
+            
+            // Store layer and angle info
+            file.targetAngle = angle;
+            file.targetRadius = radius;
+            file.layer = layer;
+            
+            // Set initial position
+            file.x = parentDir.x + Math.cos(angle) * radius;
+            file.y = parentDir.y + Math.sin(angle) * radius;
           } else {
-            // Fallback: random position
             file.x = width / 2 + (Math.random() - 0.5) * 200;
             file.y = height / 2 + (Math.random() - 0.5) * 200;
           }
@@ -2146,113 +2241,49 @@ export class FilesMapPanel {
       });
       
       simulation = d3.forceSimulation(nodes)
-        .velocityDecay(0.6) // Higher decay to reduce vibration (default 0.4)
-        .force('link', d3.forceLink(containmentEdges.filter(e => {
-            // Only use links between directories, not dir-to-file
-            const source = typeof e.source === 'object' ? e.source : nodes.find(n => n.id === e.source);
-            const target = typeof e.target === 'object' ? e.target : nodes.find(n => n.id === e.target);
-            return source && target && source.type === 'directory' && target.type === 'directory';
-          }))
-          .id(d => d.id)
-          .distance(d => {
-            // Directory-to-directory connections
-            const source = d.source;
-            const parentDepth = source.depth || 0;
-            const distances = [250, 200, 150, 120];
-            return distances[Math.min(parentDepth, distances.length - 1)];
-          })
-          .strength(0.5)
-        )
-        .force('charge', alpha => {
-          // Custom charge force that doesn't apply between files and directories
-          nodes.forEach((nodeA, i) => {
-            nodes.slice(i + 1).forEach(nodeB => {
-              const dx = nodeB.x - nodeA.x;
-              const dy = nodeB.y - nodeA.y;
-              const distSq = dx * dx + dy * dy;
-              if (distSq === 0) return;
-              
-              const dist = Math.sqrt(distSq);
-              
-              // Determine repulsion strength based on node types
-              let strength = 0;
-              
-              // Directory to directory: strong repulsion
-              if (nodeA.type === 'directory' && nodeB.type === 'directory') {
-                const depthA = nodeA.depth || 0;
-                const repulsions = [4000, 2500, 1500, 1000];
-                strength = repulsions[Math.min(depthA, repulsions.length - 1)];
-              }
-              // File to file: very weak repulsion to prevent vibration
-              else if (nodeA.type === 'file' && nodeB.type === 'file') {
-                strength = 20;
-              }
-              // File to directory: NO repulsion (this is the key fix)
-              else {
-                return; // Skip file-directory interactions
-              }
-              
-              // Apply repulsion force
-              const force = strength / distSq;
-              const fx = (dx / dist) * force;
-              const fy = (dy / dist) * force;
-              
-              nodeB.vx += fx;
-              nodeB.vy += fy;
-              nodeA.vx -= fx;
-              nodeA.vy -= fy;
-            });
-          });
-        })
-        .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide()
-          .radius(d => {
-            if (d.type === 'directory') {
-              // Directory collision based on actual width (accounting for text)
-              const fontSize = getDirFontSize(d.depth || 0);
-              const width = getTextWidth(d.label, fontSize);
-              const height = fontSize * 1.8; // Height proportional to font size
-              return Math.sqrt(width * width + height * height) / 2 + 50;
-            }
-            // File collision based on its size with smaller padding
-            const boxWidth = d.size;
-            const boxHeight = d.size / 2;
-            return Math.sqrt(boxWidth * boxWidth + boxHeight * boxHeight) / 2 + 10;
-          })
-          .strength(0.7) // Reduced strength to prevent vibration
-          .iterations(1) // Single iteration per tick
-        )
+        .velocityDecay(0.8) // Higher decay to reduce vibration (default 0.4)
         .force('orbit', alpha => {
-          // Custom force to keep files orbiting around their parent directory
-          const ORBIT_RADIUS = 250;
-          
+          // Custom force to keep files orbiting around their parent directory in layers
           nodes.forEach(node => {
-            if (node.type !== 'file' || node.targetAngle === undefined) return;
+            if (node.type !== 'file' || node.targetAngle === undefined || !node.parentDir || node.targetRadius === undefined) return;
             
-            // Find parent directory using the map
-            const fileDir = node.path.substring(0, node.path.lastIndexOf('/'));
-            const parentDir = dirNodeMap.get(fileDir);
-            if (!parentDir) return;
+            // Use stored parent reference and radius for this file's layer
+            const parentDir = node.parentDir;
+            const radius = node.targetRadius;
             
-            // Calculate target position based on angle around parent
-            const targetX = parentDir.x + Math.cos(node.targetAngle) * ORBIT_RADIUS;
-            const targetY = parentDir.y + Math.sin(node.targetAngle) * ORBIT_RADIUS;
+            // Calculate target position using the current parent position and layer radius
+            const targetX = parentDir.x + Math.cos(node.targetAngle) * radius;
+            const targetY = parentDir.y + Math.sin(node.targetAngle) * radius;
             
-            // Apply strong force toward target orbital position
-            const strength = 1.0 * alpha;
-            node.vx += (targetX - node.x) * strength;
-            node.vy += (targetY - node.y) * strength;
+            // Calculate distance from target
+            const dx = targetX - node.x;
+            const dy = targetY - node.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Apply very strong force to lock files in their circular positions
+            if (distance > 0) {
+              const baseStrength = 2.0;
+              // Increase strength based on distance (spring gets stronger when stretched)
+              const distanceFactor = Math.min(distance / 100, 3);
+              const strength = baseStrength * (1 + distanceFactor);
+              node.vx += dx * strength;
+              node.vy += dy * strength;
+            }
           });
-        })
-        // Only center directories, not files
-        .force('x', d3.forceX(width / 2).strength(d => d.type === 'directory' ? 0.02 : 0))
-        .force('y', d3.forceY(height / 2).strength(d => d.type === 'directory' ? 0.02 : 0));
+        });
       
-      // Create edges (only directory-to-file connections)
+      // Create edges (directory hierarchy + directory-to-file connections)
       const edgeGroup = g.append('g').attr('class', 'edges');
       
+      // Combine directory hierarchy edges with file containment edges
+      const allEdges = [...dirToParentEdges, ...containmentEdges.filter(e => {
+        const source = typeof e.source === 'object' ? e.source : nodes.find(n => n.id === e.source);
+        const target = typeof e.target === 'object' ? e.target : nodes.find(n => n.id === e.target);
+        return source && target && source.type === 'directory' && target.type === 'file';
+      })];
+      
       const edgeElements = edgeGroup.selectAll('path')
-        .data(containmentEdges)
+        .data(allEdges)
         .enter()
         .append('path')
         .attr('class', 'edge-directory')
@@ -2280,78 +2311,110 @@ export class FilesMapPanel {
             return 0.9; // More visible for directory hierarchy
           }
           return 0.5; // Less visible for directory-to-file
-        });
+        })
+        .style('fill', 'none');
       
       // Create nodes
       const nodeGroup = g.append('g').attr('class', 'nodes');
       
-      const nodeElements = nodeGroup.selectAll('g')
-        .data(nodes)
+      // Separate file and directory nodes for proper layering
+      const fileNodes = nodes.filter(n => n.type === 'file');
+      const dirNodes = nodes.filter(n => n.type === 'directory');
+      
+      // Create file nodes first (will be rendered behind)
+      const fileElements = nodeGroup.selectAll('g.node-file')
+        .data(fileNodes)
         .enter()
         .append('g')
-        .attr('class', d => d.type === 'directory' ? 'node-directory' : 'node-file')
-        .call(d3.drag()
-          .filter(function(event, d) {
-            // Only allow drag for directory nodes, not files
-            return d.type === 'directory';
-          })
-          .on('start', dragStarted)
-          .on('drag', dragged)
-          .on('end', dragEnded)
-        )
+        .attr('class', 'node-file')
         .on('click', function(event, d) {
-          // Stop simulation immediately to prevent shuffling
           if (simulation) {
             simulation.stop();
           }
-          // Single click: zoom to node
           zoomToNode(d);
         })
         .on('dblclick', (event, d) => {
-          // Double click: open file
-          if (d.type === 'file') {
-            event.stopPropagation();
-            vscode.postMessage({ type: 'file:open', filePath: d.path });
-          }
+          event.stopPropagation();
+          vscode.postMessage({ type: 'file:open', filePath: d.path });
         })
         .on('mouseenter', function(event, d) {
-          // Don't show tooltip while dragging or if symbol list is visible
           if (isDragging) return;
-          if (currentSymbolListNode) return; // Don't show file tooltip when symbol list is open
+          if (currentSymbolListNode) return;
           
-          // Clear any existing timeout
           if (tooltipTimeout) {
             clearTimeout(tooltipTimeout);
           }
           
-          // Set timeout to show tooltip after 200ms
           tooltipTimeout = setTimeout(() => {
-            // Double-check we're not dragging and no symbol list is open before showing
             if (!isDragging && !currentSymbolListNode) {
               showTooltip(event, d);
             }
           }, 200);
         })
         .on('mousemove', function(event, d) {
-          // Update tooltip position if visible
           if (tooltip && tooltip.classList.contains('visible')) {
             updateTooltipPosition(event);
           }
         })
         .on('mouseleave', function(event, d) {
-          // Clear timeout and hide tooltip
           if (tooltipTimeout) {
             clearTimeout(tooltipTimeout);
             tooltipTimeout = null;
           }
           hideTooltip();
+        });
+      
+      // Create directory nodes second (will be rendered on top)
+      const dirElements = nodeGroup.selectAll('g.node-directory')
+        .data(dirNodes)
+        .enter()
+        .append('g')
+        .attr('class', 'node-directory')
+        .call(d3.drag()
+          .on('start', dragStarted)
+          .on('drag', dragged)
+          .on('end', dragEnded)
+        )
+        .on('click', function(event, d) {
+          if (simulation) {
+            simulation.stop();
+          }
+          zoomToNode(d);
         })
+        .on('mouseenter', function(event, d) {
+          if (isDragging) return;
+          if (currentSymbolListNode) return;
+          
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+          }
+          
+          tooltipTimeout = setTimeout(() => {
+            if (!isDragging && !currentSymbolListNode) {
+              showTooltip(event, d);
+            }
+          }, 200);
+        })
+        .on('mousemove', function(event, d) {
+          if (tooltip && tooltip.classList.contains('visible')) {
+            updateTooltipPosition(event);
+          }
+        })
+        .on('mouseleave', function(event, d) {
+          if (tooltipTimeout) {
+            clearTimeout(tooltipTimeout);
+            tooltipTimeout = null;
+          }
+          hideTooltip();
+        });
+      
+      // Combine both for unified access
+      const nodeElements = nodeGroup.selectAll('g.node-file, g.node-directory')
       
       // Add rectangles for files
-      const fileNodesForRects = nodeElements.filter(d => d.type === 'file');
-      console.log('[Files Map Webview] Creating file rectangles for', fileNodesForRects.size(), 'files');
+      console.log('[Files Map Webview] Creating file rectangles for', fileElements.size(), 'files');
       
-      const fileRects = fileNodesForRects
+      const fileRects = fileElements
         .append('rect')
         .attr('width', d => d.size)
         .attr('height', d => d.size / 2)
@@ -2365,7 +2428,7 @@ export class FilesMapPanel {
       console.log('[Files Map Webview] File rectangles created:', fileRects.size());
 
       // Add hexagonal shapes for directories (rectangle with rhombus sides)
-      const dirRects = nodeElements.filter(d => d.type === 'directory')
+      const dirRects = dirElements
         .append('path')
         .attr('d', d => {
           const fontSize = getDirFontSize(d.depth || 0);
@@ -2394,10 +2457,9 @@ export class FilesMapPanel {
         .style('stroke-width', 3);
       
       // Add line count badge for files (at the top)
-      const fileNodes = nodeElements.filter(d => d.type === 'file');
       
       // Add background rectangle for line count
-      fileNodes.append('rect')
+      fileElements.append('rect')
         .attr('class', 'line-count-badge')
         .attr('width', d => {
           const text = String(d.lines);
@@ -2417,14 +2479,14 @@ export class FilesMapPanel {
         .style('stroke-width', 1);
       
       // Add line count text
-      fileNodes.append('text')
+      fileElements.append('text')
         .attr('class', 'node-sublabel')
         .attr('x', 0)
         .attr('y', d => -d.size / 4 + 14) // Position at top of file box
         .text(d => \`\${d.lines}\`);
       
       // Add yellow triangles for functions (right side)
-      const functionsTriangle = fileNodes.append('g')
+      const functionsTriangle = fileElements.append('g')
         .attr('class', d => {
           const baseClass = 'symbol-triangle functions-triangle';
           return d.functions.length === 0 ? baseClass + ' empty' : baseClass;
@@ -2471,7 +2533,7 @@ export class FilesMapPanel {
         .text('f');
       
       // Add yellow triangles for variables (left side)
-      const variablesTriangle = fileNodes.append('g')
+      const variablesTriangle = fileElements.append('g')
         .attr('class', d => {
           const baseClass = 'symbol-triangle variables-triangle';
           return d.variables.length === 0 ? baseClass + ' empty' : baseClass;
@@ -2518,7 +2580,7 @@ export class FilesMapPanel {
         .text('v');
       
       // Add rounded square for types (top side)
-      const typesTriangle = fileNodes.append('g')
+      const typesTriangle = fileElements.append('g')
         .attr('class', d => {
           const baseClass = 'symbol-triangle types-triangle';
           return d.types.length === 0 ? baseClass + ' empty' : baseClass;
@@ -2565,7 +2627,7 @@ export class FilesMapPanel {
         .text('t');
       
       // Add copy button group (icon only) at bottom right corner
-      const copyButtonGroup = fileNodes.append('g')
+      const copyButtonGroup = fileElements.append('g')
         .attr('class', 'copy-button')
         .attr('transform', d => {
           // Position at bottom right corner of the file box with margin
@@ -2616,7 +2678,7 @@ export class FilesMapPanel {
         .style('stroke-width', 1.2);
       
       // Add directory name label (centered)
-      nodeElements.filter(d => d.type === 'directory')
+      dirElements
         .append('text')
         .attr('class', 'node-label directory-name')
         .attr('x', 0)
@@ -2636,42 +2698,9 @@ export class FilesMapPanel {
           return parts[parts.length - 1];
         });
       
-      // Add pin indicator for ALL directories (visibility controlled by updatePinIndicatorVisibility)
-      const pinIndicatorGroup = nodeElements.filter(d => d.type === 'directory')
-        .append('g')
-        .attr('class', 'pin-indicator')
-        .style('pointer-events', 'none'); // Prevent event bubbling to parent
-      
-      // Add small filled circle as pin indicator with radius relative to box size
-      pinIndicatorGroup.append('circle')
-        .attr('r', d => {
-          // Calculate radius as a percentage of the directory box height
-          const fontSize = getDirFontSize(d.depth || 0);
-          const height = fontSize * 1.8;
-          return height * 0.12; // 12% of box height
-        })
-        .style('fill', '#007acc')
-        .style('cursor', 'pointer')
-        .style('pointer-events', 'all') // Re-enable events on the circle itself
-        .on('click', function(event, d) {
-          event.stopPropagation(); // Prevent triggering zoom/drag and parent events
-          vscode.postMessage({ type: 'dir:unpin', dirPath: d.path });
-        })
-        .on('mouseenter', function(event, d) {
-          event.stopPropagation(); // Prevent parent node hover
-          showTooltip(event, { type: 'pin-indicator', label: 'Click to unpin the box' });
-        })
-        .on('mousemove', function(event, d) {
-          event.stopPropagation(); // Prevent parent node hover
-          updateTooltipPosition(event);
-        })
-        .on('mouseleave', function(event, d) {
-          event.stopPropagation(); // Prevent parent node hover
-          hideTooltip();
-        });
       
       // Add labels for files
-      nodeElements.filter(d => d.type === 'file')
+      fileElements
         .append('text')
         .attr('class', 'node-label')
         .attr('x', 0)
@@ -2726,12 +2755,6 @@ export class FilesMapPanel {
         // Update copy button and smell details position if shown
         updateCenteredElements();
       });
-      
-      // Initialize pin indicators with current zoom level
-      if (updatePinIndicators) {
-        const currentTransform = d3.zoomTransform(svg.node());
-        updatePinIndicators(currentTransform.k);
-      }
     }
     
     // Save layout to backend
@@ -2802,8 +2825,17 @@ export class FilesMapPanel {
       // Clear dragging flag
       isDragging = false;
       
-      // Stop simulation
-      if (simulation) {
+      // If directory was dragged, restart simulation to reposition files
+      if (d.type === 'directory' && d.wasDragged && simulation) {
+        simulation.alphaTarget(0.5).restart();
+        // Gradually stop the simulation after files settle
+        setTimeout(() => {
+          if (simulation) {
+            simulation.alphaTarget(0);
+          }
+        }, 1000);
+      } else if (simulation) {
+        // For files or non-dragged nodes, just stop
         simulation.alphaTarget(0);
       }
       

@@ -1373,6 +1373,8 @@
     let savedLayout = {};
     let tooltipTimeout = null;
     let tooltip = null;
+    let filteredNodes = []; // Track filtered nodes for navigation
+    let currentFilteredIndex = -1; // Current index in filtered nodes
     let isDragging = false;
     let currentSmellDetailsNode = null;
     let currentCenteredNode = null;
@@ -1502,6 +1504,15 @@
       searchBox.addEventListener('input', (e) => {
         searchQuery = e.target.value.toLowerCase();
         applySearchFilter();
+      });
+      
+      // Add keyboard navigation for filtered results (Ctrl+N)
+      document.addEventListener('keydown', (e) => {
+        // Check for Ctrl+N (or Cmd+N on Mac)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+          e.preventDefault();
+          navigateToNextFilteredNode();
+        }
       });
       
       const colorModeSelect = document.getElementById('color-mode-select');
@@ -2013,6 +2024,18 @@
     function applySearchFilter() {
       if (!graphData) return;
       
+      // Collect filtered nodes for navigation
+      filteredNodes = [];
+      currentFilteredIndex = -1;
+      
+      if (searchQuery) {
+        graphData.nodes.forEach(node => {
+          if (nodeMatchesSearch(node)) {
+            filteredNodes.push(node);
+          }
+        });
+      }
+      
       d3.selectAll('.file-rect')
         .transition()
         .duration(200)
@@ -2067,6 +2090,23 @@
           }
           return '#666';
         });
+    }
+    
+    // Navigate to next filtered node
+    function navigateToNextFilteredNode() {
+      if (filteredNodes.length === 0) {
+        console.log('[Files Map] No filtered nodes to navigate');
+        return;
+      }
+      
+      // Move to next index, wrapping around to 0 after the last item
+      currentFilteredIndex = (currentFilteredIndex + 1) % filteredNodes.length;
+      
+      const node = filteredNodes[currentFilteredIndex];
+      console.log('[Files Map] Navigating to filtered node ' + (currentFilteredIndex + 1) + '/' + filteredNodes.length + ': ' + node.label);
+      
+      // Zoom to the node
+      zoomToNode(node);
     }
     
     function updateColors() {

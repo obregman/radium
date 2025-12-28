@@ -948,6 +948,8 @@ export class FilesMapPanel {
     let currentSmellDetailsNode = null; // Track which node has smell details shown
     let currentCenteredNode = null; // Track which node is currently centered (for copy button)
     let updateDirectorySizes = null; // Function to update directory sizes on zoom (assigned in renderGraph)
+    let filteredNodes = []; // Track filtered nodes for navigation
+    let currentFilteredIndex = -1; // Current index in filtered nodes
     
     // 30 predefined distinct colors for directories
     const directoryColors = [
@@ -1125,6 +1127,15 @@ export class FilesMapPanel {
       searchBox.addEventListener('input', (e) => {
         searchQuery = e.target.value.toLowerCase();
         applySearchFilter();
+      });
+      
+      // Add keyboard navigation for filtered results (Ctrl+N)
+      document.addEventListener('keydown', (e) => {
+        // Check for Ctrl+N (or Cmd+N on Mac)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+          e.preventDefault();
+          navigateToNextFilteredNode();
+        }
       });
       
       // Setup color mode dropdown
@@ -1740,6 +1751,18 @@ export class FilesMapPanel {
     function applySearchFilter() {
       if (!graphData) return;
       
+      // Collect filtered nodes for navigation
+      filteredNodes = [];
+      currentFilteredIndex = -1;
+      
+      if (searchQuery) {
+        graphData.nodes.forEach(node => {
+          if (nodeMatchesSearch(node)) {
+            filteredNodes.push(node);
+          }
+        });
+      }
+      
       // Update file rectangles
       d3.selectAll('.file-rect')
         .transition()
@@ -1799,6 +1822,23 @@ export class FilesMapPanel {
           }
           return '#666'; // Darker gray for non-matching
         });
+    }
+    
+    // Navigate to next filtered node
+    function navigateToNextFilteredNode() {
+      if (filteredNodes.length === 0) {
+        console.log('[Files Map] No filtered nodes to navigate');
+        return;
+      }
+      
+      // Move to next index, wrapping around to 0 after the last item
+      currentFilteredIndex = (currentFilteredIndex + 1) % filteredNodes.length;
+      
+      const node = filteredNodes[currentFilteredIndex];
+      console.log('[Files Map] Navigating to filtered node ' + (currentFilteredIndex + 1) + '/' + filteredNodes.length + ': ' + node.label);
+      
+      // Zoom to the node
+      zoomToNode(node);
     }
     
     // Update colors based on current mode

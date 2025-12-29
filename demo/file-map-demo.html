@@ -370,6 +370,22 @@
       white-space: nowrap;
       font-family: 'Courier New', monospace;
     }
+    
+    #zoom-indicator {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(30, 30, 30, 0.95);
+      color: #d4d4d4;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 1000;
+      font-family: 'Courier New', monospace;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -395,6 +411,7 @@
     <div class="tooltip-filename"></div>
     <div class="tooltip-lines"></div>
   </div>
+  <div id="zoom-indicator">100%</div>
   <svg id="graph"></svg>
   
   <script>
@@ -1487,6 +1504,9 @@
             updateDirectorySizes(event.transform.k);
           }
           updateCenteredElements();
+          // Update zoom indicator
+          const zoomPercent = Math.round(event.transform.k * 100);
+          d3.select('#zoom-indicator').text(zoomPercent + '%');
         });
       
       svg.call(zoom);
@@ -1958,12 +1978,15 @@
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         const MIN_DIR_SCALE = 0.4;
-        const MAX_DIR_SCALE = 2.0;
+        const MAX_DIR_SCALE = 8.0;
+        const ZOOM_THRESHOLD = 0.5;
         let dirSizeMultiplier = 1;
         if (scale > 1) {
           dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(scale));
-        } else if (scale < 1) {
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / scale));
+        } else if (scale < ZOOM_THRESHOLD) {
+          // Only scale up directories when zoomed out below 20%
+          // Seamless exponential scaling: the smaller the zoom, the larger the directories
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.pow(ZOOM_THRESHOLD / scale, 0.9));
         }
         
         const fontSizes = [84, 60, 36, 22];
@@ -2197,14 +2220,17 @@
         if (zoomScale === undefined) return;
         
         const MIN_DIR_SCALE = 0.4;
-        const MAX_DIR_SCALE = 2.0;
+        const MAX_DIR_SCALE = 8.0;
+        const ZOOM_THRESHOLD = 0.5;
         
         let dirSizeMultiplier = 1;
         
         if (zoomScale > 1) {
           dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(zoomScale));
-        } else if (zoomScale < 1) {
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / zoomScale));
+        } else if (zoomScale < ZOOM_THRESHOLD) {
+          // Only scale up directories when zoomed out below 20%
+          // Seamless exponential scaling: the smaller the zoom, the larger the directories
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.pow(ZOOM_THRESHOLD / zoomScale, 0.9));
         }
         
         d3.selectAll('.dir-rect')
@@ -3156,6 +3182,26 @@
             }
           }
           break;
+      }
+    });
+    
+    // Handle visibility changes (when panel is moved or becomes visible)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && graphData) {
+        console.log('[Files Map] Panel became visible, refreshing rendering');
+        // Force a re-render of all elements
+        d3.selectAll('.node-file, .node-directory')
+          .attr('transform', d => `translate(${d.x},${d.y})`);
+        
+        // Restart simulation briefly to ensure proper positioning
+        if (simulation) {
+          simulation.alpha(0.1).restart();
+          setTimeout(() => {
+            if (simulation) {
+              simulation.alpha(0);
+            }
+          }, 100);
+        }
       }
     });
     

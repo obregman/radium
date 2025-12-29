@@ -78,6 +78,18 @@ export class FilesMapPanel {
 
     this.panel.webview.html = this.getHtmlContent(extensionUri);
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    
+    // Handle panel visibility changes (when moved, hidden, or shown)
+    this.panel.onDidChangeViewState(
+      () => {
+        if (this.panel.visible) {
+          // Re-send graph data to ensure proper rendering
+          this.updateGraph();
+        }
+      },
+      null,
+      this.disposables
+    );
   }
 
   public static createOrShow(
@@ -914,6 +926,22 @@ export class FilesMapPanel {
       white-space: nowrap;
       font-family: 'Courier New', monospace;
     }
+    
+    #zoom-indicator {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--vscode-editor-background);
+      color: var(--vscode-editor-foreground);
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--vscode-panel-border);
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 1000;
+      font-family: 'Courier New', monospace;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -929,6 +957,7 @@ export class FilesMapPanel {
     <div class="tooltip-filename"></div>
     <div class="tooltip-lines"></div>
   </div>
+  <div id="zoom-indicator">100%</div>
   <svg id="graph"></svg>
   
   <script>
@@ -1104,6 +1133,9 @@ export class FilesMapPanel {
           }
           // Update copy button and smell details based on zoom level
           updateCenteredElements();
+          // Update zoom indicator
+          const zoomPercent = Math.round(event.transform.k * 100);
+          d3.select('#zoom-indicator').text(zoomPercent + '%');
         });
       
       svg.call(zoom);
@@ -1671,12 +1703,15 @@ export class FilesMapPanel {
         
         // Calculate directory size for distance check
         const MIN_DIR_SCALE = 0.4;
-        const MAX_DIR_SCALE = 2.0;
+        const MAX_DIR_SCALE = 8.0;
+        const ZOOM_THRESHOLD = 0.5;
         let dirSizeMultiplier = 1;
         if (scale > 1) {
           dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(scale));
-        } else if (scale < 1) {
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / scale));
+        } else if (scale < ZOOM_THRESHOLD) {
+          // Only scale up directories when zoomed out below 50%
+          // Seamless exponential scaling: the smaller the zoom, the larger the directories
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.pow(ZOOM_THRESHOLD / scale, 0.9));
         }
         
         const fontSizes = [84, 60, 36, 22];
@@ -1971,21 +2006,18 @@ export class FilesMapPanel {
         // When zooming IN (scale > 1), make boxes SMALLER
         // When zooming OUT (scale < 1), make boxes LARGER
         const MIN_DIR_SCALE = 0.4; // Minimum size when zoomed in (40% of base)
-        const MAX_DIR_SCALE = 2.0;  // Maximum size when zoomed out (200% of base)
+        const MAX_DIR_SCALE = 8.0;  // Maximum size when zoomed out (800% of base)
+        const ZOOM_THRESHOLD = 0.5; // Only scale up below 50% zoom
         
         let dirSizeMultiplier = 1;
         
         if (zoomScale > 1) {
           // Zooming IN: scale down directories
-          // At scale=2: 1/sqrt(2) ≈ 0.71x
-          // At scale=4: 1/sqrt(4) = 0.5x
-          // At scale=6.25+: 0.4x (capped)
           dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(zoomScale));
-        } else if (zoomScale < 1) {
-          // Zooming OUT: scale up directories
-          // At scale=0.5: sqrt(2) ≈ 1.41x
-          // At scale=0.25: sqrt(4) = 2x (capped)
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.sqrt(1 / zoomScale));
+        } else if (zoomScale < ZOOM_THRESHOLD) {
+          // Only scale up directories when zoomed out below 50%
+          // Seamless exponential scaling: the smaller the zoom, the larger the directories
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.pow(ZOOM_THRESHOLD / zoomScale, 0.9));
         }
         
         // Update directory shapes
@@ -3011,6 +3043,26 @@ export class FilesMapPanel {
             }
           }
           break;
+      }
+    });
+    
+    // Handle visibility changes (when panel is moved or becomes visible)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && graphData) {
+        console.log('[Files Map] Panel became visible, refreshing rendering');
+        // Force a re-render of all elements
+        d3.selectAll('.node-file, .node-directory')
+          .attr('transform', d => \`translate(\${d.x},\${d.y})\`);
+        
+        // Restart simulation briefly to ensure proper positioning
+        if (simulation) {
+          simulation.alpha(0.1).restart();
+          setTimeout(() => {
+            if (simulation) {
+              simulation.alpha(0);
+            }
+          }, 100);
+        }
       }
     });
     

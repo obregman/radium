@@ -5,19 +5,14 @@ import { GraphStore } from './store/schema';
 import { Indexer } from './indexer/indexer';
 import { LLMOrchestrator, LLMPlan } from './orchestrator/llm-orchestrator';
 import { MapPanel } from './views/codebase-map-panel';
-import { FeaturesMapPanel } from './views/features-map-panel';
 import { FilesMapPanel } from './views/files-map-panel';
 import { SymbolChangesPanel } from './views/symbol-changes-panel';
 import { GitDiffTracker } from './git/git-diff-tracker';
-import { RadiumConfigLoader } from './config/radium-config';
-import { FeaturesConfigLoader } from './config/features-config';
 
 let store: GraphStore;
 let indexer: Indexer;
 let orchestrator: LLMOrchestrator;
 let gitDiffTracker: GitDiffTracker;
-let configLoader: RadiumConfigLoader;
-let featuresLoader: FeaturesConfigLoader;
 let outputChannel: vscode.OutputChannel;
 
 /**
@@ -150,13 +145,6 @@ export async function activate(context: vscode.ExtensionContext) {
       throw new Error(`Store initialization failed: ${storeError}`);
     }
 
-    // Initialize config loaders
-    configLoader = new RadiumConfigLoader(workspaceRoot);
-    configLoader.load();
-    
-    featuresLoader = new FeaturesConfigLoader(workspaceRoot);
-    featuresLoader.load();
-
     // Initialize indexer
     indexer = new Indexer(store, workspaceRoot);
     
@@ -196,18 +184,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
         return;
       }
-      MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
-    }),
-
-    vscode.commands.registerCommand('radium.openFeaturesMap', () => {
-      if (!featuresLoader || !configLoader) {
-        vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
-        return;
-      }
-      // Reload configs in case files were created/modified since activation
-      configLoader.load();
-      featuresLoader.load();
-      FeaturesMapPanel.createOrShow(context.extensionUri, featuresLoader, configLoader);
+      MapPanel.createOrShow(context.extensionUri, store, gitDiffTracker);
     }),
 
     vscode.commands.registerCommand('radium.openFilesMap', () => {

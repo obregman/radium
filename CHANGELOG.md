@@ -4,6 +4,21 @@ All notable changes to the Radium extension will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+- **Components Mode**: Removed component-based visualization feature
+  - Removed `RadiumConfigLoader` and `radium-config.ts`
+  - Removed `buildComponentBasedGraph` and `buildComponentBasedGraphForChanges` methods
+  - Removed `radium-components.yaml` configuration file support
+  - Simplified codebase map to show files without component grouping
+  - Updated README to remove components mode documentation
+- **Features View**: Removed features visualization feature
+  - Removed `FeaturesMapPanel` and `features-map-panel.ts`
+  - Removed `FeaturesConfigLoader` and `features-config.ts`
+  - Removed `radium-features.yaml` configuration file support
+  - Removed `Radium: Features Map` command
+  - Removed feature-steps icon resources
+  - Updated README to remove features documentation
+
 ### Fixed
 - **Windows File Opening**: Fixed issue where clicking on symbol boxes in Symbol Changes view failed to open files on Windows
   - Added path normalization to convert backslashes to forward slashes before joining paths

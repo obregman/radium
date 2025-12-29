@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { GraphStore, Node, Edge } from '../store/schema';
-import { RadiumConfigLoader } from '../config/radium-config';
 import { GitDiffTracker } from '../git/git-diff-tracker';
 import { RadiumIgnore } from '../config/radium-ignore';
 import * as path from 'path';
@@ -12,7 +11,6 @@ export class MapPanel {
   private static outputChannel: vscode.OutputChannel;
   private changeCheckTimer?: NodeJS.Timeout;
   private readonly CHANGE_CHECK_INTERVAL = 60000; // 1 minute in milliseconds
-  private newFilePaths: Set<string> = new Set(); // Track new files to display in "New Files" component
   private fileWatcher?: vscode.FileSystemWatcher;
   private radiumIgnore: RadiumIgnore;
   private workspaceRoot: string;
@@ -21,7 +19,6 @@ export class MapPanel {
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
     private store: GraphStore,
-    private configLoader: RadiumConfigLoader,
     private gitDiffTracker?: GitDiffTracker
   ) {
     this.panel = panel;
@@ -69,7 +66,7 @@ export class MapPanel {
     // File watching will be started when auto-focus is enabled
   }
 
-  public static createOrShow(extensionUri: vscode.Uri, store: GraphStore, configLoader: RadiumConfigLoader, gitDiffTracker?: GitDiffTracker) {
+  public static createOrShow(extensionUri: vscode.Uri, store: GraphStore, gitDiffTracker?: GitDiffTracker) {
     // Initialize output channel if needed
     if (!MapPanel.outputChannel) {
       MapPanel.outputChannel = vscode.window.createOutputChannel('Radium Map');
@@ -107,7 +104,7 @@ export class MapPanel {
       }
     );
 
-    MapPanel.currentPanel = new MapPanel(panel, extensionUri, store, configLoader, gitDiffTracker);
+    MapPanel.currentPanel = new MapPanel(panel, extensionUri, store, gitDiffTracker);
   }
 
   private async handleMessage(message: any) {
@@ -434,355 +431,6 @@ export class MapPanel {
     });
   }
 
-  private buildComponentBasedGraph(allNodes: any[], allEdges: any[], allFiles: any[], config: any) {
-    const nodes: any[] = [];
-    const edges: any[] = [];
-    const nodeMap = new Map<string, number>();
-    let nodeId = 1;
-
-    // Predefined palette of 16 distinct colors for components
-    // Diverse, distinguishable colors with good contrast
-    const componentColorPalette = [
-      '#E57373', // Coral Red
-      '#64B5F6', // Sky Blue
-      '#81C784', // Light Green
-      '#FFB74D', // Orange
-      '#BA68C8', // Purple
-      '#4DB6AC', // Teal
-      '#F06292', // Pink
-      '#7986CB', // Indigo
-      '#AED581', // Lime Green
-      '#FFD54F', // Amber
-      '#9575CD', // Deep Purple
-      '#4DD0E1', // Cyan
-      '#FF8A65', // Deep Orange
-      '#A1887F', // Brown
-      '#90A4AE', // Blue Grey
-      '#DCE775'  // Yellow Green
-    ];
-    
-    // Hash function to consistently assign colors from palette
-    const hashStringToColor = (str: string): string => {
-      let hash = 0;
-      for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      
-      // Use hash to select from palette
-      const index = Math.abs(hash) % componentColorPalette.length;
-      return componentColorPalette[index];
-    };
-
-    // Map to store component colors
-    const componentColors = new Map<string, string>();
-
-    // Group files by component, separating new files
-    const filesByComponent = new Map<string, any[]>();
-    const unmatchedFiles: any[] = [];
-    const newFiles: any[] = [];
-    
-    // Create a set of all indexed file paths for quick lookup
-    const indexedFilePaths = new Set(allFiles.map(f => f.path));
-    
-    // Add files explicitly listed in component definitions that aren't indexed
-    const syntheticFileId = -1000; // Use negative IDs for synthetic files
-    let syntheticId = syntheticFileId;
-    const syntheticFiles: any[] = [];
-    
-    for (const componentKey in config.projectSpec.components) {
-      const component = config.projectSpec.components[componentKey];
-      if (component.files && Array.isArray(component.files)) {
-        for (const filePath of component.files) {
-          // Normalize the path
-          const normalizedPath = filePath.replace(/\\/g, '/');
-          
-          // Filter out glob patterns and unwanted file types
-          if (normalizedPath.endsWith('**') || normalizedPath.endsWith('*')) {
-            continue; // Skip glob patterns
-          }
-          
-          // Filter out markdown and text files
-          if (normalizedPath.endsWith('.md') || normalizedPath.endsWith('.txt')) {
-            continue;
-          }
-          
-          // Filter out image files
-          const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.bmp', '.webp', '.ico'];
-          if (imageExtensions.some(ext => normalizedPath.toLowerCase().endsWith(ext))) {
-            continue;
-          }
-          
-          // If this file isn't already indexed, create a synthetic file record
-          if (!indexedFilePaths.has(normalizedPath)) {
-            syntheticFiles.push({
-              id: syntheticId--,
-              path: normalizedPath,
-              hash: '',
-              indexed_at: Date.now(),
-              isSynthetic: true // Mark as synthetic for identification
-            });
-            indexedFilePaths.add(normalizedPath);
-          }
-        }
-      }
-    }
-    
-    // Merge synthetic files with indexed files
-    const allFilesWithSynthetic = [...allFiles, ...syntheticFiles];
-
-    for (const file of allFilesWithSynthetic) {
-      // Check if this is a new file
-      if (this.newFilePaths.has(file.path)) {
-        newFiles.push(file);
-        continue; // Don't add to regular components
-      }
-
-      const componentInfo = this.configLoader.getComponentForFile(file.path);
-      if (componentInfo) {
-        if (!filesByComponent.has(componentInfo.key)) {
-          filesByComponent.set(componentInfo.key, []);
-        }
-        filesByComponent.get(componentInfo.key)!.push(file);
-      } else {
-        unmatchedFiles.push(file);
-      }
-    }
-
-    // Create "New Files" component if there are new files
-    if (newFiles.length > 0) {
-      filesByComponent.set('__new_files__', newFiles);
-    }
-
-    // Ensure all components from config are included, even if they have no files
-    for (const componentKey in config.projectSpec.components) {
-      if (!filesByComponent.has(componentKey)) {
-        filesByComponent.set(componentKey, []);
-      }
-    }
-
-    // Create component nodes with unique colors
-    const componentNodes = new Map<string, number>();
-    const externalNodes = new Map<string, number>();
-    
-    for (const [componentKey, files] of filesByComponent.entries()) {
-      
-      // Handle special "New Files" component
-      if (componentKey === '__new_files__') {
-        const componentId = nodeId++;
-        const componentColor = '#90EE90'; // Light green for new files
-        
-        componentNodes.set(componentKey, componentId);
-        nodeMap.set(`component:${componentKey}`, componentId);
-        componentColors.set(componentKey, componentColor);
-
-        nodes.push({
-          id: componentId,
-          name: 'New Files',
-          kind: 'component',
-          path: componentKey,
-          size: files.length,
-          description: 'Newly added files',
-          fullPath: componentKey,
-          color: componentColor,
-          componentKey: componentKey
-        });
-        
-        console.log(`[Radium] Created "New Files" component node, ID: ${componentId}, ${files.length} files`);
-        continue;
-      }
-
-      const component = config.projectSpec.components[componentKey];
-      
-      // Filter out components with no files and no external sources
-      const hasFiles = files.length > 0;
-      const hasExternal = component.external && component.external.length > 0;
-      
-      if (!hasFiles && !hasExternal) {
-        console.log(`[Radium] Skipping component ${component.name} - no files or external sources`);
-        continue;
-      }
-      
-      const componentId = nodeId++;
-      const componentColor = hashStringToColor(component.name);
-      
-      componentNodes.set(componentKey, componentId);
-      nodeMap.set(`component:${componentKey}`, componentId);
-      componentColors.set(componentKey, componentColor);
-
-      nodes.push({
-        id: componentId,
-        name: component.name,
-        kind: 'component',
-        path: componentKey,
-        size: files.length,
-        description: component.description,
-        fullPath: componentKey,
-        color: componentColor,
-        componentKey: componentKey
-      });
-      
-      console.log(`[Radium] Created component node: ${component.name}, ID: ${componentId}, color: ${componentColor}`);
-      
-      // Create external object nodes for this component
-      if (component.external && component.external.length > 0) {
-        for (const external of component.external) {
-          const externalId = nodeId++;
-          const externalKey = `${componentKey}:${external.name}`;
-          externalNodes.set(externalKey, externalId);
-          nodeMap.set(`external:${externalKey}`, externalId);
-          
-          nodes.push({
-            id: externalId,
-            name: external.name,
-            kind: 'external',
-            path: externalKey,
-            externalType: external.type,
-            description: external.description,
-            fullPath: externalKey,
-            componentKey: componentKey,
-            usedBy: external.usedBy || []
-          });
-          
-          // Create edge from component to external object
-          edges.push({
-            source: componentId,
-            target: externalId,
-            kind: 'uses',
-            weight: 1.0,
-            color: componentColor
-          });
-          
-          console.log(`[Radium] Created external node: ${external.name} (${external.type}), ID: ${externalId}`);
-        }
-      }
-    }
-
-    // Create file nodes and connect to components
-    const fileNodes = new Map<string, number>();
-    const fileNodeObjects: any[] = [];
-    
-    for (const file of allFilesWithSynthetic) {
-      const fileId = nodeId++;
-      fileNodes.set(file.path, fileId);
-      nodeMap.set(`file:${file.path}`, fileId);
-
-      // Check if this is a new file
-      const isNewFile = this.newFilePaths.has(file.path);
-      
-      // Determine component color for this file
-      let componentInfo = this.configLoader.getComponentForFile(file.path);
-      let fileColor: string | undefined;
-      let componentKey: string | undefined;
-
-      if (isNewFile) {
-        // New files belong to "New Files" component
-        componentKey = '__new_files__';
-        fileColor = componentColors.get('__new_files__');
-      } else if (componentInfo) {
-        componentKey = componentInfo.key;
-        fileColor = componentColors.get(componentInfo.key);
-      }
-
-      const fileName = file.path.split('/').pop() || file.path;
-      const fileNode = {
-        id: fileId,
-        name: fileName,
-        kind: 'file',
-        path: file.path,
-        lang: file.lang,
-        size: file.size,
-        functions: [] as any[],
-        componentColor: fileColor,
-        componentKey: componentKey
-      };
-      fileNodeObjects.push(fileNode);
-      nodes.push(fileNode);
-
-      // Connect file to component
-      if (componentKey) {
-        const componentId = componentNodes.get(componentKey);
-        if (componentId) {
-          edges.push({
-            source: componentId,
-            target: fileId,
-            kind: 'contains',
-            weight: 0.5,
-            color: fileColor
-          });
-        }
-      }
-    }
-
-    // Create edges from external objects to files based on explicit configuration
-    for (const [componentKey, files] of filesByComponent.entries()) {
-      const component = config.projectSpec.components[componentKey];
-      if (component && component.external && component.external.length > 0) {
-        for (const external of component.external) {
-          const externalKey = `${componentKey}:${external.name}`;
-          const externalId = externalNodes.get(externalKey);
-          
-          if (externalId && external.usedBy && external.usedBy.length > 0) {
-            // Connect to specific files listed in usedBy
-            for (const filePath of external.usedBy) {
-              const fileId = fileNodes.get(filePath);
-              if (fileId) {
-                const fileColor = componentColors.get(componentKey);
-                edges.push({
-                  source: externalId,
-                  target: fileId,
-                  kind: 'external-uses',
-                  weight: 0.3,
-                  color: fileColor
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Note: Classes, interfaces, types, and functions are not displayed as separate nodes
-    // Only files, components, and their relationships are shown
-
-    // Add file-to-file edges for imports
-    const fileImports = new Map<string, Set<string>>();
-    for (const edge of allEdges) {
-      if (edge.kind === 'imports') {
-        const srcNode = allNodes.find(n => n.id === edge.src);
-        const dstNode = allNodes.find(n => n.id === edge.dst);
-        if (srcNode && dstNode && srcNode.path !== dstNode.path) {
-          if (!fileImports.has(srcNode.path)) {
-            fileImports.set(srcNode.path, new Set());
-          }
-          fileImports.get(srcNode.path)!.add(dstNode.path);
-        }
-      }
-    }
-
-    for (const [srcPath, dstPaths] of fileImports.entries()) {
-      const srcFileId = fileNodes.get(srcPath);
-      if (!srcFileId) continue;
-
-      // Get the source file's component color
-      const componentInfo = this.configLoader.getComponentForFile(srcPath);
-      const edgeColor = componentInfo ? componentColors.get(componentInfo.key) : undefined;
-
-      for (const dstPath of dstPaths) {
-        const dstFileId = fileNodes.get(dstPath);
-        if (dstFileId) {
-          edges.push({
-            source: srcFileId,
-            target: dstFileId,
-            kind: 'imports',
-            weight: 1.5,
-            color: edgeColor
-          });
-        }
-      }
-    }
-
-    return { nodes, edges };
-  }
 
   private buildHierarchicalGraph(allNodes: any[], allEdges: any[], allFiles: any[]) {
     const nodes: any[] = [];
@@ -790,15 +438,7 @@ export class MapPanel {
     const nodeMap = new Map<string, number>();
     let nodeId = 1;
 
-    const config = this.configLoader.getConfig();
-    
-    // If radium-components.yaml exists, use component-based grouping
-    if (config) {
-      return this.buildComponentBasedGraph(allNodes, allEdges, allFiles, config);
-    }
-
-    // Without radium-components.yaml, display files without grouping
-    // (directories are not displayed)
+    // Display files without grouping (directories are not displayed)
 
     // Create file nodes (no directory grouping)
     const fileNodes = new Map<string, number>();
@@ -883,20 +523,11 @@ export class MapPanel {
 
     console.log(`[Radium] Changed file paths:`, changedFiles.map(c => c.filePath));
 
-    // Separate new files from modified files
-    const newFilePaths = changedFiles.filter(c => c.isNew).map(c => c.filePath);
     const allChangedPaths = changedFiles.map(c => c.filePath);
-
-    // Track new files for display in full graph
-    this.newFilePaths = new Set(newFilePaths);
-    console.log(`[Radium] Tracking ${this.newFilePaths.size} new files for display`);
 
     // If filtering, rebuild graph with only changed files
     if (filterToChangedOnly && changedFiles.length > 0) {
-      this.updateGraphWithChangesOnly(allChangedPaths, newFilePaths);
-    } else if (this.newFilePaths.size > 0) {
-      // Rebuild full graph to include "New Files" component
-      this.updateGraph();
+      this.updateGraphWithChangesOnly(allChangedPaths);
     }
 
     this.panel.webview.postMessage({
@@ -907,7 +538,7 @@ export class MapPanel {
     });
   }
 
-  private updateGraphWithChangesOnly(changedFilePaths: string[], newFilePaths: string[] = []) {
+  private updateGraphWithChangesOnly(changedFilePaths: string[]) {
     const allNodes = this.store.getAllNodes();
     const allEdges = this.store.getAllEdges();
     const allFilesRaw = this.store.getAllFiles();
@@ -915,11 +546,10 @@ export class MapPanel {
     // Filter out ignored files
     const allFiles = allFilesRaw.filter(file => !this.radiumIgnore.shouldIgnore(file.path));
 
-    console.log(`[Radium] updateGraphWithChangesOnly: ${changedFilePaths.length} changed files, ${newFilePaths.length} new files`);
+    console.log(`[Radium] updateGraphWithChangesOnly: ${changedFilePaths.length} changed files`);
 
     // Filter to only changed files
     const changedFileSet = new Set(changedFilePaths);
-    const newFileSet = new Set(newFilePaths);
     const filteredFiles = allFiles.filter(f => changedFileSet.has(f.path));
 
     console.log(`[Radium] Filtered files: ${filteredFiles.length}`, filteredFiles.map(f => f.path));
@@ -929,281 +559,18 @@ export class MapPanel {
       return;
     }
 
-    const config = this.configLoader.getConfig();
-    
-    // If radium-components.yaml exists, show changed files WITH their parent components
-    if (config) {
-      // Build component-based graph showing only changed files and their components
-      const graphData = this.buildComponentBasedGraphForChanges(allNodes, allEdges, filteredFiles, config, changedFileSet, newFileSet);
-      
-      console.log(`[Radium] Graph built: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
+    // Show the changed files
+    const graphData = this.buildChangesGraph(allNodes, allEdges, filteredFiles);
 
-      this.panel.webview.postMessage({
-        type: 'graph:update',
-        data: graphData,
-        filtered: true
-      });
-    } else {
-      // Without radium-components.yaml, just show the changed files
-      const graphData = this.buildChangesGraph(allNodes, allEdges, filteredFiles);
+    console.log(`[Radium] Graph built: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
 
-      console.log(`[Radium] Graph built: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
-
-      this.panel.webview.postMessage({
-        type: 'graph:update',
-        data: graphData,
-        filtered: true
-      });
-    }
+    this.panel.webview.postMessage({
+      type: 'graph:update',
+      data: graphData,
+      filtered: true
+    });
   }
 
-  private buildComponentBasedGraphForChanges(allNodes: any[], allEdges: any[], changedFiles: any[], config: any, changedFileSet: Set<string>, newFileSet: Set<string> = new Set()) {
-    const nodes: any[] = [];
-    const edges: any[] = [];
-    const nodeMap = new Map<string, number>();
-    let nodeId = 1;
-
-    // Predefined palette of 16 distinct colors for components
-    // Diverse, distinguishable colors with good contrast
-    const componentColorPalette = [
-      '#E57373', // Coral Red
-      '#64B5F6', // Sky Blue
-      '#81C784', // Light Green
-      '#FFB74D', // Orange
-      '#BA68C8', // Purple
-      '#4DB6AC', // Teal
-      '#F06292', // Pink
-      '#7986CB', // Indigo
-      '#AED581', // Lime Green
-      '#FFD54F', // Amber
-      '#9575CD', // Deep Purple
-      '#4DD0E1', // Cyan
-      '#FF8A65', // Deep Orange
-      '#A1887F', // Brown
-      '#90A4AE', // Blue Grey
-      '#DCE775'  // Yellow Green
-    ];
-    
-    // Hash function to consistently assign colors from palette
-    const hashStringToColor = (str: string): string => {
-      let hash = 0;
-      for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      
-      // Use hash to select from palette
-      const index = Math.abs(hash) % componentColorPalette.length;
-      return componentColorPalette[index];
-    };
-
-    const componentColors = new Map<string, string>();
-    
-    // Separate new files from modified files
-    const newFiles = changedFiles.filter(f => newFileSet.has(f.path));
-    const modifiedFiles = changedFiles.filter(f => !newFileSet.has(f.path));
-    
-    // Determine which components contain changed files (excluding new files)
-    const componentsWithChanges = new Set<string>();
-    for (const file of modifiedFiles) {
-      const componentInfo = this.configLoader.getComponentForFile(file.path);
-      if (componentInfo) {
-        componentsWithChanges.add(componentInfo.key);
-      }
-    }
-
-    // Create component nodes for components with changes
-    const componentNodes = new Map<string, number>();
-    const externalNodes = new Map<string, number>();
-    
-    for (const componentKey of componentsWithChanges) {
-      const component = config.projectSpec.components[componentKey];
-      const componentId = nodeId++;
-      const componentColor = hashStringToColor(component.name);
-      
-      componentNodes.set(componentKey, componentId);
-      nodeMap.set(`component:${componentKey}`, componentId);
-      componentColors.set(componentKey, componentColor);
-
-      nodes.push({
-        id: componentId,
-        name: component.name,
-        kind: 'component',
-        path: componentKey,
-        size: changedFiles.filter(f => {
-          const info = this.configLoader.getComponentForFile(f.path);
-          return info?.key === componentKey;
-        }).length,
-        description: component.description,
-        fullPath: componentKey,
-        color: componentColor,
-        componentKey: componentKey
-      });
-      
-      // Create external object nodes for this component
-      if (component.external && component.external.length > 0) {
-        for (const external of component.external) {
-          const externalId = nodeId++;
-          const externalKey = `${componentKey}:${external.name}`;
-          externalNodes.set(externalKey, externalId);
-          nodeMap.set(`external:${externalKey}`, externalId);
-          
-          nodes.push({
-            id: externalId,
-            name: external.name,
-            kind: 'external',
-            path: externalKey,
-            externalType: external.type,
-            description: external.description,
-            fullPath: externalKey,
-            componentKey: componentKey,
-            usedBy: external.usedBy || []
-          });
-          
-          // Create edge from component to external object
-          edges.push({
-            source: componentId,
-            target: externalId,
-            kind: 'uses',
-            weight: 1.0,
-            color: componentColor
-          });
-        }
-      }
-    }
-
-    // Create file nodes for modified files (not new files)
-    const fileNodes = new Map<string, number>();
-    
-    for (const file of modifiedFiles) {
-      const fileId = nodeId++;
-      fileNodes.set(file.path, fileId);
-      nodeMap.set(`file:${file.path}`, fileId);
-
-      const componentInfo = this.configLoader.getComponentForFile(file.path);
-      const fileColor = componentInfo ? componentColors.get(componentInfo.key) : undefined;
-
-      const fileName = file.path.split('/').pop() || file.path;
-      const fileNode = {
-        id: fileId,
-        name: fileName,
-        kind: 'file',
-        path: file.path,
-        lang: file.lang,
-        size: file.size,
-        functions: [] as any[],
-        componentColor: fileColor,
-        componentKey: componentInfo ? componentInfo.key : undefined
-      };
-      nodes.push(fileNode);
-
-      // Connect file to its component
-      if (componentInfo) {
-        const componentId = componentNodes.get(componentInfo.key);
-        if (componentId) {
-          edges.push({
-            source: componentId,
-            target: fileId,
-            kind: 'contains',
-            weight: 0.5,
-            color: fileColor
-          });
-        }
-      }
-    }
-
-    // Create "New Files" component if there are new files
-    if (newFiles.length > 0) {
-      const newFilesComponentId = nodeId++;
-      const newFilesColor = '#90EE90'; // Light green for new files
-      
-      componentNodes.set('__new_files__', newFilesComponentId);
-      nodeMap.set('component:__new_files__', newFilesComponentId);
-      componentColors.set('__new_files__', newFilesColor);
-
-      nodes.push({
-        id: newFilesComponentId,
-        name: 'New Files',
-        kind: 'component',
-        path: '__new_files__',
-        size: newFiles.length,
-        description: 'Newly added files',
-        fullPath: '__new_files__',
-        color: newFilesColor,
-        componentKey: '__new_files__'
-      });
-
-      // Create file nodes for new files
-      for (const file of newFiles) {
-        const fileId = nodeId++;
-        fileNodes.set(file.path, fileId);
-        nodeMap.set(`file:${file.path}`, fileId);
-
-        const fileName = file.path.split('/').pop() || file.path;
-        const fileNode = {
-          id: fileId,
-          name: fileName,
-          kind: 'file',
-          path: file.path,
-          lang: file.lang,
-          size: file.size,
-          functions: [] as any[],
-          componentColor: newFilesColor,
-          componentKey: '__new_files__'
-        };
-        nodes.push(fileNode);
-
-        // Connect new file to "New Files" component
-        edges.push({
-          source: newFilesComponentId,
-          target: fileId,
-          kind: 'contains',
-          weight: 0.5,
-          color: newFilesColor
-        });
-      }
-    }
-
-    // Add file-to-file edges for imports (only between changed files)
-    const fileImports = new Map<string, Set<string>>();
-    for (const edge of allEdges) {
-      if (edge.kind === 'imports') {
-        const srcNode = allNodes.find(n => n.id === edge.src);
-        const dstNode = allNodes.find(n => n.id === edge.dst);
-        if (srcNode && dstNode && srcNode.path !== dstNode.path) {
-          // Only include imports between changed files
-          if (changedFileSet.has(srcNode.path) && changedFileSet.has(dstNode.path)) {
-            if (!fileImports.has(srcNode.path)) {
-              fileImports.set(srcNode.path, new Set());
-            }
-            fileImports.get(srcNode.path)!.add(dstNode.path);
-          }
-        }
-      }
-    }
-
-    for (const [srcPath, dstPaths] of fileImports.entries()) {
-      const srcFileId = fileNodes.get(srcPath);
-      if (!srcFileId) continue;
-
-      const componentInfo = this.configLoader.getComponentForFile(srcPath);
-      const edgeColor = componentInfo ? componentColors.get(componentInfo.key) : undefined;
-
-      for (const dstPath of dstPaths) {
-        const dstFileId = fileNodes.get(dstPath);
-        if (dstFileId) {
-          edges.push({
-            source: srcFileId,
-            target: dstFileId,
-            kind: 'imports',
-            weight: 1.5,
-            color: edgeColor
-          });
-        }
-      }
-    }
-
-    return { nodes, edges };
-  }
 
   private buildChangesGraph(allNodes: any[], allEdges: any[], allFiles: any[]) {
     const nodes: any[] = [];
@@ -1384,8 +751,6 @@ export class MapPanel {
     // Handle file creation
     this.fileWatcher.onDidCreate(uri => {
       MapPanel.outputChannel.appendLine(`File created: ${uri.fsPath}`);
-      const relativePath = path.relative(workspaceFolders[0].uri.fsPath, uri.fsPath);
-      this.newFilePaths.add(relativePath);
       this.checkForChanges();
     });
     

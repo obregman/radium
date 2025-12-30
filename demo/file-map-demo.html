@@ -185,12 +185,12 @@
     .edge-directory {
       fill: none;
       stroke: #4a9eff;
-      stroke-width: 3;
-      opacity: 0.8;
+      stroke-width: 5;
+      opacity: 0.95;
     }
     
     .node-label {
-      font-size: 11px;
+      font-size: 14px;
       text-anchor: middle;
       pointer-events: none;
       user-select: none;
@@ -1397,13 +1397,19 @@
     let currentCenteredNode = null;
     let updateDirectorySizes = null;
     
-    // 30 predefined distinct colors for directories
+    // 50 predefined distinct colors for directories
     const directoryColors = [
       '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F',
       '#BB8FCE', '#85C1E2', '#F8B739', '#52B788', '#E63946', '#06FFA5',
       '#FFB4A2', '#B5838D', '#6C5B7B', '#C06C84', '#F67280', '#355C7D',
       '#99B898', '#FECEAB', '#FF8C94', '#5DADE2', '#F39C12', '#A569BD',
-      '#48C9B0', '#F4D03F', '#EC7063', '#85929E', '#58D68D', '#AF7AC5'
+      '#48C9B0', '#F4D03F', '#EC7063', '#85929E', '#58D68D', '#AF7AC5',
+      '#FF6F91', '#C44569', '#F8B500', '#78E08F', '#60A3BC', '#EA8685',
+      '#FD79A8', '#FDCB6E', '#6C5CE7', '#00B894', '#00CEC9', '#0984E3',
+      '#A29BFE', '#FF7675', '#74B9FF', '#55EFC4', '#FAB1A0', '#DFE6E9',
+      '#FD79A8', '#FDCB6E', '#E17055', '#81ECEC', '#FFEAA7', '#DFE4EA',
+      '#FF6348', '#FF4757', '#2ED573', '#1E90FF', '#FFA502', '#FF6348',
+      '#5F27CD', '#00D2D3', '#FF9FF3', '#54A0FF', '#48DBFB', '#01A3A4'
     ];
     
     function hashString(str) {
@@ -1433,18 +1439,18 @@
     
     function getFileColorBySymbols(exportedSymbols) {
       if (exportedSymbols === 0) return '#999';
-      if (exportedSymbols <= 3) return '#ffd700';
-      if (exportedSymbols <= 6) return '#adff2f';
-      if (exportedSymbols <= 9) return '#90ee90';
-      return '#4caf50';
+      if (exportedSymbols <= 3) return '#FFD700';
+      if (exportedSymbols <= 6) return '#ADFF2F';
+      if (exportedSymbols <= 9) return '#7FFF00';
+      return '#00D084';
     }
     
     function getFileColorBySmell(smellScore) {
-      if (smellScore <= 20) return '#52B788';
-      if (smellScore <= 40) return '#98D8C8';
-      if (smellScore <= 60) return '#F7DC6F';
-      if (smellScore <= 80) return '#FFA07A';
-      return '#E63946';
+      if (smellScore <= 20) return '#00D084';
+      if (smellScore <= 40) return '#55EFC4';
+      if (smellScore <= 60) return '#FDCB6E';
+      if (smellScore <= 80) return '#FF7675';
+      return '#D63031';
     }
     
     function getFileColor(node) {
@@ -2624,7 +2630,7 @@
           const source = d.source;
           const target = d.target;
           if (source.type === 'directory' && target.type === 'directory') {
-            return 3; // Thicker for directory hierarchy
+            return 5; // Thicker for directory hierarchy
           }
           return 1.5;
         })
@@ -3009,8 +3015,8 @@
           const padding = 8;
           const availableWidth = d.size - (padding * 2);
           
-          let fontSize = 16;
-          const minFontSize = 8;
+          let fontSize = 24;
+          const minFontSize = 12;
           
           let low = minFontSize;
           let high = fontSize;

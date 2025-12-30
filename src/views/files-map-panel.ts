@@ -741,12 +741,12 @@ export class FilesMapPanel {
     .edge-directory {
       fill: none;
       stroke: #4a9eff;
-      stroke-width: 3;
-      opacity: 0.8;
+      stroke-width: 5;
+      opacity: 0.95;
     }
     
     .node-label {
-      font-size: 11px;
+      font-size: 14px;
       text-anchor: middle;
       pointer-events: none;
       user-select: none;
@@ -980,7 +980,7 @@ export class FilesMapPanel {
     let filteredNodes = []; // Track filtered nodes for navigation
     let currentFilteredIndex = -1; // Current index in filtered nodes
     
-    // 30 predefined distinct colors for directories
+    // 50 predefined distinct colors for directories
     const directoryColors = [
       '#FF6B6B', // Red
       '#4ECDC4', // Teal
@@ -1011,7 +1011,27 @@ export class FilesMapPanel {
       '#EC7063', // Salmon
       '#85929E', // Blue Gray
       '#58D68D', // Light Green
-      '#AF7AC5'  // Lavender
+      '#AF7AC5', // Lavender
+      '#FF6F91', // Pink
+      '#C44569', // Dark Rose
+      '#F8B500', // Amber
+      '#78E08F', // Mint Green
+      '#60A3BC', // Steel Blue
+      '#EA8685', // Light Red
+      '#FD79A8', // Hot Pink
+      '#FDCB6E', // Mustard
+      '#6C5CE7', // Indigo
+      '#00B894', // Emerald
+      '#00CEC9', // Cyan
+      '#0984E3', // Azure
+      '#A29BFE', // Periwinkle
+      '#FF7675', // Watermelon
+      '#74B9FF', // Sky
+      '#55EFC4', // Aqua
+      '#FAB1A0', // Apricot
+      '#DFE6E9', // Silver
+      '#E17055', // Terracotta
+      '#81ECEC'  // Turquoise Blue
     ];
     
     // Simple hash function for strings
@@ -1049,20 +1069,20 @@ export class FilesMapPanel {
     // Function to get color based on exported symbols
     function getFileColorBySymbols(exportedSymbols) {
       if (exportedSymbols === 0) return '#999'; // grey
-      if (exportedSymbols <= 3) return '#ffd700'; // yellow
-      if (exportedSymbols <= 6) return '#adff2f'; // yellow green
-      if (exportedSymbols <= 9) return '#90ee90'; // light green
-      return '#4caf50'; // green
+      if (exportedSymbols <= 3) return '#FFD700'; // gold
+      if (exportedSymbols <= 6) return '#ADFF2F'; // green yellow
+      if (exportedSymbols <= 9) return '#7FFF00'; // chartreuse
+      return '#00D084'; // emerald green
     }
     
     // Function to get color based on code smell score (0-100)
     // Green (clean) -> Yellow (moderate) -> Red (high smells)
     function getFileColorBySmell(smellScore) {
-      if (smellScore <= 20) return '#52B788'; // Green - Clean code
-      if (smellScore <= 40) return '#98D8C8'; // Light Green - Minor issues
-      if (smellScore <= 60) return '#F7DC6F'; // Yellow - Moderate concerns
-      if (smellScore <= 80) return '#FFA07A'; // Orange - Significant smells
-      return '#E63946'; // Red - High smell density
+      if (smellScore <= 20) return '#00D084'; // Emerald - Clean code
+      if (smellScore <= 40) return '#55EFC4'; // Aqua - Minor issues
+      if (smellScore <= 60) return '#FDCB6E'; // Mustard - Moderate concerns
+      if (smellScore <= 80) return '#FF7675'; // Watermelon - Significant smells
+      return '#D63031'; // Red - High smell density
     }
     
     // Function to get color based on current mode
@@ -2423,7 +2443,7 @@ export class FilesMapPanel {
           const source = d.source;
           const target = d.target;
           if (source.type === 'directory' && target.type === 'directory') {
-            return 3; // Thicker for directory hierarchy
+            return 5; // Thicker for directory hierarchy
           }
           return 1.5; // Normal for directory-to-file
         })
@@ -2840,8 +2860,8 @@ export class FilesMapPanel {
           const padding = 8; // Small padding on left and right
           const availableWidth = d.size - (padding * 2);
           
-          let fontSize = 16; // Start with max font size
-          const minFontSize = 8;
+          let fontSize = 24; // Start with max font size
+          const minFontSize = 12;
           
           // Binary search for optimal font size
           let low = minFontSize;

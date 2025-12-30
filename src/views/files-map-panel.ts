@@ -974,6 +974,7 @@ export class FilesMapPanel {
     let tooltipTimeout = null;
     let tooltip = null;
     let isDragging = false;
+    let isResizing = false; // Track if window is being resized
     let currentSmellDetailsNode = null; // Track which node has smell details shown
     let currentCenteredNode = null; // Track which node is currently centered (for copy button)
     let updateDirectorySizes = null; // Function to update directory sizes on zoom (assigned in renderGraph)
@@ -2386,6 +2387,9 @@ export class FilesMapPanel {
       simulation = d3.forceSimulation(nodes)
         .velocityDecay(0.8) // Higher decay to reduce vibration (default 0.4)
         .force('orbit', alpha => {
+          // Skip orbit force during resize to prevent files from flying away
+          if (isResizing) return;
+          
           // Custom force to keep files orbiting around their parent directory in layers
           nodes.forEach(node => {
             if (node.type !== 'file' || node.targetAngle === undefined || !node.parentDir || node.targetRadius === undefined) return;
@@ -2886,6 +2890,19 @@ export class FilesMapPanel {
       
       // Update positions on tick
       simulation.on('tick', () => {
+        // When resizing, directly lock files to their orbit positions
+        // This prevents files from flying away during resize
+        if (isResizing) {
+          nodes.forEach(node => {
+            if (node.type === 'file' && node.parentDir && node.targetAngle !== undefined && node.targetRadius !== undefined) {
+              node.x = node.parentDir.x + Math.cos(node.targetAngle) * node.targetRadius;
+              node.y = node.parentDir.y + Math.sin(node.targetAngle) * node.targetRadius;
+              node.vx = 0;
+              node.vy = 0;
+            }
+          });
+        }
+        
         edgeElements.attr('d', d => {
           const dx = d.target.x - d.source.x;
           const dy = d.target.y - d.source.y;
@@ -3087,14 +3104,31 @@ export class FilesMapPanel {
     });
     
     // Handle window resize
+    let resizeTimeout;
     window.addEventListener('resize', () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
       svg.attr('width', width).attr('height', height);
       
-      if (simulation) {
+      if (simulation && graphData) {
+        // Set resizing flag - tick function will lock files to parents
+        isResizing = true;
+        
+        // Clear any pending resize timeout
+        if (resizeTimeout) {
+          clearTimeout(resizeTimeout);
+        }
+        
+        // Update center force to new dimensions
         simulation.force('center', d3.forceCenter(width / 2, height / 2));
-        simulation.alpha(0.3).restart();
+        
+        // Keep simulation running with high alpha so tick updates positions
+        simulation.alpha(1).restart();
+        
+        // After resize settles, clear the resizing flag
+        resizeTimeout = setTimeout(() => {
+          isResizing = false;
+        }, 150);
       }
     });
     

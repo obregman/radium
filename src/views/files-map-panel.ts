@@ -80,16 +80,9 @@ export class FilesMapPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     
     // Handle panel visibility changes (when moved, hidden, or shown)
-    this.panel.onDidChangeViewState(
-      () => {
-        if (this.panel.visible) {
-          // Re-send graph data to ensure proper rendering
-          this.updateGraph();
-        }
-      },
-      null,
-      this.disposables
-    );
+    // Note: We no longer re-render the graph on visibility change because
+    // the webview's visibilitychange handler already restores sizes properly.
+    // Re-rendering would reset the zoom level and cause directory boxes to shrink.
   }
 
   public static createOrShow(
@@ -2296,9 +2289,9 @@ export class FilesMapPanel {
       // Assign initial angles and POSITIONS to files for multi-layer radial distribution
       // Layer configuration: [maxFiles, radius]
       const LAYER_CONFIG = [
-        { maxFiles: 10, radius: 450 },   // Layer 1: closer, max 10 files
-        { maxFiles: 16, radius: 700 },   // Layer 2: max 16 files
-        { maxFiles: 28, radius: 1000 }   // Layer 3: max 28 files
+        { maxFiles: 8, radius: 250 },    // Layer 1: max 8 files
+        { maxFiles: 12, radius: 550 },   // Layer 2: max 12 files (+50%)
+        { maxFiles: 18, radius: 910 }    // Layer 3: max 18 files (+50%)
       ];
       
       dirToFiles.forEach((files, dirPath) => {
@@ -2904,13 +2897,21 @@ export class FilesMapPanel {
         }
         
         edgeElements.attr('d', d => {
+          // Guard against undefined coordinates
+          if (d.source.x === undefined || d.source.y === undefined || 
+              d.target.x === undefined || d.target.y === undefined) {
+            return null;
+          }
           const dx = d.target.x - d.source.x;
           const dy = d.target.y - d.source.y;
           const dr = Math.sqrt(dx * dx + dy * dy) * 2;
           return \`M\${d.source.x},\${d.source.y}A\${dr},\${dr} 0 0,1 \${d.target.x},\${d.target.y}\`;
         });
         
-        nodeElements.attr('transform', d => \`translate(\${d.x},\${d.y})\`);
+        nodeElements.attr('transform', d => {
+          if (d.x === undefined || d.y === undefined) return null;
+          return \`translate(\${d.x},\${d.y})\`;
+        });
         
         // Update copy button and smell details position if shown
         updateCenteredElements();
@@ -3090,6 +3091,12 @@ export class FilesMapPanel {
         // Force a re-render of all elements
         d3.selectAll('.node-file, .node-directory')
           .attr('transform', d => \`translate(\${d.x},\${d.y})\`);
+        
+        // Restore directory sizes based on current zoom level
+        if (updateDirectorySizes && svg) {
+          const currentTransform = d3.zoomTransform(svg.node());
+          updateDirectorySizes(currentTransform.k);
+        }
         
         // Restart simulation briefly to ensure proper positioning
         if (simulation) {

@@ -2016,22 +2016,23 @@ export class FilesMapPanel {
         // Only update if we have a valid scale
         if (zoomScale === undefined) return;
         
-        // Calculate INVERSE scaling factor for directory sizes
-        // When zooming IN (scale > 1), make boxes SMALLER
-        // When zooming OUT (scale < 1), make boxes LARGER
-        const MIN_DIR_SCALE = 0.4; // Minimum size when zoomed in (40% of base)
-        const MAX_DIR_SCALE = 8.0;  // Maximum size when zoomed out (800% of base)
-        const ZOOM_THRESHOLD = 0.5; // Only scale up below 50% zoom
+        // Calculate scaling factor for directory sizes
+        // - At 50% zoom and above: normal size (1.0) - this is the minimum
+        // - Below 50%: grows from 1.0 to 4.0 as we zoom out further
+        const MIN_DIR_SCALE = 1.0; // Minimum size at 50% zoom (normal size)
+        const MAX_ZOOM_OUT_MULTIPLIER = 4; // At very low zoom, 4x the minimum size
+        const ZOOM_THRESHOLD = 0.5; // Below 50% zoom, directories start growing
         
         let dirSizeMultiplier = 1;
         
-        if (zoomScale > 1) {
-          // Zooming IN: scale down directories
-          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(zoomScale));
-        } else if (zoomScale < ZOOM_THRESHOLD) {
-          // Only scale up directories when zoomed out below 50%
-          // Seamless exponential scaling: the smaller the zoom, the larger the directories
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.pow(ZOOM_THRESHOLD / zoomScale, 0.9));
+        if (zoomScale >= ZOOM_THRESHOLD) {
+          // At or above 50% zoom: keep directories at normal size (minimum)
+          dirSizeMultiplier = MIN_DIR_SCALE;
+        } else {
+          // Below 50%: grow from MIN (1.0) to 4x MIN (4.0) as we zoom out further
+          const maxScale = MIN_DIR_SCALE * MAX_ZOOM_OUT_MULTIPLIER;
+          const progress = (ZOOM_THRESHOLD - zoomScale) / ZOOM_THRESHOLD;
+          dirSizeMultiplier = MIN_DIR_SCALE + (maxScale - MIN_DIR_SCALE) * progress;
         }
         
         // Update directory shapes
@@ -2817,7 +2818,7 @@ export class FilesMapPanel {
         .style('stroke', '#fff')
         .style('stroke-width', 1.2);
       
-      // Add directory name label (centered)
+      // Add directory name label (centered, with text clipping)
       dirElements
         .append('text')
         .attr('class', 'node-label directory-name')
@@ -2832,10 +2833,35 @@ export class FilesMapPanel {
         })
         .style('fill', '#000')
         .style('font-weight', 'bold')
-        .text(d => {
+        .style('overflow', 'hidden')
+        .style('text-overflow', 'ellipsis')
+        .style('white-space', 'nowrap')
+        .each(function(d) {
           // Extract just the directory name (last segment)
           const parts = d.label.split('/');
-          return parts[parts.length - 1];
+          const dirName = parts[parts.length - 1];
+          
+          // Calculate available width (box width minus padding)
+          const fontSizes = [84, 60, 36, 22];
+          const fontSize = fontSizes[Math.min(d.depth || 0, fontSizes.length - 1)];
+          const dirNameWidth = dirName.length * fontSize * 0.5;
+          const calculatedWidth = dirNameWidth + 60;
+          const minWidths = [400, 250, 180, 140];
+          const minWidth = minWidths[Math.min(d.depth || 0, minWidths.length - 1)];
+          const boxWidth = Math.max(calculatedWidth, minWidth);
+          const availableWidth = boxWidth - 40; // 20px padding on each side
+          
+          // Estimate text width (rough approximation)
+          const charWidth = fontSize * 0.5;
+          const textWidth = dirName.length * charWidth;
+          
+          // Truncate if needed
+          if (textWidth > availableWidth) {
+            const maxChars = Math.floor(availableWidth / charWidth) - 3; // -3 for "..."
+            d3.select(this).text(dirName.substring(0, Math.max(1, maxChars)) + '...');
+          } else {
+            d3.select(this).text(dirName);
+          }
         });
       
       

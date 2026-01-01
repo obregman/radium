@@ -1984,16 +1984,16 @@
         const dy = node.y - centerY;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        const MIN_DIR_SCALE = 0.4;
-        const MAX_DIR_SCALE = 8.0;
+        const MIN_DIR_SCALE = 1.0;
+        const MAX_ZOOM_OUT_MULTIPLIER = 4;
         const ZOOM_THRESHOLD = 0.5;
         let dirSizeMultiplier = 1;
-        if (scale > 1) {
-          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(scale));
-        } else if (scale < ZOOM_THRESHOLD) {
-          // Only scale up directories when zoomed out below 20%
-          // Seamless exponential scaling: the smaller the zoom, the larger the directories
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.pow(ZOOM_THRESHOLD / scale, 0.9));
+        if (scale >= ZOOM_THRESHOLD) {
+          dirSizeMultiplier = MIN_DIR_SCALE;
+        } else {
+          const maxScale = MIN_DIR_SCALE * MAX_ZOOM_OUT_MULTIPLIER;
+          const progress = (ZOOM_THRESHOLD - scale) / ZOOM_THRESHOLD;
+          dirSizeMultiplier = MIN_DIR_SCALE + (maxScale - MIN_DIR_SCALE) * progress;
         }
         
         const fontSizes = [84, 60, 36, 22];
@@ -2226,18 +2226,18 @@
       updateDirectorySizes = function(zoomScale) {
         if (zoomScale === undefined) return;
         
-        const MIN_DIR_SCALE = 0.4;
-        const MAX_DIR_SCALE = 8.0;
+        const MIN_DIR_SCALE = 1.0;
+        const MAX_ZOOM_OUT_MULTIPLIER = 4;
         const ZOOM_THRESHOLD = 0.5;
         
         let dirSizeMultiplier = 1;
         
-        if (zoomScale > 1) {
-          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(zoomScale));
-        } else if (zoomScale < ZOOM_THRESHOLD) {
-          // Only scale up directories when zoomed out below 20%
-          // Seamless exponential scaling: the smaller the zoom, the larger the directories
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.pow(ZOOM_THRESHOLD / zoomScale, 0.9));
+        if (zoomScale >= ZOOM_THRESHOLD) {
+          dirSizeMultiplier = MIN_DIR_SCALE;
+        } else {
+          const maxScale = MIN_DIR_SCALE * MAX_ZOOM_OUT_MULTIPLIER;
+          const progress = (ZOOM_THRESHOLD - zoomScale) / ZOOM_THRESHOLD;
+          dirSizeMultiplier = MIN_DIR_SCALE + (maxScale - MIN_DIR_SCALE) * progress;
         }
         
         d3.selectAll('.dir-rect')
@@ -2997,9 +2997,31 @@
         })
         .style('fill', '#000')
         .style('font-weight', 'bold')
-        .text(d => {
+        .style('overflow', 'hidden')
+        .style('text-overflow', 'ellipsis')
+        .style('white-space', 'nowrap')
+        .each(function(d) {
           const parts = d.label.split('/');
-          return parts[parts.length - 1];
+          const dirName = parts[parts.length - 1];
+          
+          const fontSizes = [84, 60, 36, 22];
+          const fontSize = fontSizes[Math.min(d.depth || 0, fontSizes.length - 1)];
+          const dirNameWidth = dirName.length * fontSize * 0.5;
+          const calculatedWidth = dirNameWidth + 60;
+          const minWidths = [400, 250, 180, 140];
+          const minWidth = minWidths[Math.min(d.depth || 0, minWidths.length - 1)];
+          const boxWidth = Math.max(calculatedWidth, minWidth);
+          const availableWidth = boxWidth - 40;
+          
+          const charWidth = fontSize * 0.5;
+          const textWidth = dirName.length * charWidth;
+          
+          if (textWidth > availableWidth) {
+            const maxChars = Math.floor(availableWidth / charWidth) - 3;
+            d3.select(this).text(dirName.substring(0, Math.max(1, maxChars)) + '...');
+          } else {
+            d3.select(this).text(dirName);
+          }
         });
       
       

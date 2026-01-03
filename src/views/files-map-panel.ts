@@ -357,19 +357,19 @@ export class FilesMapPanel {
       const dirPath = path.dirname(file.path);
       
       // Calculate visual size (width) - linear scaling based on lines
-      // 1 line = 150px, 3000+ lines = 350px
-      const MIN_WIDTH = 150;
-      const MAX_WIDTH = 350;
+      // 1 line = 80px, 3000+ lines = 180px
+      const MIN_WIDTH = 80;
+      const MAX_WIDTH = 180;
       const MAX_LINES = 3000;
       
-      // Linear interpolation: 150px + (lines/3000) * 200px
+      // Linear interpolation based on line count
       let size;
       if (lines <= 1) {
         size = MIN_WIDTH;
       } else if (lines >= MAX_LINES) {
         size = MAX_WIDTH;
       } else {
-        // Linear scale from 150px to 350px based on line count
+        // Linear scale from 80px to 180px based on line count
         size = MIN_WIDTH + ((lines - 1) / (MAX_LINES - 1)) * (MAX_WIDTH - MIN_WIDTH);
       }
       
@@ -1728,13 +1728,13 @@ export class FilesMapPanel {
           dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.pow(ZOOM_THRESHOLD / scale, 0.9));
         }
         
-        const fontSizes = [84, 60, 36, 22];
+        const fontSizes = [56, 40, 26, 16];
         const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
         const parts = node.label.split('/');
         const dirName = parts[parts.length - 1];
-        const dirNameWidth = dirName.length * fontSize * 0.5;
+        const dirNameWidth = dirName.length * fontSize * 0.7;
         const calculatedWidth = dirNameWidth + 60;
-        const minWidths = [400, 250, 180, 140];
+        const minWidths = [280, 180, 130, 100];
         const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
         const dirWidth = Math.max(calculatedWidth, minWidth);
         const dirHeight = fontSize * 1.8;
@@ -1998,13 +1998,13 @@ export class FilesMapPanel {
         
         // Calculate width for directory name
         // Use 0.5 as character width ratio for bold text (tighter fit)
-        const dirNameWidth = dirName.length * fontSize * 0.5;
+        const dirNameWidth = dirName.length * fontSize * 0.7;
         
         // Add padding (30px on each side for margin)
         const calculatedWidth = dirNameWidth + 60;
         
         // Set minimum width based on depth
-        const minWidths = [400, 250, 180, 140];
+        const minWidths = [280, 180, 130, 100];
         const minWidth = minWidths[Math.min(parts.length - 1, minWidths.length - 1)];
         
         return Math.max(calculatedWidth, minWidth);
@@ -2017,22 +2017,18 @@ export class FilesMapPanel {
         if (zoomScale === undefined) return;
         
         // Calculate scaling factor for directory sizes
-        // - At 50% zoom and above: normal size (1.0) - this is the minimum
-        // - Below 50%: grows from 1.0 to 4.0 as we zoom out further
-        const MIN_DIR_SCALE = 1.0; // Minimum size at 50% zoom (normal size)
-        const MAX_ZOOM_OUT_MULTIPLIER = 4; // At very low zoom, 4x the minimum size
-        const ZOOM_THRESHOLD = 0.5; // Below 50% zoom, directories start growing
+        // Directories grow as you zoom out (inverse scaling)
+        // At 100%: 1x, at 50%: 2x, at 25%: 4x, at 12.5%: 8x (capped at 8x)
+        const MAX_DIR_SCALE = 8.0; // Maximum growth when zoomed out
         
         let dirSizeMultiplier = 1;
         
-        if (zoomScale >= ZOOM_THRESHOLD) {
-          // At or above 50% zoom: keep directories at normal size (minimum)
-          dirSizeMultiplier = MIN_DIR_SCALE;
+        if (zoomScale >= 1) {
+          // At or above 100%: normal size
+          dirSizeMultiplier = 1;
         } else {
-          // Below 50%: grow from MIN (1.0) to 4x MIN (4.0) as we zoom out further
-          const maxScale = MIN_DIR_SCALE * MAX_ZOOM_OUT_MULTIPLIER;
-          const progress = (ZOOM_THRESHOLD - zoomScale) / ZOOM_THRESHOLD;
-          dirSizeMultiplier = MIN_DIR_SCALE + (maxScale - MIN_DIR_SCALE) * progress;
+          // Below 100%: grow inversely with zoom, capped at MAX
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, 1 / zoomScale);
         }
         
         // Update directory shapes
@@ -2041,17 +2037,17 @@ export class FilesMapPanel {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'directory') return null;
             
-            const fontSizes = [84, 60, 36, 22];
+            const fontSizes = [56, 40, 26, 16];
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             
             // Calculate text width
             const parts = node.label.split('/');
             const dirName = parts[parts.length - 1];
-            const dirNameWidth = dirName.length * fontSize * 0.5;
+            const dirNameWidth = dirName.length * fontSize * 0.7;
             const calculatedWidth = dirNameWidth + 60; // 30px margin on each side
             
             // Set minimum width based on depth
-            const minWidths = [400, 250, 180, 140];
+            const minWidths = [280, 180, 130, 100];
             const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
             
             const width = Math.max(calculatedWidth, minWidth);
@@ -2073,14 +2069,20 @@ export class FilesMapPanel {
             \`;
           });
         
-        // Update directory name font sizes (always centered)
+        // Update directory name font sizes and truncation (always centered)
         d3.selectAll('.directory-name')
           .style('font-size', function() {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'directory') return null;
-            const fontSizes = [64, 44, 28, 18];
+            const fontSizes = [56, 40, 26, 16];
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             return fontSize + 'px';
+          })
+          .text(function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return '';
+            const parts = node.label.split('/');
+            return parts[parts.length - 1];
           });
       }
       
@@ -2290,9 +2292,9 @@ export class FilesMapPanel {
       // Assign initial angles and POSITIONS to files for multi-layer radial distribution
       // Layer configuration: [maxFiles, radius]
       const LAYER_CONFIG = [
-        { maxFiles: 8, radius: 325 },    // Layer 1: max 8 files
-        { maxFiles: 12, radius: 715 },   // Layer 2: max 12 files (+50%)
-        { maxFiles: 18, radius: 1183 }   // Layer 3: max 18 files (+50%)
+        { maxFiles: 8, radius: 280 },    // Layer 1: max 8 files
+        { maxFiles: 12, radius: 480 },   // Layer 2: max 12 files (+50%)
+        { maxFiles: 18, radius: 720 }    // Layer 3: max 18 files (+50%)
       ];
       
       dirToFiles.forEach((files, dirPath) => {
@@ -2827,7 +2829,7 @@ export class FilesMapPanel {
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
         .style('font-size', d => {
-          const fontSizes = [84, 60, 36, 22];
+          const fontSizes = [56, 40, 26, 16];
           const fontSize = fontSizes[Math.min(d.depth || 0, fontSizes.length - 1)];
           return \`\${fontSize}px\`;
         })
@@ -2836,32 +2838,10 @@ export class FilesMapPanel {
         .style('overflow', 'hidden')
         .style('text-overflow', 'ellipsis')
         .style('white-space', 'nowrap')
-        .each(function(d) {
+        .text(d => {
           // Extract just the directory name (last segment)
           const parts = d.label.split('/');
-          const dirName = parts[parts.length - 1];
-          
-          // Calculate available width (box width minus padding)
-          const fontSizes = [84, 60, 36, 22];
-          const fontSize = fontSizes[Math.min(d.depth || 0, fontSizes.length - 1)];
-          const dirNameWidth = dirName.length * fontSize * 0.5;
-          const calculatedWidth = dirNameWidth + 60;
-          const minWidths = [400, 250, 180, 140];
-          const minWidth = minWidths[Math.min(d.depth || 0, minWidths.length - 1)];
-          const boxWidth = Math.max(calculatedWidth, minWidth);
-          const availableWidth = boxWidth - 40; // 20px padding on each side
-          
-          // Estimate text width (rough approximation)
-          const charWidth = fontSize * 0.5;
-          const textWidth = dirName.length * charWidth;
-          
-          // Truncate if needed
-          if (textWidth > availableWidth) {
-            const maxChars = Math.floor(availableWidth / charWidth) - 3; // -3 for "..."
-            d3.select(this).text(dirName.substring(0, Math.max(1, maxChars)) + '...');
-          } else {
-            d3.select(this).text(dirName);
-          }
+          return parts[parts.length - 1];
         });
       
       

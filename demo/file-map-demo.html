@@ -1984,25 +1984,21 @@
         const dy = node.y - centerY;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        const MIN_DIR_SCALE = 1.0;
-        const MAX_ZOOM_OUT_MULTIPLIER = 4;
-        const ZOOM_THRESHOLD = 0.5;
+        const MAX_DIR_SCALE = 8.0;
         let dirSizeMultiplier = 1;
-        if (scale >= ZOOM_THRESHOLD) {
-          dirSizeMultiplier = MIN_DIR_SCALE;
+        if (scale >= 1) {
+          dirSizeMultiplier = 1;
         } else {
-          const maxScale = MIN_DIR_SCALE * MAX_ZOOM_OUT_MULTIPLIER;
-          const progress = (ZOOM_THRESHOLD - scale) / ZOOM_THRESHOLD;
-          dirSizeMultiplier = MIN_DIR_SCALE + (maxScale - MIN_DIR_SCALE) * progress;
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, 1 / scale);
         }
         
-        const fontSizes = [84, 60, 36, 22];
+        const fontSizes = [56, 40, 26, 16];
         const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
         const parts = node.label.split('/');
         const dirName = parts[parts.length - 1];
-        const dirNameWidth = dirName.length * fontSize * 0.5;
+        const dirNameWidth = dirName.length * fontSize * 0.7;
         const calculatedWidth = dirNameWidth + 60;
-        const minWidths = [400, 250, 180, 140];
+        const minWidths = [280, 180, 130, 100];
         const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
         const dirWidth = Math.max(calculatedWidth, minWidth);
         const dirHeight = fontSize * 1.8;
@@ -2216,9 +2212,9 @@
       function getTextWidth(text, fontSize) {
         const parts = text.split('/');
         const dirName = parts[parts.length - 1];
-        const dirNameWidth = dirName.length * fontSize * 0.5;
+        const dirNameWidth = dirName.length * fontSize * 0.7;
         const calculatedWidth = dirNameWidth + 60;
-        const minWidths = [400, 250, 180, 140];
+        const minWidths = [280, 180, 130, 100];
         const minWidth = minWidths[Math.min(parts.length - 1, minWidths.length - 1)];
         return Math.max(calculatedWidth, minWidth);
       }
@@ -2226,18 +2222,14 @@
       updateDirectorySizes = function(zoomScale) {
         if (zoomScale === undefined) return;
         
-        const MIN_DIR_SCALE = 1.0;
-        const MAX_ZOOM_OUT_MULTIPLIER = 4;
-        const ZOOM_THRESHOLD = 0.5;
+        const MAX_DIR_SCALE = 8.0;
         
         let dirSizeMultiplier = 1;
         
-        if (zoomScale >= ZOOM_THRESHOLD) {
-          dirSizeMultiplier = MIN_DIR_SCALE;
+        if (zoomScale >= 1) {
+          dirSizeMultiplier = 1;
         } else {
-          const maxScale = MIN_DIR_SCALE * MAX_ZOOM_OUT_MULTIPLIER;
-          const progress = (ZOOM_THRESHOLD - zoomScale) / ZOOM_THRESHOLD;
-          dirSizeMultiplier = MIN_DIR_SCALE + (maxScale - MIN_DIR_SCALE) * progress;
+          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, 1 / zoomScale);
         }
         
         d3.selectAll('.dir-rect')
@@ -2245,15 +2237,15 @@
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'directory') return null;
             
-            const fontSizes = [84, 60, 36, 22];
+            const fontSizes = [56, 40, 26, 16];
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             
             const parts = node.label.split('/');
             const dirName = parts[parts.length - 1];
-            const dirNameWidth = dirName.length * fontSize * 0.5;
+            const dirNameWidth = dirName.length * fontSize * 0.7;
             const calculatedWidth = dirNameWidth + 60;
             
-            const minWidths = [400, 250, 180, 140];
+            const minWidths = [280, 180, 130, 100];
             const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
             
             const width = Math.max(calculatedWidth, minWidth);
@@ -2278,9 +2270,16 @@
           .style('font-size', function() {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'directory') return null;
-            const fontSizes = [64, 44, 28, 18];
+            const fontSizes = [56, 40, 26, 16];
             const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
             return fontSize + 'px';
+          })
+          .each(function() {
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return;
+            
+            const parts = node.label.split('/');
+            d3.select(this).text(parts[parts.length - 1]);
           });
       }
       
@@ -2486,9 +2485,9 @@
       
       // Layer configuration: [maxFiles, radius]
       const LAYER_CONFIG = [
-        { maxFiles: 8, radius: 325 },    // Layer 1: max 8 files
-        { maxFiles: 12, radius: 715 },   // Layer 2: max 12 files (+50%)
-        { maxFiles: 18, radius: 1183 }   // Layer 3: max 18 files (+50%)
+        { maxFiles: 8, radius: 280 },    // Layer 1: max 8 files
+        { maxFiles: 12, radius: 480 },   // Layer 2: max 12 files (+50%)
+        { maxFiles: 18, radius: 720 }    // Layer 3: max 18 files (+50%)
       ];
       
       dirToFiles.forEach((files, dirPath) => {
@@ -2991,7 +2990,7 @@
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
         .style('font-size', d => {
-          const fontSizes = [84, 60, 36, 22];
+          const fontSizes = [56, 40, 26, 16];
           const fontSize = fontSizes[Math.min(d.depth || 0, fontSizes.length - 1)];
           return `${fontSize}px`;
         })
@@ -3002,26 +3001,7 @@
         .style('white-space', 'nowrap')
         .each(function(d) {
           const parts = d.label.split('/');
-          const dirName = parts[parts.length - 1];
-          
-          const fontSizes = [84, 60, 36, 22];
-          const fontSize = fontSizes[Math.min(d.depth || 0, fontSizes.length - 1)];
-          const dirNameWidth = dirName.length * fontSize * 0.5;
-          const calculatedWidth = dirNameWidth + 60;
-          const minWidths = [400, 250, 180, 140];
-          const minWidth = minWidths[Math.min(d.depth || 0, minWidths.length - 1)];
-          const boxWidth = Math.max(calculatedWidth, minWidth);
-          const availableWidth = boxWidth - 40;
-          
-          const charWidth = fontSize * 0.5;
-          const textWidth = dirName.length * charWidth;
-          
-          if (textWidth > availableWidth) {
-            const maxChars = Math.floor(availableWidth / charWidth) - 3;
-            d3.select(this).text(dirName.substring(0, Math.max(1, maxChars)) + '...');
-          } else {
-            d3.select(this).text(dirName);
-          }
+          d3.select(this).text(parts[parts.length - 1]);
         });
       
       

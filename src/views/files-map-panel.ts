@@ -2137,38 +2137,49 @@ export class FilesMapPanel {
       });
       
       // Position directories in circles around their parents with depth-based spacing
-      const BASE_DIR_RADIUS = 1800; // Base radius for all directories
-      const FILE_SPACE = 1400; // Space needed for files (max 3 layers, increased by 40%)
+      const BASE_DIR_RADIUS = 1300; // Base radius between directories
       const DIRS_PER_LAYER = 8;
       
-      // Calculate directory depth (how many levels of directories below this one)
-      function calculateDirectoryDepth(dirNode) {
-        const children = dirHierarchy.get(dirNode.path) || [];
+      // Calculate required file space for a directory based on its file count and sizes
+      function calculateFileSpace(dirPath) {
+        const files = dirToFiles.get(dirPath) || [];
+        if (files.length === 0) return 0;
         
-        if (children.length === 0) {
-          // Leaf directory - no child directories
-          dirNode.directoryDepth = 0;
-          return 0;
+        // Use the same layer config as file positioning
+        const LAYER_CONFIG = [
+          { maxFiles: 8, radius: 392 },
+          { maxFiles: 12, radius: 672 },
+          { maxFiles: 18, radius: 1008 }
+        ];
+        
+        // Determine which layer the last file will be in
+        let maxRadius = LAYER_CONFIG[0].radius;
+        let cumulativeFiles = 0;
+        
+        for (let i = 0; i < LAYER_CONFIG.length; i++) {
+          cumulativeFiles += LAYER_CONFIG[i].maxFiles;
+          if (files.length <= cumulativeFiles) {
+            maxRadius = LAYER_CONFIG[i].radius;
+            break;
+          }
         }
         
-        // Calculate depth for all children first (recursive)
-        let maxChildDepth = 0;
-        children.forEach(child => {
-          const childDepth = calculateDirectoryDepth(child);
-          maxChildDepth = Math.max(maxChildDepth, childDepth);
-        });
+        // If more files than configured layers, use last layer radius
+        if (files.length > cumulativeFiles) {
+          maxRadius = LAYER_CONFIG[LAYER_CONFIG.length - 1].radius;
+        }
         
-        // This directory's depth is 1 + max child depth
-        dirNode.directoryDepth = maxChildDepth + 1;
-        return dirNode.directoryDepth;
+        // Calculate average file size in this directory
+        // Files range from 160px to 360px width (80px to 180px height)
+        const avgFileWidth = files.reduce((sum, f) => sum + f.size, 0) / files.length;
+        const avgFileHeight = avgFileWidth / 2;
+        
+        // Estimate the actual area occupied by files at the outermost radius
+        // Account for: radius + half file height + spacing
+        const fileAreaBuffer = avgFileHeight / 2 + 40; // Half height + 40px spacing
+        
+        return maxRadius + fileAreaBuffer;
       }
-      
-      // Calculate depth for all directories
-      nodes.forEach(node => {
-        if (node.type === 'directory') {
-          calculateDirectoryDepth(node);
-        }
-      });
       
       // Position root directories with significant separation for distinct graphs
       if (rootDirs.length === 1) {
@@ -2192,11 +2203,11 @@ export class FilesMapPanel {
         
         // Position roots that don't have saved positions
         if (rootsWithoutSavedPos.length > 0) {
-          // Calculate spacing based on each root's depth
+          // Calculate spacing based on each root's file count
           const rootSpacing = [];
           rootsWithoutSavedPos.forEach(root => {
-            const depthFactor = (root.directoryDepth || 0) + 1;
-            const totalRadius = FILE_SPACE + (BASE_DIR_RADIUS * depthFactor);
+            const fileSpace = calculateFileSpace(root.path);
+            const totalRadius = fileSpace + BASE_DIR_RADIUS;
             rootSpacing.push(totalRadius * 2); // Double for full diameter
           });
           
@@ -2227,11 +2238,14 @@ export class FilesMapPanel {
         });
       }
       
-      // Position child directories in circles around their parents with depth-based radius
+      // Position child directories around their parents
       // Process directories level by level to ensure parents are positioned before children
-      function positionChildrenRecursively(parentDir) {
+      function positionChildrenRecursively(parentDir, grandparentDir = null) {
         const childDirs = dirHierarchy.get(parentDir.path);
         if (!childDirs || childDirs.length === 0) return;
+        
+        // Determine if parent is a root directory
+        const isParentRoot = rootDirs.includes(parentDir);
         
         childDirs.forEach((childDir, index) => {
           // Skip positioning if this child already has a saved position
@@ -2241,19 +2255,16 @@ export class FilesMapPanel {
             childDir.y = childDir.fy;
             
             // Still recursively position this directory's children
-            positionChildrenRecursively(childDir);
+            positionChildrenRecursively(childDir, parentDir);
             return;
           }
           
-          // Calculate distance factor based on directory depth
-          // depth 0 (no child dirs) = factor 1
-          // depth 1 (1 level of dirs) = factor 2
-          // depth 2 (2 levels of dirs) = factor 3
-          // depth 3 (3 levels of dirs) = factor 4
-          const distanceFactor = (childDir.directoryDepth || 0) + 1;
+          // Calculate file space needed for parent directory's files
+          const parentFileSpace = calculateFileSpace(parentDir.path);
           
-          // Calculate radius: FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor)
-          const baseRadius = FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor);
+          // Calculate radius: parent's file space + base directory spacing
+          // The child's depth does NOT affect its distance from parent
+          const baseRadius = parentFileSpace + BASE_DIR_RADIUS;
           
           // Calculate which layer this directory belongs to
           const layer = Math.floor(index / DIRS_PER_LAYER);
@@ -2264,9 +2275,40 @@ export class FilesMapPanel {
           const layerSpacing = layer * 500;
           const radius = baseRadius + layerSpacing;
           
-          // Calculate angle for this directory in its layer
-          const angleStep = (2 * Math.PI) / dirsInThisLayer;
-          const angle = indexInLayer * angleStep;
+          let angle;
+          
+          if (isParentRoot) {
+            // Root directory children: place in full circle around parent
+            const angleStep = (2 * Math.PI) / dirsInThisLayer;
+            angle = indexInLayer * angleStep;
+          } else {
+            // Non-root directory children: place in a fan/arc away from grandparent
+            
+            // Calculate the angle from grandparent to parent (the "away" direction)
+            let awayAngle;
+            if (grandparentDir) {
+              const dx = parentDir.x - grandparentDir.x;
+              const dy = parentDir.y - grandparentDir.y;
+              awayAngle = Math.atan2(dy, dx);
+            } else {
+              // If no grandparent (shouldn't happen for non-root), default to right
+              awayAngle = 0;
+            }
+            
+            // Create a fan of children around the "away" direction
+            // Fan spread: 120 degrees (2/3 of PI radians)
+            const fanSpread = (2 * Math.PI) / 3;
+            const fanStart = awayAngle - fanSpread / 2;
+            
+            if (dirsInThisLayer === 1) {
+              // Single child: place directly away from grandparent
+              angle = awayAngle;
+            } else {
+              // Multiple children: spread in a fan
+              const angleStep = fanSpread / (dirsInThisLayer - 1);
+              angle = fanStart + (indexInLayer * angleStep);
+            }
+          }
           
           // Set position around parent's CURRENT position
           // This ensures children follow their parent even if parent has a saved position
@@ -2277,10 +2319,9 @@ export class FilesMapPanel {
           
           // Store the calculated values for debugging
           childDir.calculatedRadius = radius;
-          childDir.distanceFactor = distanceFactor;
           
           // Recursively position this directory's children
-          positionChildrenRecursively(childDir);
+          positionChildrenRecursively(childDir, parentDir);
         });
       }
       

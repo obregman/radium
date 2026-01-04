@@ -53,48 +53,12 @@
 
     #demo-header h1 {
       margin: 0;
-      font-size: 20px;
-      font-weight: 600;
-    }
-
-    #demo-header .subtitle {
-      font-size: 12px;
-      opacity: 0.9;
-      margin-top: 2px;
-    }
-
-    #demo-info {
-      background: rgba(255, 255, 255, 0.2);
+      font-size: 40, 255, 255, 0.2);
       border: 1px solid rgba(255, 255, 255, 0.4);
       color: white;
       padding: 8px 16px;
       border-radius: 4px;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    body {
-      margin: 0;
-      padding: 0;
-      padding-top: 70px;
-      background: #1e1e1e;
-      color: #d4d4d4;
-      font-family: var(--vscode-font-family);
-      overflow: hidden;
-    }
-
-    /* ============================================
-       ORIGINAL FILES MAP PANEL STYLES
-       ============================================ */
-    
-    #controls {
-      position: absolute;
-      top: 80px;
-      left: 10px;
-      z-index: 1000;
-      background: rgba(30, 30, 30, 0.95);
+      font-size: 26, 30, 30, 0.95);
       padding: 10px;
       border-radius: 6px;
       border: 1px solid #444;
@@ -109,65 +73,7 @@
       border: 1px solid #555;
       padding: 8px 12px;
       border-radius: 4px;
-      font-size: 13px;
-      width: 250px;
-      outline: none;
-    }
-    
-    #search-box:focus {
-      border-color: #007acc;
-      background: #3d3d3d;
-    }
-    
-    #search-box::placeholder {
-      color: #888;
-    }
-    
-    #color-mode-select {
-      background: #2d2d2d;
-      color: #d4d4d4;
-      border: 1px solid #555;
-      padding: 8px 12px;
-      border-radius: 4px;
-      font-size: 13px;
-      cursor: pointer;
-      outline: none;
-      min-width: 180px;
-    }
-    
-    #color-mode-select:hover {
-      background: #3d3d3d;
-      border-color: #666;
-    }
-    
-    #color-mode-select:focus {
-      border-color: #007acc;
-    }
-    
-    #graph {
-      width: 100vw;
-      height: calc(100vh - 70px);
-    }
-    
-    .node-file {
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-    
-    .node-file:hover {
-      opacity: 1;
-    }
-    
-    .node-directory {
-      cursor: move;
-    }
-    
-    .node-directory:hover {
-      opacity: 1;
-    }
-    
-    g.nodes g:hover {
-      filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.5));
+      font-size: 26, 255, 255, 0.5));
     }
     
     .edge-file {
@@ -190,55 +96,12 @@
     }
     
     .node-label {
-      font-size: 14px;
-      text-anchor: middle;
-      pointer-events: none;
-      user-select: none;
-    }
-    
-    .node-sublabel {
-      font-size: 9px;
-      fill: #999;
-      text-anchor: middle;
-      pointer-events: none;
-      user-select: none;
-    }
-    
-    .copy-button {
-      opacity: 0;
-      transition: opacity 0.3s;
-      cursor: pointer;
-      pointer-events: none;
-    }
-    
-    .copy-button.visible {
-      opacity: 1;
-      pointer-events: all;
-    }
-    
-    .copy-button rect {
-      pointer-events: all;
-      cursor: pointer;
-    }
-    
-    
-    .arrow {
-      fill: currentColor;
-    }
-    
-    #tooltip {
-      position: absolute;
-      background: rgba(30, 30, 30, 0.95);
+      font-size: 28, 30, 30, 0.95);
       color: #d4d4d4;
       padding: 8px 12px;
       border-radius: 4px;
       border: 1px solid #555;
-      font-size: 13px;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.2s;
-      z-index: 2000;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      font-size: 26, 0, 0, 0.5);
     }
     
     #tooltip.visible {
@@ -251,22 +114,10 @@
     }
     
     .tooltip-lines {
-      font-size: 11px;
-      color: #999;
-    }
-    
-    .smell-details-panel {
-      background: rgba(30, 30, 30, 0.95);
+      font-size: 22, 30, 30, 0.95);
       color: #d4d4d4;
       padding: 8px 12px;
-      font-size: 13px;
-      opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
-      text-align: left;
-      border-radius: 6px;
-      border: 1px solid #555;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      font-size: 26, 0, 0, 0.5);
       width: 100%;
       box-sizing: border-box;
     }
@@ -276,73 +127,7 @@
     }
     
     .smell-header {
-      font-size: 13px;
-      margin-bottom: 3px;
-      white-space: nowrap;
-    }
-    
-    .smell-score {
-      font-weight: bold;
-    }
-    
-    .smell-score.clean { color: #52B788; }
-    .smell-score.minor { color: #98D8C8; }
-    .smell-score.moderate { color: #F7DC6F; }
-    .smell-score.significant { color: #FFA07A; }
-    .smell-score.high { color: #E63946; }
-    
-    .smell-metrics {
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
-      align-items: flex-start;
-    }
-    
-    .smell-metric {
-      font-size: 13px;
-      color: #d4d4d4;
-      text-align: left;
-      white-space: nowrap;
-    }
-    
-    .smell-metric-value {
-      font-weight: bold;
-    }
-    
-    .symbol-triangle {
-      opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
-      cursor: pointer;
-    }
-    
-    .symbol-triangle.visible {
-      opacity: 1;
-      pointer-events: all;
-    }
-    
-    .symbol-triangle rect {
-      fill: #F7DC6F;
-      stroke: #000;
-      stroke-width: 1;
-      transition: fill 0.3s;
-    }
-    
-    .symbol-triangle.empty rect {
-      fill: #666;
-    }
-    
-    .symbol-list-panel {
-      background: #4a4a4a;
-      color: #ffffff;
-      padding: 6px 10px;
-      border-radius: 4px;
-      border: 2px solid #ffffff;
-      font-size: 9px;
-      max-height: 120px;
-      overflow-y: auto;
-      overflow-x: hidden;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      font-size: 26, 0, 0, 0.5);
       width: fit-content;
       min-width: 80px;
     }
@@ -380,10 +165,7 @@
       padding: 8px 16px;
       border-radius: 6px;
       border: 1px solid #444;
-      font-size: 14px;
-      font-weight: 500;
-      z-index: 1000;
-      font-family: 'Courier New', monospace;
+      font-size: 28, monospace;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
   </style>
@@ -504,7 +286,7 @@
           path: 'src/services/user-service.ts',
           lines: 150,
           lang: 'typescript',
-          size: 200,
+          size: 400,
           exportedSymbols: 5,
           smellScore: 35,
           smellDetails: {
@@ -525,7 +307,7 @@
           path: 'src/services/auth-service.ts',
           lines: 95,
           lang: 'typescript',
-          size: 170,
+          size: 340,
           exportedSymbols: 3,
           smellScore: 20,
           smellDetails: {
@@ -546,7 +328,7 @@
           path: 'src/services/email-service.ts',
           lines: 180,
           lang: 'typescript',
-          size: 210,
+          size: 420,
           exportedSymbols: 4,
           smellScore: 42,
           smellDetails: {
@@ -567,7 +349,7 @@
           path: 'src/services/payment-service.ts',
           lines: 220,
           lang: 'typescript',
-          size: 235,
+          size: 470,
           exportedSymbols: 6,
           smellScore: 58,
           smellDetails: {
@@ -588,7 +370,7 @@
           path: 'src/services/notification-service.ts',
           lines: 145,
           lang: 'typescript',
-          size: 195,
+          size: 390,
           exportedSymbols: 5,
           smellScore: 38,
           smellDetails: {
@@ -609,7 +391,7 @@
           path: 'src/services/storage-service.ts',
           lines: 165,
           lang: 'typescript',
-          size: 200,
+          size: 400,
           exportedSymbols: 7,
           smellScore: 32,
           smellDetails: {
@@ -630,7 +412,7 @@
           path: 'src/services/cache-service.ts',
           lines: 110,
           lang: 'typescript',
-          size: 175,
+          size: 350,
           exportedSymbols: 4,
           smellScore: 22,
           smellDetails: {
@@ -651,7 +433,7 @@
           path: 'src/services/analytics-service.ts',
           lines: 190,
           lang: 'typescript',
-          size: 215,
+          size: 430,
           exportedSymbols: 5,
           smellScore: 48,
           smellDetails: {
@@ -672,7 +454,7 @@
           path: 'src/services/search-service.ts',
           lines: 205,
           lang: 'typescript',
-          size: 225,
+          size: 450,
           exportedSymbols: 6,
           smellScore: 52,
           smellDetails: {
@@ -693,7 +475,7 @@
           path: 'src/services/webhook-service.ts',
           lines: 135,
           lang: 'typescript',
-          size: 185,
+          size: 370,
           exportedSymbols: 3,
           smellScore: 36,
           smellDetails: {
@@ -714,7 +496,7 @@
           path: 'src/services/rate-limiter-service.ts',
           lines: 88,
           lang: 'typescript',
-          size: 160,
+          size: 320,
           exportedSymbols: 2,
           smellScore: 18,
           smellDetails: {
@@ -737,7 +519,7 @@
           path: 'src/models/user.model.ts',
           lines: 45,
           lang: 'typescript',
-          size: 150,
+          size: 300,
           exportedSymbols: 2,
           smellScore: 10,
           smellDetails: {
@@ -760,7 +542,7 @@
           path: 'src/utils/validation.ts',
           lines: 85,
           lang: 'typescript',
-          size: 165,
+          size: 330,
           exportedSymbols: 4,
           smellScore: 25,
           smellDetails: {
@@ -781,7 +563,7 @@
           path: 'src/utils/logger.ts',
           lines: 120,
           lang: 'typescript',
-          size: 185,
+          size: 370,
           exportedSymbols: 1,
           smellScore: 45,
           smellDetails: {
@@ -804,7 +586,7 @@
           path: 'src/controllers/auth.controller.ts',
           lines: 120,
           lang: 'typescript',
-          size: 190,
+          size: 380,
           exportedSymbols: 1,
           smellScore: 55,
           smellDetails: {
@@ -825,7 +607,7 @@
           path: 'src/controllers/user.controller.ts',
           lines: 185,
           lang: 'typescript',
-          size: 215,
+          size: 430,
           exportedSymbols: 1,
           smellScore: 62,
           smellDetails: {
@@ -846,7 +628,7 @@
           path: 'src/controllers/product.controller.ts',
           lines: 210,
           lang: 'typescript',
-          size: 230,
+          size: 460,
           exportedSymbols: 1,
           smellScore: 68,
           smellDetails: {
@@ -867,7 +649,7 @@
           path: 'src/controllers/order.controller.ts',
           lines: 245,
           lang: 'typescript',
-          size: 255,
+          size: 510,
           exportedSymbols: 1,
           smellScore: 72,
           smellDetails: {
@@ -888,7 +670,7 @@
           path: 'src/controllers/payment.controller.ts',
           lines: 165,
           lang: 'typescript',
-          size: 200,
+          size: 400,
           exportedSymbols: 1,
           smellScore: 58,
           smellDetails: {
@@ -909,7 +691,7 @@
           path: 'src/controllers/notification.controller.ts',
           lines: 130,
           lang: 'typescript',
-          size: 180,
+          size: 360,
           exportedSymbols: 1,
           smellScore: 45,
           smellDetails: {
@@ -930,7 +712,7 @@
           path: 'src/controllers/analytics.controller.ts',
           lines: 195,
           lang: 'typescript',
-          size: 220,
+          size: 440,
           exportedSymbols: 1,
           smellScore: 64,
           smellDetails: {
@@ -951,7 +733,7 @@
           path: 'src/controllers/search.controller.ts',
           lines: 155,
           lang: 'typescript',
-          size: 195,
+          size: 390,
           exportedSymbols: 1,
           smellScore: 52,
           smellDetails: {
@@ -972,7 +754,7 @@
           path: 'src/controllers/webhook.controller.ts',
           lines: 140,
           lang: 'typescript',
-          size: 185,
+          size: 370,
           exportedSymbols: 1,
           smellScore: 48,
           smellDetails: {
@@ -993,7 +775,7 @@
           path: 'src/controllers/admin.controller.ts',
           lines: 280,
           lang: 'typescript',
-          size: 280,
+          size: 560,
           exportedSymbols: 1,
           smellScore: 78,
           smellDetails: {
@@ -1009,150 +791,150 @@
         },
         
         // File nodes - src/models
-        { id: 'src/models/product.model.ts', type: 'file', label: 'product.model.ts', path: 'src/models/product.model.ts', lines: 85, lang: 'typescript', size: 160, exportedSymbols: 2, smellScore: 18, functions: [], variables: [], types: ['Product', 'ProductSchema'] },
-        { id: 'src/models/order.model.ts', type: 'file', label: 'order.model.ts', path: 'src/models/order.model.ts', lines: 95, lang: 'typescript', size: 170, exportedSymbols: 2, smellScore: 22, functions: [], variables: [], types: ['Order', 'OrderSchema'] },
-        { id: 'src/models/payment.model.ts', type: 'file', label: 'payment.model.ts', path: 'src/models/payment.model.ts', lines: 75, lang: 'typescript', size: 155, exportedSymbols: 2, smellScore: 15, functions: [], variables: [], types: ['Payment', 'PaymentSchema'] },
-        { id: 'src/models/notification.model.ts', type: 'file', label: 'notification.model.ts', path: 'src/models/notification.model.ts', lines: 65, lang: 'typescript', size: 145, exportedSymbols: 2, smellScore: 12, functions: [], variables: [], types: ['Notification', 'NotificationSchema'] },
+        { id: 'src/models/product.model.ts', type: 'file', label: 'product.model.ts', path: 'src/models/product.model.ts', lines: 85, lang: 'typescript', size: 320, exportedSymbols: 2, smellScore: 18, functions: [], variables: [], types: ['Product', 'ProductSchema'] },
+        { id: 'src/models/order.model.ts', type: 'file', label: 'order.model.ts', path: 'src/models/order.model.ts', lines: 95, lang: 'typescript', size: 340, exportedSymbols: 2, smellScore: 22, functions: [], variables: [], types: ['Order', 'OrderSchema'] },
+        { id: 'src/models/payment.model.ts', type: 'file', label: 'payment.model.ts', path: 'src/models/payment.model.ts', lines: 75, lang: 'typescript', size: 310, exportedSymbols: 2, smellScore: 15, functions: [], variables: [], types: ['Payment', 'PaymentSchema'] },
+        { id: 'src/models/notification.model.ts', type: 'file', label: 'notification.model.ts', path: 'src/models/notification.model.ts', lines: 65, lang: 'typescript', size: 290, exportedSymbols: 2, smellScore: 12, functions: [], variables: [], types: ['Notification', 'NotificationSchema'] },
         
         // File nodes - src/middleware
-        { id: 'src/middleware/auth.middleware.ts', type: 'file', label: 'auth.middleware.ts', path: 'src/middleware/auth.middleware.ts', lines: 120, lang: 'typescript', size: 180, exportedSymbols: 3, smellScore: 28, functions: ['authenticate()', 'authorize()', 'checkPermissions()'], variables: [], types: [] },
-        { id: 'src/middleware/validation.middleware.ts', type: 'file', label: 'validation.middleware.ts', path: 'src/middleware/validation.middleware.ts', lines: 95, lang: 'typescript', size: 165, exportedSymbols: 2, smellScore: 20, functions: ['validateBody()', 'validateParams()'], variables: [], types: [] },
-        { id: 'src/middleware/error.middleware.ts', type: 'file', label: 'error.middleware.ts', path: 'src/middleware/error.middleware.ts', lines: 85, lang: 'typescript', size: 160, exportedSymbols: 1, smellScore: 18, functions: ['errorHandler()'], variables: [], types: [] },
-        { id: 'src/middleware/rate-limit.middleware.ts', type: 'file', label: 'rate-limit.middleware.ts', path: 'src/middleware/rate-limit.middleware.ts', lines: 75, lang: 'typescript', size: 150, exportedSymbols: 2, smellScore: 22, functions: ['rateLimiter()', 'checkLimit()'], variables: [], types: [] },
-        { id: 'src/middleware/cors.middleware.ts', type: 'file', label: 'cors.middleware.ts', path: 'src/middleware/cors.middleware.ts', lines: 55, lang: 'typescript', size: 135, exportedSymbols: 1, smellScore: 10, functions: ['corsHandler()'], variables: [], types: [] },
+        { id: 'src/middleware/auth.middleware.ts', type: 'file', label: 'auth.middleware.ts', path: 'src/middleware/auth.middleware.ts', lines: 120, lang: 'typescript', size: 360, exportedSymbols: 3, smellScore: 28, functions: ['authenticate()', 'authorize()', 'checkPermissions()'], variables: [], types: [] },
+        { id: 'src/middleware/validation.middleware.ts', type: 'file', label: 'validation.middleware.ts', path: 'src/middleware/validation.middleware.ts', lines: 95, lang: 'typescript', size: 330, exportedSymbols: 2, smellScore: 20, functions: ['validateBody()', 'validateParams()'], variables: [], types: [] },
+        { id: 'src/middleware/error.middleware.ts', type: 'file', label: 'error.middleware.ts', path: 'src/middleware/error.middleware.ts', lines: 85, lang: 'typescript', size: 320, exportedSymbols: 1, smellScore: 18, functions: ['errorHandler()'], variables: [], types: [] },
+        { id: 'src/middleware/rate-limit.middleware.ts', type: 'file', label: 'rate-limit.middleware.ts', path: 'src/middleware/rate-limit.middleware.ts', lines: 75, lang: 'typescript', size: 300, exportedSymbols: 2, smellScore: 22, functions: ['rateLimiter()', 'checkLimit()'], variables: [], types: [] },
+        { id: 'src/middleware/cors.middleware.ts', type: 'file', label: 'cors.middleware.ts', path: 'src/middleware/cors.middleware.ts', lines: 55, lang: 'typescript', size: 270, exportedSymbols: 1, smellScore: 10, functions: ['corsHandler()'], variables: [], types: [] },
         
         // File nodes - src/config
-        { id: 'src/config/database.config.ts', type: 'file', label: 'database.config.ts', path: 'src/config/database.config.ts', lines: 65, lang: 'typescript', size: 145, exportedSymbols: 1, smellScore: 15, functions: [], variables: ['dbConfig'], types: ['DatabaseConfig'] },
-        { id: 'src/config/app.config.ts', type: 'file', label: 'app.config.ts', path: 'src/config/app.config.ts', lines: 85, lang: 'typescript', size: 160, exportedSymbols: 1, smellScore: 18, functions: [], variables: ['appConfig'], types: ['AppConfig'] },
-        { id: 'src/config/auth.config.ts', type: 'file', label: 'auth.config.ts', path: 'src/config/auth.config.ts', lines: 55, lang: 'typescript', size: 135, exportedSymbols: 1, smellScore: 12, functions: [], variables: ['authConfig'], types: ['AuthConfig'] },
-        { id: 'src/config/email.config.ts', type: 'file', label: 'email.config.ts', path: 'src/config/email.config.ts', lines: 45, lang: 'typescript', size: 125, exportedSymbols: 1, smellScore: 8, functions: [], variables: ['emailConfig'], types: ['EmailConfig'] },
+        { id: 'src/config/database.config.ts', type: 'file', label: 'database.config.ts', path: 'src/config/database.config.ts', lines: 65, lang: 'typescript', size: 290, exportedSymbols: 1, smellScore: 15, functions: [], variables: ['dbConfig'], types: ['DatabaseConfig'] },
+        { id: 'src/config/app.config.ts', type: 'file', label: 'app.config.ts', path: 'src/config/app.config.ts', lines: 85, lang: 'typescript', size: 320, exportedSymbols: 1, smellScore: 18, functions: [], variables: ['appConfig'], types: ['AppConfig'] },
+        { id: 'src/config/auth.config.ts', type: 'file', label: 'auth.config.ts', path: 'src/config/auth.config.ts', lines: 55, lang: 'typescript', size: 270, exportedSymbols: 1, smellScore: 12, functions: [], variables: ['authConfig'], types: ['AuthConfig'] },
+        { id: 'src/config/email.config.ts', type: 'file', label: 'email.config.ts', path: 'src/config/email.config.ts', lines: 45, lang: 'typescript', size: 250, exportedSymbols: 1, smellScore: 8, functions: [], variables: ['emailConfig'], types: ['EmailConfig'] },
         
         // File nodes - src/types
-        { id: 'src/types/user.types.ts', type: 'file', label: 'user.types.ts', path: 'src/types/user.types.ts', lines: 45, lang: 'typescript', size: 125, exportedSymbols: 5, smellScore: 5, functions: [], variables: [], types: ['UserDTO', 'CreateUserDTO', 'UpdateUserDTO', 'UserRole', 'UserStatus'] },
-        { id: 'src/types/product.types.ts', type: 'file', label: 'product.types.ts', path: 'src/types/product.types.ts', lines: 55, lang: 'typescript', size: 135, exportedSymbols: 4, smellScore: 8, functions: [], variables: [], types: ['ProductDTO', 'CreateProductDTO', 'UpdateProductDTO', 'ProductCategory'] },
-        { id: 'src/types/order.types.ts', type: 'file', label: 'order.types.ts', path: 'src/types/order.types.ts', lines: 65, lang: 'typescript', size: 145, exportedSymbols: 5, smellScore: 10, functions: [], variables: [], types: ['OrderDTO', 'CreateOrderDTO', 'OrderStatus', 'OrderItem', 'ShippingInfo'] },
-        { id: 'src/types/payment.types.ts', type: 'file', label: 'payment.types.ts', path: 'src/types/payment.types.ts', lines: 50, lang: 'typescript', size: 130, exportedSymbols: 4, smellScore: 7, functions: [], variables: [], types: ['PaymentDTO', 'PaymentStatus', 'PaymentMethod', 'RefundDTO'] },
-        { id: 'src/types/api.types.ts', type: 'file', label: 'api.types.ts', path: 'src/types/api.types.ts', lines: 75, lang: 'typescript', size: 155, exportedSymbols: 6, smellScore: 12, functions: [], variables: [], types: ['ApiResponse', 'ApiError', 'PaginationParams', 'SortParams', 'FilterParams', 'ApiConfig'] },
-        { id: 'src/types/common.types.ts', type: 'file', label: 'common.types.ts', path: 'src/types/common.types.ts', lines: 40, lang: 'typescript', size: 120, exportedSymbols: 3, smellScore: 5, functions: [], variables: [], types: ['ID', 'Timestamp', 'Nullable'] },
-        { id: 'src/types/validation.types.ts', type: 'file', label: 'validation.types.ts', path: 'src/types/validation.types.ts', lines: 60, lang: 'typescript', size: 140, exportedSymbols: 4, smellScore: 9, functions: [], variables: [], types: ['ValidationRule', 'ValidationError', 'ValidationResult', 'ValidatorOptions'] },
+        { id: 'src/types/user.types.ts', type: 'file', label: 'user.types.ts', path: 'src/types/user.types.ts', lines: 45, lang: 'typescript', size: 250, exportedSymbols: 5, smellScore: 5, functions: [], variables: [], types: ['UserDTO', 'CreateUserDTO', 'UpdateUserDTO', 'UserRole', 'UserStatus'] },
+        { id: 'src/types/product.types.ts', type: 'file', label: 'product.types.ts', path: 'src/types/product.types.ts', lines: 55, lang: 'typescript', size: 270, exportedSymbols: 4, smellScore: 8, functions: [], variables: [], types: ['ProductDTO', 'CreateProductDTO', 'UpdateProductDTO', 'ProductCategory'] },
+        { id: 'src/types/order.types.ts', type: 'file', label: 'order.types.ts', path: 'src/types/order.types.ts', lines: 65, lang: 'typescript', size: 290, exportedSymbols: 5, smellScore: 10, functions: [], variables: [], types: ['OrderDTO', 'CreateOrderDTO', 'OrderStatus', 'OrderItem', 'ShippingInfo'] },
+        { id: 'src/types/payment.types.ts', type: 'file', label: 'payment.types.ts', path: 'src/types/payment.types.ts', lines: 50, lang: 'typescript', size: 260, exportedSymbols: 4, smellScore: 7, functions: [], variables: [], types: ['PaymentDTO', 'PaymentStatus', 'PaymentMethod', 'RefundDTO'] },
+        { id: 'src/types/api.types.ts', type: 'file', label: 'api.types.ts', path: 'src/types/api.types.ts', lines: 75, lang: 'typescript', size: 310, exportedSymbols: 6, smellScore: 12, functions: [], variables: [], types: ['ApiResponse', 'ApiError', 'PaginationParams', 'SortParams', 'FilterParams', 'ApiConfig'] },
+        { id: 'src/types/common.types.ts', type: 'file', label: 'common.types.ts', path: 'src/types/common.types.ts', lines: 40, lang: 'typescript', size: 240, exportedSymbols: 3, smellScore: 5, functions: [], variables: [], types: ['ID', 'Timestamp', 'Nullable'] },
+        { id: 'src/types/validation.types.ts', type: 'file', label: 'validation.types.ts', path: 'src/types/validation.types.ts', lines: 60, lang: 'typescript', size: 280, exportedSymbols: 4, smellScore: 9, functions: [], variables: [], types: ['ValidationRule', 'ValidationError', 'ValidationResult', 'ValidatorOptions'] },
         
         // File nodes - src/utils (additional)
-        { id: 'src/utils/date.utils.ts', type: 'file', label: 'date.utils.ts', path: 'src/utils/date.utils.ts', lines: 85, lang: 'typescript', size: 160, exportedSymbols: 8, smellScore: 15, functions: ['formatDate()', 'parseDate()', 'addDays()', 'diffDays()', 'isWeekend()', 'getQuarter()'], variables: [], types: [] },
-        { id: 'src/utils/string.utils.ts', type: 'file', label: 'string.utils.ts', path: 'src/utils/string.utils.ts', lines: 95, lang: 'typescript', size: 170, exportedSymbols: 10, smellScore: 18, functions: ['capitalize()', 'slugify()', 'truncate()', 'sanitize()', 'escapeHtml()'], variables: [], types: [] },
-        { id: 'src/utils/array.utils.ts', type: 'file', label: 'array.utils.ts', path: 'src/utils/array.utils.ts', lines: 75, lang: 'typescript', size: 155, exportedSymbols: 7, smellScore: 12, functions: ['chunk()', 'unique()', 'groupBy()', 'sortBy()', 'shuffle()'], variables: [], types: [] },
-        { id: 'src/utils/crypto.utils.ts', type: 'file', label: 'crypto.utils.ts', path: 'src/utils/crypto.utils.ts', lines: 105, lang: 'typescript', size: 175, exportedSymbols: 5, smellScore: 22, functions: ['hash()', 'encrypt()', 'decrypt()', 'generateToken()', 'verifySignature()'], variables: [], types: [] },
+        { id: 'src/utils/date.utils.ts', type: 'file', label: 'date.utils.ts', path: 'src/utils/date.utils.ts', lines: 85, lang: 'typescript', size: 320, exportedSymbols: 8, smellScore: 15, functions: ['formatDate()', 'parseDate()', 'addDays()', 'diffDays()', 'isWeekend()', 'getQuarter()'], variables: [], types: [] },
+        { id: 'src/utils/string.utils.ts', type: 'file', label: 'string.utils.ts', path: 'src/utils/string.utils.ts', lines: 95, lang: 'typescript', size: 340, exportedSymbols: 10, smellScore: 18, functions: ['capitalize()', 'slugify()', 'truncate()', 'sanitize()', 'escapeHtml()'], variables: [], types: [] },
+        { id: 'src/utils/array.utils.ts', type: 'file', label: 'array.utils.ts', path: 'src/utils/array.utils.ts', lines: 75, lang: 'typescript', size: 310, exportedSymbols: 7, smellScore: 12, functions: ['chunk()', 'unique()', 'groupBy()', 'sortBy()', 'shuffle()'], variables: [], types: [] },
+        { id: 'src/utils/crypto.utils.ts', type: 'file', label: 'crypto.utils.ts', path: 'src/utils/crypto.utils.ts', lines: 105, lang: 'typescript', size: 350, exportedSymbols: 5, smellScore: 22, functions: ['hash()', 'encrypt()', 'decrypt()', 'generateToken()', 'verifySignature()'], variables: [], types: [] },
         
         // File nodes - tests/unit
-        { id: 'tests/unit/user-service.test.ts', type: 'file', label: 'user-service.test.ts', path: 'tests/unit/user-service.test.ts', lines: 180, lang: 'typescript', size: 210, exportedSymbols: 0, smellScore: 25, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/auth-service.test.ts', type: 'file', label: 'auth-service.test.ts', path: 'tests/unit/auth-service.test.ts', lines: 145, lang: 'typescript', size: 190, exportedSymbols: 0, smellScore: 20, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/payment-service.test.ts', type: 'file', label: 'payment-service.test.ts', path: 'tests/unit/payment-service.test.ts', lines: 220, lang: 'typescript', size: 235, exportedSymbols: 0, smellScore: 32, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/email-service.test.ts', type: 'file', label: 'email-service.test.ts', path: 'tests/unit/email-service.test.ts', lines: 165, lang: 'typescript', size: 200, exportedSymbols: 0, smellScore: 22, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/validation.test.ts', type: 'file', label: 'validation.test.ts', path: 'tests/unit/validation.test.ts', lines: 135, lang: 'typescript', size: 185, exportedSymbols: 0, smellScore: 18, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/logger.test.ts', type: 'file', label: 'logger.test.ts', path: 'tests/unit/logger.test.ts', lines: 95, lang: 'typescript', size: 165, exportedSymbols: 0, smellScore: 12, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/crypto.test.ts', type: 'file', label: 'crypto.test.ts', path: 'tests/unit/crypto.test.ts', lines: 155, lang: 'typescript', size: 195, exportedSymbols: 0, smellScore: 20, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/date-utils.test.ts', type: 'file', label: 'date-utils.test.ts', path: 'tests/unit/date-utils.test.ts', lines: 125, lang: 'typescript', size: 180, exportedSymbols: 0, smellScore: 15, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/user-service.test.ts', type: 'file', label: 'user-service.test.ts', path: 'tests/unit/user-service.test.ts', lines: 180, lang: 'typescript', size: 420, exportedSymbols: 0, smellScore: 25, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/auth-service.test.ts', type: 'file', label: 'auth-service.test.ts', path: 'tests/unit/auth-service.test.ts', lines: 145, lang: 'typescript', size: 380, exportedSymbols: 0, smellScore: 20, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/payment-service.test.ts', type: 'file', label: 'payment-service.test.ts', path: 'tests/unit/payment-service.test.ts', lines: 220, lang: 'typescript', size: 470, exportedSymbols: 0, smellScore: 32, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/email-service.test.ts', type: 'file', label: 'email-service.test.ts', path: 'tests/unit/email-service.test.ts', lines: 165, lang: 'typescript', size: 400, exportedSymbols: 0, smellScore: 22, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/validation.test.ts', type: 'file', label: 'validation.test.ts', path: 'tests/unit/validation.test.ts', lines: 135, lang: 'typescript', size: 370, exportedSymbols: 0, smellScore: 18, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/logger.test.ts', type: 'file', label: 'logger.test.ts', path: 'tests/unit/logger.test.ts', lines: 95, lang: 'typescript', size: 330, exportedSymbols: 0, smellScore: 12, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/crypto.test.ts', type: 'file', label: 'crypto.test.ts', path: 'tests/unit/crypto.test.ts', lines: 155, lang: 'typescript', size: 390, exportedSymbols: 0, smellScore: 20, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/date-utils.test.ts', type: 'file', label: 'date-utils.test.ts', path: 'tests/unit/date-utils.test.ts', lines: 125, lang: 'typescript', size: 360, exportedSymbols: 0, smellScore: 15, functions: [], variables: [], types: [] },
         
         // File nodes - tests/integration
-        { id: 'tests/integration/auth-flow.test.ts', type: 'file', label: 'auth-flow.test.ts', path: 'tests/integration/auth-flow.test.ts', lines: 245, lang: 'typescript', size: 250, exportedSymbols: 0, smellScore: 38, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/order-flow.test.ts', type: 'file', label: 'order-flow.test.ts', path: 'tests/integration/order-flow.test.ts', lines: 285, lang: 'typescript', size: 280, exportedSymbols: 0, smellScore: 45, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/payment-flow.test.ts', type: 'file', label: 'payment-flow.test.ts', path: 'tests/integration/payment-flow.test.ts', lines: 265, lang: 'typescript', size: 265, exportedSymbols: 0, smellScore: 42, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/webhook-flow.test.ts', type: 'file', label: 'webhook-flow.test.ts', path: 'tests/integration/webhook-flow.test.ts', lines: 195, lang: 'typescript', size: 220, exportedSymbols: 0, smellScore: 28, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/search-flow.test.ts', type: 'file', label: 'search-flow.test.ts', path: 'tests/integration/search-flow.test.ts', lines: 175, lang: 'typescript', size: 205, exportedSymbols: 0, smellScore: 25, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/notification-flow.test.ts', type: 'file', label: 'notification-flow.test.ts', path: 'tests/integration/notification-flow.test.ts', lines: 155, lang: 'typescript', size: 195, exportedSymbols: 0, smellScore: 22, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/analytics-flow.test.ts', type: 'file', label: 'analytics-flow.test.ts', path: 'tests/integration/analytics-flow.test.ts', lines: 205, lang: 'typescript', size: 225, exportedSymbols: 0, smellScore: 32, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/auth-flow.test.ts', type: 'file', label: 'auth-flow.test.ts', path: 'tests/integration/auth-flow.test.ts', lines: 245, lang: 'typescript', size: 500, exportedSymbols: 0, smellScore: 38, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/order-flow.test.ts', type: 'file', label: 'order-flow.test.ts', path: 'tests/integration/order-flow.test.ts', lines: 285, lang: 'typescript', size: 560, exportedSymbols: 0, smellScore: 45, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/payment-flow.test.ts', type: 'file', label: 'payment-flow.test.ts', path: 'tests/integration/payment-flow.test.ts', lines: 265, lang: 'typescript', size: 530, exportedSymbols: 0, smellScore: 42, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/webhook-flow.test.ts', type: 'file', label: 'webhook-flow.test.ts', path: 'tests/integration/webhook-flow.test.ts', lines: 195, lang: 'typescript', size: 440, exportedSymbols: 0, smellScore: 28, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/search-flow.test.ts', type: 'file', label: 'search-flow.test.ts', path: 'tests/integration/search-flow.test.ts', lines: 175, lang: 'typescript', size: 410, exportedSymbols: 0, smellScore: 25, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/notification-flow.test.ts', type: 'file', label: 'notification-flow.test.ts', path: 'tests/integration/notification-flow.test.ts', lines: 155, lang: 'typescript', size: 390, exportedSymbols: 0, smellScore: 22, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/analytics-flow.test.ts', type: 'file', label: 'analytics-flow.test.ts', path: 'tests/integration/analytics-flow.test.ts', lines: 205, lang: 'typescript', size: 450, exportedSymbols: 0, smellScore: 32, functions: [], variables: [], types: [] },
         
         // File nodes - docs/api
-        { id: 'docs/api/authentication.md', type: 'file', label: 'authentication.md', path: 'docs/api/authentication.md', lines: 125, lang: 'markdown', size: 180, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
-        { id: 'docs/api/users.md', type: 'file', label: 'users.md', path: 'docs/api/users.md', lines: 145, lang: 'markdown', size: 195, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
-        { id: 'docs/api/products.md', type: 'file', label: 'products.md', path: 'docs/api/products.md', lines: 165, lang: 'markdown', size: 205, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
-        { id: 'docs/api/orders.md', type: 'file', label: 'orders.md', path: 'docs/api/orders.md', lines: 185, lang: 'markdown', size: 220, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
+        { id: 'docs/api/authentication.md', type: 'file', label: 'authentication.md', path: 'docs/api/authentication.md', lines: 125, lang: 'markdown', size: 360, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
+        { id: 'docs/api/users.md', type: 'file', label: 'users.md', path: 'docs/api/users.md', lines: 145, lang: 'markdown', size: 390, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
+        { id: 'docs/api/products.md', type: 'file', label: 'products.md', path: 'docs/api/products.md', lines: 165, lang: 'markdown', size: 410, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
+        { id: 'docs/api/orders.md', type: 'file', label: 'orders.md', path: 'docs/api/orders.md', lines: 185, lang: 'markdown', size: 440, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
         
         // File nodes - docs/guides
-        { id: 'docs/guides/getting-started.md', type: 'file', label: 'getting-started.md', path: 'docs/guides/getting-started.md', lines: 95, lang: 'markdown', size: 165, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
-        { id: 'docs/guides/deployment.md', type: 'file', label: 'deployment.md', path: 'docs/guides/deployment.md', lines: 135, lang: 'markdown', size: 185, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
-        { id: 'docs/guides/best-practices.md', type: 'file', label: 'best-practices.md', path: 'docs/guides/best-practices.md', lines: 175, lang: 'markdown', size: 210, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
-        { id: 'docs/guides/troubleshooting.md', type: 'file', label: 'troubleshooting.md', path: 'docs/guides/troubleshooting.md', lines: 155, lang: 'markdown', size: 195, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
+        { id: 'docs/guides/getting-started.md', type: 'file', label: 'getting-started.md', path: 'docs/guides/getting-started.md', lines: 95, lang: 'markdown', size: 330, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
+        { id: 'docs/guides/deployment.md', type: 'file', label: 'deployment.md', path: 'docs/guides/deployment.md', lines: 135, lang: 'markdown', size: 370, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
+        { id: 'docs/guides/best-practices.md', type: 'file', label: 'best-practices.md', path: 'docs/guides/best-practices.md', lines: 175, lang: 'markdown', size: 420, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
+        { id: 'docs/guides/troubleshooting.md', type: 'file', label: 'troubleshooting.md', path: 'docs/guides/troubleshooting.md', lines: 155, lang: 'markdown', size: 390, exportedSymbols: 0, smellScore: 0, functions: [], variables: [], types: [] },
         
         // File nodes - src/services/external
-        { id: 'src/services/external/stripe.service.ts', type: 'file', label: 'stripe.service.ts', path: 'src/services/external/stripe.service.ts', lines: 145, lang: 'typescript', size: 190, exportedSymbols: 4, smellScore: 28, functions: ['createPayment()', 'refund()', 'getCustomer()'], variables: [], types: [] },
-        { id: 'src/services/external/sendgrid.service.ts', type: 'file', label: 'sendgrid.service.ts', path: 'src/services/external/sendgrid.service.ts', lines: 125, lang: 'typescript', size: 180, exportedSymbols: 3, smellScore: 22, functions: ['sendEmail()', 'sendBulk()'], variables: [], types: [] },
-        { id: 'src/services/external/aws-s3.service.ts', type: 'file', label: 'aws-s3.service.ts', path: 'src/services/external/aws-s3.service.ts', lines: 165, lang: 'typescript', size: 200, exportedSymbols: 5, smellScore: 32, functions: ['upload()', 'download()', 'delete()'], variables: [], types: [] },
-        { id: 'src/services/external/twilio.service.ts', type: 'file', label: 'twilio.service.ts', path: 'src/services/external/twilio.service.ts', lines: 105, lang: 'typescript', size: 170, exportedSymbols: 3, smellScore: 20, functions: ['sendSMS()', 'makeCall()'], variables: [], types: [] },
+        { id: 'src/services/external/stripe.service.ts', type: 'file', label: 'stripe.service.ts', path: 'src/services/external/stripe.service.ts', lines: 145, lang: 'typescript', size: 380, exportedSymbols: 4, smellScore: 28, functions: ['createPayment()', 'refund()', 'getCustomer()'], variables: [], types: [] },
+        { id: 'src/services/external/sendgrid.service.ts', type: 'file', label: 'sendgrid.service.ts', path: 'src/services/external/sendgrid.service.ts', lines: 125, lang: 'typescript', size: 360, exportedSymbols: 3, smellScore: 22, functions: ['sendEmail()', 'sendBulk()'], variables: [], types: [] },
+        { id: 'src/services/external/aws-s3.service.ts', type: 'file', label: 'aws-s3.service.ts', path: 'src/services/external/aws-s3.service.ts', lines: 165, lang: 'typescript', size: 400, exportedSymbols: 5, smellScore: 32, functions: ['upload()', 'download()', 'delete()'], variables: [], types: [] },
+        { id: 'src/services/external/twilio.service.ts', type: 'file', label: 'twilio.service.ts', path: 'src/services/external/twilio.service.ts', lines: 105, lang: 'typescript', size: 340, exportedSymbols: 3, smellScore: 20, functions: ['sendSMS()', 'makeCall()'], variables: [], types: [] },
         
         // File nodes - src/services/internal
-        { id: 'src/services/internal/queue.service.ts', type: 'file', label: 'queue.service.ts', path: 'src/services/internal/queue.service.ts', lines: 135, lang: 'typescript', size: 185, exportedSymbols: 4, smellScore: 25, functions: ['enqueue()', 'dequeue()', 'process()'], variables: [], types: [] },
-        { id: 'src/services/internal/scheduler.service.ts', type: 'file', label: 'scheduler.service.ts', path: 'src/services/internal/scheduler.service.ts', lines: 155, lang: 'typescript', size: 195, exportedSymbols: 5, smellScore: 30, functions: ['schedule()', 'cancel()', 'run()'], variables: [], types: [] },
-        { id: 'src/services/internal/worker.service.ts', type: 'file', label: 'worker.service.ts', path: 'src/services/internal/worker.service.ts', lines: 175, lang: 'typescript', size: 210, exportedSymbols: 4, smellScore: 35, functions: ['start()', 'stop()', 'execute()'], variables: [], types: [] },
+        { id: 'src/services/internal/queue.service.ts', type: 'file', label: 'queue.service.ts', path: 'src/services/internal/queue.service.ts', lines: 135, lang: 'typescript', size: 370, exportedSymbols: 4, smellScore: 25, functions: ['enqueue()', 'dequeue()', 'process()'], variables: [], types: [] },
+        { id: 'src/services/internal/scheduler.service.ts', type: 'file', label: 'scheduler.service.ts', path: 'src/services/internal/scheduler.service.ts', lines: 155, lang: 'typescript', size: 390, exportedSymbols: 5, smellScore: 30, functions: ['schedule()', 'cancel()', 'run()'], variables: [], types: [] },
+        { id: 'src/services/internal/worker.service.ts', type: 'file', label: 'worker.service.ts', path: 'src/services/internal/worker.service.ts', lines: 175, lang: 'typescript', size: 420, exportedSymbols: 4, smellScore: 35, functions: ['start()', 'stop()', 'execute()'], variables: [], types: [] },
         
         // File nodes - src/models/schemas
-        { id: 'src/models/schemas/user.schema.ts', type: 'file', label: 'user.schema.ts', path: 'src/models/schemas/user.schema.ts', lines: 65, lang: 'typescript', size: 145, exportedSymbols: 1, smellScore: 10, functions: [], variables: [], types: ['UserSchema'] },
-        { id: 'src/models/schemas/product.schema.ts', type: 'file', label: 'product.schema.ts', path: 'src/models/schemas/product.schema.ts', lines: 75, lang: 'typescript', size: 155, exportedSymbols: 1, smellScore: 12, functions: [], variables: [], types: ['ProductSchema'] },
-        { id: 'src/models/schemas/order.schema.ts', type: 'file', label: 'order.schema.ts', path: 'src/models/schemas/order.schema.ts', lines: 85, lang: 'typescript', size: 160, exportedSymbols: 1, smellScore: 15, functions: [], variables: [], types: ['OrderSchema'] },
+        { id: 'src/models/schemas/user.schema.ts', type: 'file', label: 'user.schema.ts', path: 'src/models/schemas/user.schema.ts', lines: 65, lang: 'typescript', size: 290, exportedSymbols: 1, smellScore: 10, functions: [], variables: [], types: ['UserSchema'] },
+        { id: 'src/models/schemas/product.schema.ts', type: 'file', label: 'product.schema.ts', path: 'src/models/schemas/product.schema.ts', lines: 75, lang: 'typescript', size: 310, exportedSymbols: 1, smellScore: 12, functions: [], variables: [], types: ['ProductSchema'] },
+        { id: 'src/models/schemas/order.schema.ts', type: 'file', label: 'order.schema.ts', path: 'src/models/schemas/order.schema.ts', lines: 85, lang: 'typescript', size: 320, exportedSymbols: 1, smellScore: 15, functions: [], variables: [], types: ['OrderSchema'] },
         
         // File nodes - src/models/validators
-        { id: 'src/models/validators/user.validator.ts', type: 'file', label: 'user.validator.ts', path: 'src/models/validators/user.validator.ts', lines: 95, lang: 'typescript', size: 165, exportedSymbols: 3, smellScore: 18, functions: ['validateUser()', 'validateEmail()'], variables: [], types: [] },
-        { id: 'src/models/validators/product.validator.ts', type: 'file', label: 'product.validator.ts', path: 'src/models/validators/product.validator.ts', lines: 85, lang: 'typescript', size: 160, exportedSymbols: 2, smellScore: 15, functions: ['validateProduct()'], variables: [], types: [] },
-        { id: 'src/models/validators/order.validator.ts', type: 'file', label: 'order.validator.ts', path: 'src/models/validators/order.validator.ts', lines: 105, lang: 'typescript', size: 175, exportedSymbols: 3, smellScore: 22, functions: ['validateOrder()', 'validateItems()'], variables: [], types: [] },
+        { id: 'src/models/validators/user.validator.ts', type: 'file', label: 'user.validator.ts', path: 'src/models/validators/user.validator.ts', lines: 95, lang: 'typescript', size: 330, exportedSymbols: 3, smellScore: 18, functions: ['validateUser()', 'validateEmail()'], variables: [], types: [] },
+        { id: 'src/models/validators/product.validator.ts', type: 'file', label: 'product.validator.ts', path: 'src/models/validators/product.validator.ts', lines: 85, lang: 'typescript', size: 320, exportedSymbols: 2, smellScore: 15, functions: ['validateProduct()'], variables: [], types: [] },
+        { id: 'src/models/validators/order.validator.ts', type: 'file', label: 'order.validator.ts', path: 'src/models/validators/order.validator.ts', lines: 105, lang: 'typescript', size: 350, exportedSymbols: 3, smellScore: 22, functions: ['validateOrder()', 'validateItems()'], variables: [], types: [] },
         
         // File nodes - src/utils/formatters
-        { id: 'src/utils/formatters/date.formatter.ts', type: 'file', label: 'date.formatter.ts', path: 'src/utils/formatters/date.formatter.ts', lines: 75, lang: 'typescript', size: 155, exportedSymbols: 5, smellScore: 12, functions: ['formatDate()', 'formatTime()', 'formatDateTime()'], variables: [], types: [] },
-        { id: 'src/utils/formatters/number.formatter.ts', type: 'file', label: 'number.formatter.ts', path: 'src/utils/formatters/number.formatter.ts', lines: 65, lang: 'typescript', size: 145, exportedSymbols: 4, smellScore: 10, functions: ['formatCurrency()', 'formatPercent()'], variables: [], types: [] },
-        { id: 'src/utils/formatters/string.formatter.ts', type: 'file', label: 'string.formatter.ts', path: 'src/utils/formatters/string.formatter.ts', lines: 85, lang: 'typescript', size: 160, exportedSymbols: 6, smellScore: 15, functions: ['capitalize()', 'truncate()', 'slugify()'], variables: [], types: [] },
-        { id: 'src/utils/formatters/json.formatter.ts', type: 'file', label: 'json.formatter.ts', path: 'src/utils/formatters/json.formatter.ts', lines: 55, lang: 'typescript', size: 135, exportedSymbols: 3, smellScore: 8, functions: ['prettify()', 'minify()'], variables: [], types: [] },
+        { id: 'src/utils/formatters/date.formatter.ts', type: 'file', label: 'date.formatter.ts', path: 'src/utils/formatters/date.formatter.ts', lines: 75, lang: 'typescript', size: 310, exportedSymbols: 5, smellScore: 12, functions: ['formatDate()', 'formatTime()', 'formatDateTime()'], variables: [], types: [] },
+        { id: 'src/utils/formatters/number.formatter.ts', type: 'file', label: 'number.formatter.ts', path: 'src/utils/formatters/number.formatter.ts', lines: 65, lang: 'typescript', size: 290, exportedSymbols: 4, smellScore: 10, functions: ['formatCurrency()', 'formatPercent()'], variables: [], types: [] },
+        { id: 'src/utils/formatters/string.formatter.ts', type: 'file', label: 'string.formatter.ts', path: 'src/utils/formatters/string.formatter.ts', lines: 85, lang: 'typescript', size: 320, exportedSymbols: 6, smellScore: 15, functions: ['capitalize()', 'truncate()', 'slugify()'], variables: [], types: [] },
+        { id: 'src/utils/formatters/json.formatter.ts', type: 'file', label: 'json.formatter.ts', path: 'src/utils/formatters/json.formatter.ts', lines: 55, lang: 'typescript', size: 270, exportedSymbols: 3, smellScore: 8, functions: ['prettify()', 'minify()'], variables: [], types: [] },
         
         // File nodes - src/utils/parsers
-        { id: 'src/utils/parsers/csv.parser.ts', type: 'file', label: 'csv.parser.ts', path: 'src/utils/parsers/csv.parser.ts', lines: 125, lang: 'typescript', size: 180, exportedSymbols: 4, smellScore: 25, functions: ['parseCSV()', 'toCSV()'], variables: [], types: [] },
-        { id: 'src/utils/parsers/xml.parser.ts', type: 'file', label: 'xml.parser.ts', path: 'src/utils/parsers/xml.parser.ts', lines: 145, lang: 'typescript', size: 190, exportedSymbols: 4, smellScore: 30, functions: ['parseXML()', 'toXML()'], variables: [], types: [] },
-        { id: 'src/utils/parsers/json.parser.ts', type: 'file', label: 'json.parser.ts', path: 'src/utils/parsers/json.parser.ts', lines: 95, lang: 'typescript', size: 165, exportedSymbols: 3, smellScore: 18, functions: ['parseJSON()', 'stringify()'], variables: [], types: [] },
+        { id: 'src/utils/parsers/csv.parser.ts', type: 'file', label: 'csv.parser.ts', path: 'src/utils/parsers/csv.parser.ts', lines: 125, lang: 'typescript', size: 360, exportedSymbols: 4, smellScore: 25, functions: ['parseCSV()', 'toCSV()'], variables: [], types: [] },
+        { id: 'src/utils/parsers/xml.parser.ts', type: 'file', label: 'xml.parser.ts', path: 'src/utils/parsers/xml.parser.ts', lines: 145, lang: 'typescript', size: 380, exportedSymbols: 4, smellScore: 30, functions: ['parseXML()', 'toXML()'], variables: [], types: [] },
+        { id: 'src/utils/parsers/json.parser.ts', type: 'file', label: 'json.parser.ts', path: 'src/utils/parsers/json.parser.ts', lines: 95, lang: 'typescript', size: 330, exportedSymbols: 3, smellScore: 18, functions: ['parseJSON()', 'stringify()'], variables: [], types: [] },
         
         // File nodes - src/controllers/api
-        { id: 'src/controllers/api/v1.controller.ts', type: 'file', label: 'v1.controller.ts', path: 'src/controllers/api/v1.controller.ts', lines: 185, lang: 'typescript', size: 220, exportedSymbols: 1, smellScore: 35, functions: [], variables: [], types: [] },
-        { id: 'src/controllers/api/v2.controller.ts', type: 'file', label: 'v2.controller.ts', path: 'src/controllers/api/v2.controller.ts', lines: 205, lang: 'typescript', size: 235, exportedSymbols: 1, smellScore: 40, functions: [], variables: [], types: [] },
-        { id: 'src/controllers/api/graphql.controller.ts', type: 'file', label: 'graphql.controller.ts', path: 'src/controllers/api/graphql.controller.ts', lines: 245, lang: 'typescript', size: 260, exportedSymbols: 1, smellScore: 48, functions: [], variables: [], types: [] },
-        { id: 'src/controllers/api/rest.controller.ts', type: 'file', label: 'rest.controller.ts', path: 'src/controllers/api/rest.controller.ts', lines: 165, lang: 'typescript', size: 200, exportedSymbols: 1, smellScore: 32, functions: [], variables: [], types: [] },
-        { id: 'src/controllers/api/health.controller.ts', type: 'file', label: 'health.controller.ts', path: 'src/controllers/api/health.controller.ts', lines: 85, lang: 'typescript', size: 160, exportedSymbols: 1, smellScore: 15, functions: [], variables: [], types: [] },
+        { id: 'src/controllers/api/v1.controller.ts', type: 'file', label: 'v1.controller.ts', path: 'src/controllers/api/v1.controller.ts', lines: 185, lang: 'typescript', size: 440, exportedSymbols: 1, smellScore: 35, functions: [], variables: [], types: [] },
+        { id: 'src/controllers/api/v2.controller.ts', type: 'file', label: 'v2.controller.ts', path: 'src/controllers/api/v2.controller.ts', lines: 205, lang: 'typescript', size: 470, exportedSymbols: 1, smellScore: 40, functions: [], variables: [], types: [] },
+        { id: 'src/controllers/api/graphql.controller.ts', type: 'file', label: 'graphql.controller.ts', path: 'src/controllers/api/graphql.controller.ts', lines: 245, lang: 'typescript', size: 520, exportedSymbols: 1, smellScore: 48, functions: [], variables: [], types: [] },
+        { id: 'src/controllers/api/rest.controller.ts', type: 'file', label: 'rest.controller.ts', path: 'src/controllers/api/rest.controller.ts', lines: 165, lang: 'typescript', size: 400, exportedSymbols: 1, smellScore: 32, functions: [], variables: [], types: [] },
+        { id: 'src/controllers/api/health.controller.ts', type: 'file', label: 'health.controller.ts', path: 'src/controllers/api/health.controller.ts', lines: 85, lang: 'typescript', size: 320, exportedSymbols: 1, smellScore: 15, functions: [], variables: [], types: [] },
         
         // File nodes - src/controllers/webhooks
-        { id: 'src/controllers/webhooks/stripe.webhook.ts', type: 'file', label: 'stripe.webhook.ts', path: 'src/controllers/webhooks/stripe.webhook.ts', lines: 145, lang: 'typescript', size: 190, exportedSymbols: 1, smellScore: 28, functions: [], variables: [], types: [] },
-        { id: 'src/controllers/webhooks/github.webhook.ts', type: 'file', label: 'github.webhook.ts', path: 'src/controllers/webhooks/github.webhook.ts', lines: 125, lang: 'typescript', size: 180, exportedSymbols: 1, smellScore: 24, functions: [], variables: [], types: [] },
-        { id: 'src/controllers/webhooks/slack.webhook.ts', type: 'file', label: 'slack.webhook.ts', path: 'src/controllers/webhooks/slack.webhook.ts', lines: 105, lang: 'typescript', size: 170, exportedSymbols: 1, smellScore: 20, functions: [], variables: [], types: [] },
+        { id: 'src/controllers/webhooks/stripe.webhook.ts', type: 'file', label: 'stripe.webhook.ts', path: 'src/controllers/webhooks/stripe.webhook.ts', lines: 145, lang: 'typescript', size: 380, exportedSymbols: 1, smellScore: 28, functions: [], variables: [], types: [] },
+        { id: 'src/controllers/webhooks/github.webhook.ts', type: 'file', label: 'github.webhook.ts', path: 'src/controllers/webhooks/github.webhook.ts', lines: 125, lang: 'typescript', size: 360, exportedSymbols: 1, smellScore: 24, functions: [], variables: [], types: [] },
+        { id: 'src/controllers/webhooks/slack.webhook.ts', type: 'file', label: 'slack.webhook.ts', path: 'src/controllers/webhooks/slack.webhook.ts', lines: 105, lang: 'typescript', size: 340, exportedSymbols: 1, smellScore: 20, functions: [], variables: [], types: [] },
         
         // File nodes - src/types/dto
-        { id: 'src/types/dto/create-user.dto.ts', type: 'file', label: 'create-user.dto.ts', path: 'src/types/dto/create-user.dto.ts', lines: 45, lang: 'typescript', size: 125, exportedSymbols: 1, smellScore: 5, functions: [], variables: [], types: ['CreateUserDTO'] },
-        { id: 'src/types/dto/update-user.dto.ts', type: 'file', label: 'update-user.dto.ts', path: 'src/types/dto/update-user.dto.ts', lines: 40, lang: 'typescript', size: 120, exportedSymbols: 1, smellScore: 5, functions: [], variables: [], types: ['UpdateUserDTO'] },
-        { id: 'src/types/dto/create-product.dto.ts', type: 'file', label: 'create-product.dto.ts', path: 'src/types/dto/create-product.dto.ts', lines: 55, lang: 'typescript', size: 135, exportedSymbols: 1, smellScore: 7, functions: [], variables: [], types: ['CreateProductDTO'] },
-        { id: 'src/types/dto/create-order.dto.ts', type: 'file', label: 'create-order.dto.ts', path: 'src/types/dto/create-order.dto.ts', lines: 65, lang: 'typescript', size: 145, exportedSymbols: 1, smellScore: 10, functions: [], variables: [], types: ['CreateOrderDTO'] },
-        { id: 'src/types/dto/payment.dto.ts', type: 'file', label: 'payment.dto.ts', path: 'src/types/dto/payment.dto.ts', lines: 50, lang: 'typescript', size: 130, exportedSymbols: 2, smellScore: 7, functions: [], variables: [], types: ['PaymentDTO', 'RefundDTO'] },
+        { id: 'src/types/dto/create-user.dto.ts', type: 'file', label: 'create-user.dto.ts', path: 'src/types/dto/create-user.dto.ts', lines: 45, lang: 'typescript', size: 250, exportedSymbols: 1, smellScore: 5, functions: [], variables: [], types: ['CreateUserDTO'] },
+        { id: 'src/types/dto/update-user.dto.ts', type: 'file', label: 'update-user.dto.ts', path: 'src/types/dto/update-user.dto.ts', lines: 40, lang: 'typescript', size: 240, exportedSymbols: 1, smellScore: 5, functions: [], variables: [], types: ['UpdateUserDTO'] },
+        { id: 'src/types/dto/create-product.dto.ts', type: 'file', label: 'create-product.dto.ts', path: 'src/types/dto/create-product.dto.ts', lines: 55, lang: 'typescript', size: 270, exportedSymbols: 1, smellScore: 7, functions: [], variables: [], types: ['CreateProductDTO'] },
+        { id: 'src/types/dto/create-order.dto.ts', type: 'file', label: 'create-order.dto.ts', path: 'src/types/dto/create-order.dto.ts', lines: 65, lang: 'typescript', size: 290, exportedSymbols: 1, smellScore: 10, functions: [], variables: [], types: ['CreateOrderDTO'] },
+        { id: 'src/types/dto/payment.dto.ts', type: 'file', label: 'payment.dto.ts', path: 'src/types/dto/payment.dto.ts', lines: 50, lang: 'typescript', size: 260, exportedSymbols: 2, smellScore: 7, functions: [], variables: [], types: ['PaymentDTO', 'RefundDTO'] },
         
         // File nodes - src/types/enums
-        { id: 'src/types/enums/user-role.enum.ts', type: 'file', label: 'user-role.enum.ts', path: 'src/types/enums/user-role.enum.ts', lines: 25, lang: 'typescript', size: 105, exportedSymbols: 1, smellScore: 2, functions: [], variables: [], types: ['UserRole'] },
-        { id: 'src/types/enums/order-status.enum.ts', type: 'file', label: 'order-status.enum.ts', path: 'src/types/enums/order-status.enum.ts', lines: 30, lang: 'typescript', size: 110, exportedSymbols: 1, smellScore: 3, functions: [], variables: [], types: ['OrderStatus'] },
-        { id: 'src/types/enums/payment-status.enum.ts', type: 'file', label: 'payment-status.enum.ts', path: 'src/types/enums/payment-status.enum.ts', lines: 28, lang: 'typescript', size: 108, exportedSymbols: 1, smellScore: 3, functions: [], variables: [], types: ['PaymentStatus'] },
-        { id: 'src/types/enums/notification-type.enum.ts', type: 'file', label: 'notification-type.enum.ts', path: 'src/types/enums/notification-type.enum.ts', lines: 32, lang: 'typescript', size: 112, exportedSymbols: 1, smellScore: 3, functions: [], variables: [], types: ['NotificationType'] },
+        { id: 'src/types/enums/user-role.enum.ts', type: 'file', label: 'user-role.enum.ts', path: 'src/types/enums/user-role.enum.ts', lines: 25, lang: 'typescript', size: 210, exportedSymbols: 1, smellScore: 2, functions: [], variables: [], types: ['UserRole'] },
+        { id: 'src/types/enums/order-status.enum.ts', type: 'file', label: 'order-status.enum.ts', path: 'src/types/enums/order-status.enum.ts', lines: 30, lang: 'typescript', size: 220, exportedSymbols: 1, smellScore: 3, functions: [], variables: [], types: ['OrderStatus'] },
+        { id: 'src/types/enums/payment-status.enum.ts', type: 'file', label: 'payment-status.enum.ts', path: 'src/types/enums/payment-status.enum.ts', lines: 28, lang: 'typescript', size: 216, exportedSymbols: 1, smellScore: 3, functions: [], variables: [], types: ['PaymentStatus'] },
+        { id: 'src/types/enums/notification-type.enum.ts', type: 'file', label: 'notification-type.enum.ts', path: 'src/types/enums/notification-type.enum.ts', lines: 32, lang: 'typescript', size: 224, exportedSymbols: 1, smellScore: 3, functions: [], variables: [], types: ['NotificationType'] },
         
         // File nodes - tests/unit/services
-        { id: 'tests/unit/services/stripe.test.ts', type: 'file', label: 'stripe.test.ts', path: 'tests/unit/services/stripe.test.ts', lines: 165, lang: 'typescript', size: 200, exportedSymbols: 0, smellScore: 22, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/services/sendgrid.test.ts', type: 'file', label: 'sendgrid.test.ts', path: 'tests/unit/services/sendgrid.test.ts', lines: 145, lang: 'typescript', size: 190, exportedSymbols: 0, smellScore: 20, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/services/queue.test.ts', type: 'file', label: 'queue.test.ts', path: 'tests/unit/services/queue.test.ts', lines: 155, lang: 'typescript', size: 195, exportedSymbols: 0, smellScore: 21, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/services/scheduler.test.ts', type: 'file', label: 'scheduler.test.ts', path: 'tests/unit/services/scheduler.test.ts', lines: 175, lang: 'typescript', size: 210, exportedSymbols: 0, smellScore: 25, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/services/worker.test.ts', type: 'file', label: 'worker.test.ts', path: 'tests/unit/services/worker.test.ts', lines: 185, lang: 'typescript', size: 220, exportedSymbols: 0, smellScore: 28, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/services/stripe.test.ts', type: 'file', label: 'stripe.test.ts', path: 'tests/unit/services/stripe.test.ts', lines: 165, lang: 'typescript', size: 400, exportedSymbols: 0, smellScore: 22, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/services/sendgrid.test.ts', type: 'file', label: 'sendgrid.test.ts', path: 'tests/unit/services/sendgrid.test.ts', lines: 145, lang: 'typescript', size: 380, exportedSymbols: 0, smellScore: 20, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/services/queue.test.ts', type: 'file', label: 'queue.test.ts', path: 'tests/unit/services/queue.test.ts', lines: 155, lang: 'typescript', size: 390, exportedSymbols: 0, smellScore: 21, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/services/scheduler.test.ts', type: 'file', label: 'scheduler.test.ts', path: 'tests/unit/services/scheduler.test.ts', lines: 175, lang: 'typescript', size: 420, exportedSymbols: 0, smellScore: 25, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/services/worker.test.ts', type: 'file', label: 'worker.test.ts', path: 'tests/unit/services/worker.test.ts', lines: 185, lang: 'typescript', size: 440, exportedSymbols: 0, smellScore: 28, functions: [], variables: [], types: [] },
         
         // File nodes - tests/unit/utils
-        { id: 'tests/unit/utils/formatters.test.ts', type: 'file', label: 'formatters.test.ts', path: 'tests/unit/utils/formatters.test.ts', lines: 135, lang: 'typescript', size: 185, exportedSymbols: 0, smellScore: 18, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/utils/parsers.test.ts', type: 'file', label: 'parsers.test.ts', path: 'tests/unit/utils/parsers.test.ts', lines: 155, lang: 'typescript', size: 195, exportedSymbols: 0, smellScore: 22, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/utils/string-utils.test.ts', type: 'file', label: 'string-utils.test.ts', path: 'tests/unit/utils/string-utils.test.ts', lines: 125, lang: 'typescript', size: 180, exportedSymbols: 0, smellScore: 17, functions: [], variables: [], types: [] },
-        { id: 'tests/unit/utils/array-utils.test.ts', type: 'file', label: 'array-utils.test.ts', path: 'tests/unit/utils/array-utils.test.ts', lines: 115, lang: 'typescript', size: 175, exportedSymbols: 0, smellScore: 15, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/utils/formatters.test.ts', type: 'file', label: 'formatters.test.ts', path: 'tests/unit/utils/formatters.test.ts', lines: 135, lang: 'typescript', size: 370, exportedSymbols: 0, smellScore: 18, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/utils/parsers.test.ts', type: 'file', label: 'parsers.test.ts', path: 'tests/unit/utils/parsers.test.ts', lines: 155, lang: 'typescript', size: 390, exportedSymbols: 0, smellScore: 22, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/utils/string-utils.test.ts', type: 'file', label: 'string-utils.test.ts', path: 'tests/unit/utils/string-utils.test.ts', lines: 125, lang: 'typescript', size: 360, exportedSymbols: 0, smellScore: 17, functions: [], variables: [], types: [] },
+        { id: 'tests/unit/utils/array-utils.test.ts', type: 'file', label: 'array-utils.test.ts', path: 'tests/unit/utils/array-utils.test.ts', lines: 115, lang: 'typescript', size: 350, exportedSymbols: 0, smellScore: 15, functions: [], variables: [], types: [] },
         
         // File nodes - tests/integration/api
-        { id: 'tests/integration/api/v1-endpoints.test.ts', type: 'file', label: 'v1-endpoints.test.ts', path: 'tests/integration/api/v1-endpoints.test.ts', lines: 245, lang: 'typescript', size: 250, exportedSymbols: 0, smellScore: 40, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/api/v2-endpoints.test.ts', type: 'file', label: 'v2-endpoints.test.ts', path: 'tests/integration/api/v2-endpoints.test.ts', lines: 265, lang: 'typescript', size: 265, exportedSymbols: 0, smellScore: 45, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/api/graphql-queries.test.ts', type: 'file', label: 'graphql-queries.test.ts', path: 'tests/integration/api/graphql-queries.test.ts', lines: 285, lang: 'typescript', size: 280, exportedSymbols: 0, smellScore: 48, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/api/rest-api.test.ts', type: 'file', label: 'rest-api.test.ts', path: 'tests/integration/api/rest-api.test.ts', lines: 225, lang: 'typescript', size: 240, exportedSymbols: 0, smellScore: 38, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/api/v1-endpoints.test.ts', type: 'file', label: 'v1-endpoints.test.ts', path: 'tests/integration/api/v1-endpoints.test.ts', lines: 245, lang: 'typescript', size: 500, exportedSymbols: 0, smellScore: 40, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/api/v2-endpoints.test.ts', type: 'file', label: 'v2-endpoints.test.ts', path: 'tests/integration/api/v2-endpoints.test.ts', lines: 265, lang: 'typescript', size: 530, exportedSymbols: 0, smellScore: 45, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/api/graphql-queries.test.ts', type: 'file', label: 'graphql-queries.test.ts', path: 'tests/integration/api/graphql-queries.test.ts', lines: 285, lang: 'typescript', size: 560, exportedSymbols: 0, smellScore: 48, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/api/rest-api.test.ts', type: 'file', label: 'rest-api.test.ts', path: 'tests/integration/api/rest-api.test.ts', lines: 225, lang: 'typescript', size: 480, exportedSymbols: 0, smellScore: 38, functions: [], variables: [], types: [] },
         
         // File nodes - tests/integration/e2e
-        { id: 'tests/integration/e2e/user-journey.test.ts', type: 'file', label: 'user-journey.test.ts', path: 'tests/integration/e2e/user-journey.test.ts', lines: 305, lang: 'typescript', size: 295, exportedSymbols: 0, smellScore: 52, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/e2e/checkout-flow.test.ts', type: 'file', label: 'checkout-flow.test.ts', path: 'tests/integration/e2e/checkout-flow.test.ts', lines: 325, lang: 'typescript', size: 310, exportedSymbols: 0, smellScore: 55, functions: [], variables: [], types: [] },
-        { id: 'tests/integration/e2e/admin-workflow.test.ts', type: 'file', label: 'admin-workflow.test.ts', path: 'tests/integration/e2e/admin-workflow.test.ts', lines: 285, lang: 'typescript', size: 280, exportedSymbols: 0, smellScore: 48, functions: [], variables: [], types: [] }
+        { id: 'tests/integration/e2e/user-journey.test.ts', type: 'file', label: 'user-journey.test.ts', path: 'tests/integration/e2e/user-journey.test.ts', lines: 305, lang: 'typescript', size: 590, exportedSymbols: 0, smellScore: 52, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/e2e/checkout-flow.test.ts', type: 'file', label: 'checkout-flow.test.ts', path: 'tests/integration/e2e/checkout-flow.test.ts', lines: 325, lang: 'typescript', size: 620, exportedSymbols: 0, smellScore: 55, functions: [], variables: [], types: [] },
+        { id: 'tests/integration/e2e/admin-workflow.test.ts', type: 'file', label: 'admin-workflow.test.ts', path: 'tests/integration/e2e/admin-workflow.test.ts', lines: 285, lang: 'typescript', size: 560, exportedSymbols: 0, smellScore: 48, functions: [], variables: [], types: [] }
       ],
       edges: [
         // Directory hierarchy - src subdirectories
@@ -2212,9 +1994,9 @@
       function getTextWidth(text, fontSize) {
         const parts = text.split('/');
         const dirName = parts[parts.length - 1];
-        const dirNameWidth = dirName.length * fontSize * 0.7;
-        const calculatedWidth = dirNameWidth + 60;
-        const minWidths = [280, 180, 130, 100];
+        const dirNameWidth = dirName.length * fontSize * 0.6;
+        const calculatedWidth = dirNameWidth + 40;
+        const minWidths = [200, 130, 90, 70];
         const minWidth = minWidths[Math.min(parts.length - 1, minWidths.length - 1)];
         return Math.max(calculatedWidth, minWidth);
       }
@@ -2331,38 +2113,49 @@
       });
       
       // Position directories in circles around their parents with depth-based spacing
-      const BASE_DIR_RADIUS = 1800; // Base radius for all directories
-      const FILE_SPACE = 1000; // Space needed for files (max 3 layers = 1000px)
+      const BASE_DIR_RADIUS = 1300; // Base radius between directories
       const DIRS_PER_LAYER = 8;
       
-      // Calculate directory depth (how many levels of directories below this one)
-      function calculateDirectoryDepth(dirNode) {
-        const children = dirHierarchy.get(dirNode.path) || [];
+      // Calculate required file space for a directory based on its file count and sizes
+      function calculateFileSpace(dirPath) {
+        const files = dirToFiles.get(dirPath) || [];
+        if (files.length === 0) return 0;
         
-        if (children.length === 0) {
-          // Leaf directory - no child directories
-          dirNode.directoryDepth = 0;
-          return 0;
+        // Use the same layer config as file positioning
+        const LAYER_CONFIG = [
+          { maxFiles: 8, radius: 392 },
+          { maxFiles: 12, radius: 672 },
+          { maxFiles: 18, radius: 1008 }
+        ];
+        
+        // Determine which layer the last file will be in
+        let maxRadius = LAYER_CONFIG[0].radius;
+        let cumulativeFiles = 0;
+        
+        for (let i = 0; i < LAYER_CONFIG.length; i++) {
+          cumulativeFiles += LAYER_CONFIG[i].maxFiles;
+          if (files.length <= cumulativeFiles) {
+            maxRadius = LAYER_CONFIG[i].radius;
+            break;
+          }
         }
         
-        // Calculate depth for all children first (recursive)
-        let maxChildDepth = 0;
-        children.forEach(child => {
-          const childDepth = calculateDirectoryDepth(child);
-          maxChildDepth = Math.max(maxChildDepth, childDepth);
-        });
+        // If more files than configured layers, use last layer radius
+        if (files.length > cumulativeFiles) {
+          maxRadius = LAYER_CONFIG[LAYER_CONFIG.length - 1].radius;
+        }
         
-        // This directory's depth is 1 + max child depth
-        dirNode.directoryDepth = maxChildDepth + 1;
-        return dirNode.directoryDepth;
+        // Calculate average file size in this directory
+        // Files range from 160px to 360px width (80px to 180px height)
+        const avgFileWidth = files.reduce((sum, f) => sum + f.size, 0) / files.length;
+        const avgFileHeight = avgFileWidth / 2;
+        
+        // Estimate the actual area occupied by files at the outermost radius
+        // Account for: radius + half file height + spacing
+        const fileAreaBuffer = avgFileHeight / 2 + 40; // Half height + 40px spacing
+        
+        return maxRadius + fileAreaBuffer;
       }
-      
-      // Calculate depth for all directories
-      nodes.forEach(node => {
-        if (node.type === 'directory') {
-          calculateDirectoryDepth(node);
-        }
-      });
       
       // Position root directories with significant separation for distinct graphs
       if (rootDirs.length === 1) {
@@ -2386,11 +2179,11 @@
         
         // Position roots that don't have saved positions
         if (rootsWithoutSavedPos.length > 0) {
-          // Calculate spacing based on each root's depth
+          // Calculate spacing based on each root's file count
           const rootSpacing = [];
           rootsWithoutSavedPos.forEach(root => {
-            const depthFactor = (root.directoryDepth || 0) + 1;
-            const totalRadius = FILE_SPACE + (BASE_DIR_RADIUS * depthFactor);
+            const fileSpace = calculateFileSpace(root.path);
+            const totalRadius = fileSpace + BASE_DIR_RADIUS;
             rootSpacing.push(totalRadius * 2); // Double for full diameter
           });
           
@@ -2421,11 +2214,14 @@
         });
       }
       
-      // Position child directories in circles around their parents with depth-based radius
+      // Position child directories around their parents
       // Process directories level by level to ensure parents are positioned before children
-      function positionChildrenRecursively(parentDir) {
+      function positionChildrenRecursively(parentDir, grandparentDir = null) {
         const childDirs = dirHierarchy.get(parentDir.path);
         if (!childDirs || childDirs.length === 0) return;
+        
+        // Determine if parent is a root directory
+        const isParentRoot = rootDirs.includes(parentDir);
         
         childDirs.forEach((childDir, index) => {
           // Skip positioning if this child already has a saved position
@@ -2435,19 +2231,16 @@
             childDir.y = childDir.fy;
             
             // Still recursively position this directory's children
-            positionChildrenRecursively(childDir);
+            positionChildrenRecursively(childDir, parentDir);
             return;
           }
           
-          // Calculate distance factor based on directory depth
-          // depth 0 (no child dirs) = factor 1
-          // depth 1 (1 level of dirs) = factor 2
-          // depth 2 (2 levels of dirs) = factor 3
-          // depth 3 (3 levels of dirs) = factor 4
-          const distanceFactor = (childDir.directoryDepth || 0) + 1;
+          // Calculate file space needed for parent directory's files
+          const parentFileSpace = calculateFileSpace(parentDir.path);
           
-          // Calculate radius: FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor)
-          const baseRadius = FILE_SPACE + (BASE_DIR_RADIUS * distanceFactor);
+          // Calculate radius: parent's file space + base directory spacing
+          // The child's depth does NOT affect its distance from parent
+          const baseRadius = parentFileSpace + BASE_DIR_RADIUS;
           
           // Calculate which layer this directory belongs to
           const layer = Math.floor(index / DIRS_PER_LAYER);
@@ -2458,9 +2251,40 @@
           const layerSpacing = layer * 500;
           const radius = baseRadius + layerSpacing;
           
-          // Calculate angle for this directory in its layer
-          const angleStep = (2 * Math.PI) / dirsInThisLayer;
-          const angle = indexInLayer * angleStep;
+          let angle;
+          
+          if (isParentRoot) {
+            // Root directory children: place in full circle around parent
+            const angleStep = (2 * Math.PI) / dirsInThisLayer;
+            angle = indexInLayer * angleStep;
+          } else {
+            // Non-root directory children: place in a fan/arc away from grandparent
+            
+            // Calculate the angle from grandparent to parent (the "away" direction)
+            let awayAngle;
+            if (grandparentDir) {
+              const dx = parentDir.x - grandparentDir.x;
+              const dy = parentDir.y - grandparentDir.y;
+              awayAngle = Math.atan2(dy, dx);
+            } else {
+              // If no grandparent (shouldn't happen for non-root), default to right
+              awayAngle = 0;
+            }
+            
+            // Create a fan of children around the "away" direction
+            // Fan spread: 120 degrees (2/3 of PI radians)
+            const fanSpread = (2 * Math.PI) / 3;
+            const fanStart = awayAngle - fanSpread / 2;
+            
+            if (dirsInThisLayer === 1) {
+              // Single child: place directly away from grandparent
+              angle = awayAngle;
+            } else {
+              // Multiple children: spread in a fan
+              const angleStep = fanSpread / (dirsInThisLayer - 1);
+              angle = fanStart + (indexInLayer * angleStep);
+            }
+          }
           
           // Set position around parent's CURRENT position
           // This ensures children follow their parent even if parent has a saved position
@@ -2471,10 +2295,9 @@
           
           // Store the calculated values for debugging
           childDir.calculatedRadius = radius;
-          childDir.distanceFactor = distanceFactor;
           
           // Recursively position this directory's children
-          positionChildrenRecursively(childDir);
+          positionChildrenRecursively(childDir, parentDir);
         });
       }
       
@@ -2483,11 +2306,11 @@
         positionChildrenRecursively(rootDir);
       });
       
-      // Layer configuration: [maxFiles, radius]
+      // Layer configuration: [maxFiles, radius] - increased by 40%
       const LAYER_CONFIG = [
-        { maxFiles: 8, radius: 280 },    // Layer 1: max 8 files
-        { maxFiles: 12, radius: 480 },   // Layer 2: max 12 files (+50%)
-        { maxFiles: 18, radius: 720 }    // Layer 3: max 18 files (+50%)
+        { maxFiles: 8, radius: 392 },    // Layer 1: max 8 files (280 * 1.4)
+        { maxFiles: 12, radius: 672 },   // Layer 2: max 12 files (480 * 1.4)
+        { maxFiles: 18, radius: 1008 }   // Layer 3: max 18 files (720 * 1.4)
       ];
       
       dirToFiles.forEach((files, dirPath) => {
@@ -3015,14 +2838,15 @@
         .attr('class', 'file-label')
         .style('fill', d => getTextColor(d))
         .style('font-weight', 'normal')
+        .style('pointer-events', 'none')
         .text(d => d.label)
         .each(function(d) {
           const textElement = this;
-          const padding = 8;
-          const availableWidth = d.size - (padding * 2);
+          const margin = 6;
+          const availableWidth = d.size - (margin * 2);
           
-          let fontSize = 24;
-          const minFontSize = 12;
+          let fontSize = 28;
+          const minFontSize = 8;
           
           let low = minFontSize;
           let high = fontSize;
@@ -3041,6 +2865,11 @@
           
           fontSize = low;
           textElement.style.fontSize = fontSize + 'px';
+          
+          const finalWidth = textElement.getComputedTextLength();
+          if (finalWidth > availableWidth) {
+            textElement.style.clipPath = 'inset(0 ' + margin + 'px 0 ' + margin + 'px)';
+          }
         });
       
       simulation.on('tick', () => {

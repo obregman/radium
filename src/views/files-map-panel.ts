@@ -357,9 +357,9 @@ export class FilesMapPanel {
       const dirPath = path.dirname(file.path);
       
       // Calculate visual size (width) - linear scaling based on lines
-      // 1 line = 80px, 3000+ lines = 180px
-      const MIN_WIDTH = 80;
-      const MAX_WIDTH = 180;
+      // 1 line = 160px, 3000+ lines = 360px (doubled)
+      const MIN_WIDTH = 160;
+      const MAX_WIDTH = 360;
       const MAX_LINES = 3000;
       
       // Linear interpolation based on line count
@@ -1997,14 +1997,14 @@ export class FilesMapPanel {
         const dirName = parts[parts.length - 1];
         
         // Calculate width for directory name
-        // Use 0.5 as character width ratio for bold text (tighter fit)
-        const dirNameWidth = dirName.length * fontSize * 0.7;
+        // Use tighter character width ratio for bold text
+        const dirNameWidth = dirName.length * fontSize * 0.6;
         
-        // Add padding (30px on each side for margin)
-        const calculatedWidth = dirNameWidth + 60;
+        // Add padding (20px on each side for margin - reduced from 30px)
+        const calculatedWidth = dirNameWidth + 40;
         
-        // Set minimum width based on depth
-        const minWidths = [280, 180, 130, 100];
+        // Set minimum width based on depth (reduced by ~30%)
+        const minWidths = [200, 130, 90, 70];
         const minWidth = minWidths[Math.min(parts.length - 1, minWidths.length - 1)];
         
         return Math.max(calculatedWidth, minWidth);
@@ -2138,7 +2138,7 @@ export class FilesMapPanel {
       
       // Position directories in circles around their parents with depth-based spacing
       const BASE_DIR_RADIUS = 1800; // Base radius for all directories
-      const FILE_SPACE = 1000; // Space needed for files (max 3 layers = 1000px)
+      const FILE_SPACE = 1400; // Space needed for files (max 3 layers, increased by 40%)
       const DIRS_PER_LAYER = 8;
       
       // Calculate directory depth (how many levels of directories below this one)
@@ -2290,11 +2290,11 @@ export class FilesMapPanel {
       });
       
       // Assign initial angles and POSITIONS to files for multi-layer radial distribution
-      // Layer configuration: [maxFiles, radius]
+      // Layer configuration: [maxFiles, radius] - increased by 40%
       const LAYER_CONFIG = [
-        { maxFiles: 8, radius: 280 },    // Layer 1: max 8 files
-        { maxFiles: 12, radius: 480 },   // Layer 2: max 12 files (+50%)
-        { maxFiles: 18, radius: 720 }    // Layer 3: max 18 files (+50%)
+        { maxFiles: 8, radius: 392 },    // Layer 1: max 8 files (280 * 1.4)
+        { maxFiles: 12, radius: 672 },   // Layer 2: max 12 files (480 * 1.4)
+        { maxFiles: 18, radius: 1008 }   // Layer 3: max 18 files (720 * 1.4)
       ];
       
       dirToFiles.forEach((files, dirPath) => {
@@ -2856,17 +2856,18 @@ export class FilesMapPanel {
         .attr('class', 'file-label')
         .style('fill', d => getTextColor(d))
         .style('font-weight', 'normal')
+        .style('pointer-events', 'none')
         .text(d => d.label)
         .each(function(d) {
-          // Dynamically adjust font size to fit the box width with padding
+          // Dynamically adjust font size to fit the box width with small margins
           const textElement = this;
-          const padding = 8; // Small padding on left and right
-          const availableWidth = d.size - (padding * 2);
+          const margin = 6; // Small margin on left and right
+          const availableWidth = d.size - (margin * 2);
           
-          let fontSize = 24; // Start with max font size
-          const minFontSize = 12;
+          let fontSize = 28; // Start with larger max font size
+          const minFontSize = 8; // Allow smaller text for long names
           
-          // Binary search for optimal font size
+          // Binary search for optimal font size that fits within available width
           let low = minFontSize;
           let high = fontSize;
           
@@ -2882,9 +2883,16 @@ export class FilesMapPanel {
             }
           }
           
-          // Set final font size
+          // Use the largest font size that fits (no reduction needed with proper margin)
           fontSize = low;
           textElement.style.fontSize = fontSize + 'px';
+          
+          // Verify final text fits and clip if needed
+          const finalWidth = textElement.getComputedTextLength();
+          if (finalWidth > availableWidth) {
+            // Add clipping rect to ensure text doesn't overflow
+            textElement.style.clipPath = 'inset(0 ' + margin + 'px 0 ' + margin + 'px)';
+          }
         });
       
       // Update positions on tick

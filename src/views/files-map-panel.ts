@@ -1717,7 +1717,7 @@ export class FilesMapPanel {
         
         // Calculate directory size for distance check (matches updateDirectorySizes logic)
         const ZOOM_THRESHOLD = 0.20;
-        const MAX_DIR_SCALE = 15.0;
+        const MAX_DIR_SCALE = 30.0;
         
         // Use the stored base width/height (calculated from text)
         const baseWidth = node.baseWidth || 200;
@@ -2014,7 +2014,7 @@ export class FilesMapPanel {
         // - 0% - 20% zoom (very zoomed out): directories GROW as zoom decreases (0% = largest, 20% = smallest)
         // - 20%+ zoom: directories stay at their base size (calculated from text width)
         const ZOOM_THRESHOLD = 0.20; // Below this, directories start growing
-        const MAX_DIR_SCALE = 15.0; // Maximum growth when very zoomed out (3x larger than before)
+        const MAX_DIR_SCALE = 30.0; // Maximum growth when very zoomed out (30x larger)
         
         // Update directory shapes
         d3.selectAll('.dir-rect')

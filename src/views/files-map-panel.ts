@@ -1715,29 +1715,23 @@ export class FilesMapPanel {
         const dy = node.y - centerY;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        // Calculate directory size for distance check
-        const MIN_DIR_SCALE = 0.4;
-        const MAX_DIR_SCALE = 8.0;
-        const ZOOM_THRESHOLD = 0.5;
-        let dirSizeMultiplier = 1;
-        if (scale > 1) {
-          dirSizeMultiplier = Math.max(MIN_DIR_SCALE, 1 / Math.sqrt(scale));
-        } else if (scale < ZOOM_THRESHOLD) {
-          // Only scale up directories when zoomed out below 50%
-          // Seamless exponential scaling: the smaller the zoom, the larger the directories
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, Math.pow(ZOOM_THRESHOLD / scale, 0.9));
-        }
+        // Calculate directory size for distance check (matches updateDirectorySizes logic)
+        const ZOOM_THRESHOLD = 0.20;
+        const MAX_DIR_SCALE = 15.0;
         
-        const fontSizes = [56, 40, 26, 16];
-        const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
-        const parts = node.label.split('/');
-        const dirName = parts[parts.length - 1];
-        const dirNameWidth = dirName.length * fontSize * 0.7;
-        const calculatedWidth = dirNameWidth + 60;
-        const minWidths = [280, 180, 130, 100];
-        const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
-        const dirWidth = Math.max(calculatedWidth, minWidth);
-        const dirHeight = fontSize * 1.8;
+        // Use the stored base width/height (calculated from text)
+        const baseWidth = node.baseWidth || 200;
+        const baseHeight = node.baseHeight || 100;
+        
+        let dirWidth, dirHeight;
+        if (scale >= ZOOM_THRESHOLD) {
+          dirWidth = baseWidth;
+          dirHeight = baseHeight;
+        } else {
+          const multiplier = Math.min(MAX_DIR_SCALE, ZOOM_THRESHOLD / scale);
+          dirWidth = baseWidth * multiplier;
+          dirHeight = baseHeight * multiplier;
+        }
         const dirSize = Math.max(dirWidth, dirHeight);
         
         // Only consider nodes within a reasonable distance
@@ -2016,20 +2010,11 @@ export class FilesMapPanel {
         // Only update if we have a valid scale
         if (zoomScale === undefined) return;
         
-        // Calculate scaling factor for directory sizes
-        // Directories grow as you zoom out (inverse scaling)
-        // At 100%: 1x, at 50%: 2x, at 25%: 4x, at 12.5%: 8x (capped at 8x)
-        const MAX_DIR_SCALE = 8.0; // Maximum growth when zoomed out
-        
-        let dirSizeMultiplier = 1;
-        
-        if (zoomScale >= 1) {
-          // At or above 100%: normal size
-          dirSizeMultiplier = 1;
-        } else {
-          // Below 100%: grow inversely with zoom, capped at MAX
-          dirSizeMultiplier = Math.min(MAX_DIR_SCALE, 1 / zoomScale);
-        }
+        // Directory scaling:
+        // - 0% - 20% zoom (very zoomed out): directories GROW as zoom decreases (0% = largest, 20% = smallest)
+        // - 20%+ zoom: directories stay at their base size (calculated from text width)
+        const ZOOM_THRESHOLD = 0.20; // Below this, directories start growing
+        const MAX_DIR_SCALE = 15.0; // Maximum growth when very zoomed out (3x larger than before)
         
         // Update directory shapes
         d3.selectAll('.dir-rect')
@@ -2037,21 +2022,22 @@ export class FilesMapPanel {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'directory') return null;
             
-            const fontSizes = [56, 40, 26, 16];
-            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            // Use the stored base width/height (calculated from text)
+            const baseWidth = node.baseWidth || 200;
+            const baseHeight = node.baseHeight || 100;
             
-            // Calculate text width
-            const parts = node.label.split('/');
-            const dirName = parts[parts.length - 1];
-            const dirNameWidth = dirName.length * fontSize * 0.7;
-            const calculatedWidth = dirNameWidth + 60; // 30px margin on each side
+            let width, height;
             
-            // Set minimum width based on depth
-            const minWidths = [280, 180, 130, 100];
-            const minWidth = minWidths[Math.min(node.depth || 0, minWidths.length - 1)] * dirSizeMultiplier;
-            
-            const width = Math.max(calculatedWidth, minWidth);
-            const height = fontSize * 1.8; // Height proportional to font size
+            if (zoomScale >= ZOOM_THRESHOLD) {
+              // At 20%+ zoom: use base size (fits text without truncation)
+              width = baseWidth;
+              height = baseHeight;
+            } else {
+              // Below 20% zoom: grow inversely as zoom decreases
+              const multiplier = Math.min(MAX_DIR_SCALE, ZOOM_THRESHOLD / zoomScale);
+              width = baseWidth * multiplier;
+              height = baseHeight * multiplier;
+            }
             
             // Create hexagon path: rectangle with angled left and right sides
             const indent = height * 0.4;
@@ -2069,13 +2055,25 @@ export class FilesMapPanel {
             \`;
           });
         
-        // Update directory name font sizes and truncation (always centered)
+        // Update directory name font sizes - scale proportionally with box size
         d3.selectAll('.directory-name')
           .style('font-size', function() {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'directory') return null;
-            const fontSizes = [56, 40, 26, 16];
-            const fontSize = fontSizes[Math.min(node.depth || 0, fontSizes.length - 1)] * dirSizeMultiplier;
+            
+            // Calculate font size based on the base height
+            const baseHeight = node.baseHeight || 100;
+            // Font size should be approximately 55% of box height for good readability
+            const baseFontSize = baseHeight * 0.55;
+            
+            let fontSize;
+            if (zoomScale >= ZOOM_THRESHOLD) {
+              fontSize = baseFontSize;
+            } else {
+              const multiplier = Math.min(MAX_DIR_SCALE, ZOOM_THRESHOLD / zoomScale);
+              fontSize = baseFontSize * multiplier;
+            }
+            
             return fontSize + 'px';
           })
           .text(function() {
@@ -2083,6 +2081,12 @@ export class FilesMapPanel {
             if (!node || node.type !== 'directory') return '';
             const parts = node.label.split('/');
             return parts[parts.length - 1];
+          })
+          .each(function() {
+            // No truncation needed - boxes are now sized to fit text
+            // This function is kept for potential future use
+            const node = d3.select(this.parentNode).datum();
+            if (!node || node.type !== 'directory') return;
           });
       }
       
@@ -2505,6 +2509,11 @@ export class FilesMapPanel {
       const fileNodes = nodes.filter(n => n.type === 'file');
       const dirNodes = nodes.filter(n => n.type === 'directory');
       
+      // Sort directories by depth (descending) so parent dirs render on top of child dirs
+      // Higher depth = deeper in hierarchy = render first (behind)
+      // Lower depth = parent = render last (on top)
+      dirNodes.sort((a, b) => (b.depth || 0) - (a.depth || 0));
+      
       // Create file nodes first (will be rendered behind)
       const fileElements = nodeGroup.selectAll('g.node-file')
         .data(fileNodes)
@@ -2618,6 +2627,10 @@ export class FilesMapPanel {
           const fontSize = getDirFontSize(d.depth || 0);
           const width = getTextWidth(d.label, fontSize);
           const height = fontSize * 1.8; // Height proportional to font size
+          
+          // Store the base width and height on the node for use in zoom updates
+          d.baseWidth = width;
+          d.baseHeight = height;
           
           // Create hexagon path: rectangle with angled left and right sides
           const indent = height * 0.4; // How much the sides angle in

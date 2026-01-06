@@ -17,13 +17,18 @@ Radium indexes your codebase and creates a visual map showing files and their re
 - Cross-platform support (macOS, Linux, Windows)
 - Session history and rollback capability
 
-## Demos
+## Development
 
-Want to see what Radium looks like before installing? Check out the standalone demo:
+Run the panel dev server for local testing with mock data:
 
-- **[Symbol Changes Demo](demo/symbol-changes-demo.html)** - Real-time symbol tracking visualization
+```bash
+npm run dev:panels
+```
 
-Simply open the HTML file in your browser. No installation required!
+Available panels:
+- http://localhost:3000/panel/files-map
+- http://localhost:3000/panel/symbol-changes
+- http://localhost:3000/panel/codebase-map
 
 ## Usage
 

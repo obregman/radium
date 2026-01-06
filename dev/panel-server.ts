@@ -268,6 +268,7 @@ function getFilesMapMockDataScript(): string {
         
         // src subdirectories (level 1)
         { id: 'dir:src/services', type: 'directory', label: 'services', path: 'src/services', fileCount: 4, depth: 1 },
+        { id: 'dir:src/AI', type: 'directory', label: 'AI', path: 'src/AI', fileCount: 4, depth: 1 },
         { id: 'dir:src/utils', type: 'directory', label: 'utils', path: 'src/utils', fileCount: 4, depth: 1 },
         { id: 'dir:src/components', type: 'directory', label: 'components', path: 'src/components', fileCount: 0, depth: 1 },
         { id: 'dir:src/models', type: 'directory', label: 'models', path: 'src/models', fileCount: 3, depth: 1 },
@@ -333,6 +334,24 @@ function getFilesMapMockDataScript(): string {
           functions: ['login()', 'logout()', 'validateToken()', 'refreshToken()', 'hashPassword()'],
           variables: ['tokenCache', 'sessionStore'],
           types: ['User', 'Session', 'AuthConfig']
+        },
+        
+        // AI directory files
+        { 
+          id: 'file:src/AI/model.ts', type: 'file', label: 'model.ts', path: 'src/AI/model.ts',
+          lines: 280, lang: 'typescript', size: calcSize(280), exportedSymbols: 5, smellScore: 18,
+          smellDetails: { functionCount: 8, avgFunctionLength: 20, maxFunctionLength: 45, maxNestingDepth: 3, importCount: 4 },
+          functions: ['train()', 'predict()', 'evaluate()'],
+          variables: ['weights', 'config'],
+          types: ['ModelConfig']
+        },
+        { 
+          id: 'file:src/AI/agent.ts', type: 'file', label: 'agent.ts', path: 'src/AI/agent.ts',
+          lines: 320, lang: 'typescript', size: calcSize(320), exportedSymbols: 6, smellScore: 20,
+          smellDetails: { functionCount: 10, avgFunctionLength: 18, maxFunctionLength: 40, maxNestingDepth: 3, importCount: 5 },
+          functions: ['act()', 'learn()', 'reset()'],
+          variables: ['state', 'memory'],
+          types: ['AgentConfig', 'State']
         },
         { 
           id: 'file:src/services/api.ts', type: 'file', label: 'api.ts', path: 'src/services/api.ts',
@@ -597,6 +616,7 @@ function getFilesMapMockDataScript(): string {
       edges: [
         // Directory containment - Root
         { source: 'dir:src', target: 'dir:src/services', type: 'contains' },
+        { source: 'dir:src', target: 'dir:src/AI', type: 'contains' },
         { source: 'dir:src', target: 'dir:src/utils', type: 'contains' },
         { source: 'dir:src', target: 'dir:src/components', type: 'contains' },
         { source: 'dir:src', target: 'dir:src/models', type: 'contains' },
@@ -618,6 +638,10 @@ function getFilesMapMockDataScript(): string {
         { source: 'dir:src/services', target: 'file:src/services/api.ts', type: 'contains' },
         { source: 'dir:src/services', target: 'file:src/services/database.ts', type: 'contains' },
         { source: 'dir:src/services', target: 'file:src/services/cache.ts', type: 'contains' },
+        
+        // AI
+        { source: 'dir:src/AI', target: 'file:src/AI/model.ts', type: 'contains' },
+        { source: 'dir:src/AI', target: 'file:src/AI/agent.ts', type: 'contains' },
         
         // Utils
         { source: 'dir:src/utils', target: 'file:src/utils/helpers.ts', type: 'contains' },

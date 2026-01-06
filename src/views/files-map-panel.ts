@@ -2625,7 +2625,8 @@ export class FilesMapPanel {
         .append('path')
         .attr('d', d => {
           const fontSize = getDirFontSize(d.depth || 0);
-          const width = getTextWidth(d.label, fontSize);
+          const MIN_DIR_WIDTH = 120; // Minimum width for directory boxes
+          const width = Math.max(MIN_DIR_WIDTH, getTextWidth(d.label, fontSize));
           const height = fontSize * 1.8; // Height proportional to font size
           
           // Store the base width and height on the node for use in zoom updates

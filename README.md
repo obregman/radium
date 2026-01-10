@@ -29,6 +29,7 @@ Available panels:
 - http://localhost:3000/panel/files-map
 - http://localhost:3000/panel/symbol-changes
 - http://localhost:3000/panel/codebase-map
+- http://localhost:3000/panel/dependency-graph
 
 ## Usage
 
@@ -53,6 +54,7 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 
 - `Radium: Codebase Map` - Show the codebase graph
 - `Radium: Files Map` - View files as size-weighted rectangles with relationship arrows
+- `Radium: Dependency Graph` - Interactive file-to-file dependency visualization
 - `Radium: Real-time Symbol Visualization` - Visualize code changes as symbols (functions, classes) with call relationships
 - `Radium: Semantic Changes` - Track semantic changes by category (logic, API calls, file I/O, etc.)
 
@@ -165,6 +167,55 @@ Each symbol box displays the symbol type (FUNCTION, CLASS, etc.) at the top for 
 This mode makes complex changes easy to understand at a glance by showing the structural changes to your code rather than line-by-line diffs.
 
 To use: Run `Radium: Symbol Changes` from the command palette.
+
+### Dependency Graph
+
+The Dependency Graph provides an interactive visualization of file-to-file dependencies in your codebase, showing which files depend on each other and how they're connected.
+
+**Features:**
+- **Interactive Graph**: Force-directed layout showing files as nodes and dependencies as edges
+- **Multiple Layouts**: 
+  - Force-Directed: Natural clustering of related files
+  - Hierarchical: Top-down view based on dependency depth
+  - Circular: Radial arrangement for overview
+- **Smart Filtering**:
+  - All Files: Complete dependency graph
+  - High Dependencies (>5): Files that depend on many others
+  - High Dependents (>5): Files that many others depend on
+  - Isolated Files: Files with no dependencies
+- **Visual Indicators**:
+  - Node size: Based on total connections (dependencies + dependents)
+  - Node color: 
+    - Blue: Low connectivity (0-5 connections)
+    - Orange: Medium connectivity (6-10 connections)
+    - Red: High connectivity (>10 connections)
+    - Gray: Isolated files
+  - Edge color: Different colors for different relationship types (imports, calls, etc.)
+  - Edge thickness: Proportional to connection weight
+
+**Statistics Panel:**
+- Total files count
+- Total dependencies count
+- Average dependencies per file
+- Maximum dependencies for any file
+
+**Interactions:**
+- **Pan**: Click and drag on empty space
+- **Zoom**: Mouse wheel to zoom in/out
+- **Drag nodes**: Click and drag individual files to reposition
+- **Hover**: View detailed information about files
+- **Click file**: Open in editor
+- **Reset View**: Return to default position
+- **Fit to Screen**: Auto-scale to show all files
+
+**Use Cases:**
+- Identify highly coupled files that may need refactoring
+- Find isolated files that could be removed
+- Understand the dependency structure of your codebase
+- Locate central/core files that many others depend on
+- Visualize circular dependencies
+
+To use: Run `Radium: Dependency Graph` from the command palette.
 
 ### Semantic Changes
 

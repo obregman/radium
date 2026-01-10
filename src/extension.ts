@@ -7,6 +7,7 @@ import { LLMOrchestrator, LLMPlan } from './orchestrator/llm-orchestrator';
 import { MapPanel } from './views/codebase-map-panel';
 import { FilesMapPanel } from './views/files-map-panel';
 import { SymbolChangesPanel } from './views/symbol-changes-panel';
+import { DependencyGraphPanel } from './views/dependency-graph-panel';
 import { GitDiffTracker } from './git/git-diff-tracker';
 
 let store: GraphStore;
@@ -253,6 +254,14 @@ function registerCommands(context: vscode.ExtensionContext) {
         return;
       }
       SymbolChangesPanel.createOrShow(context.extensionUri, workspaceFolders[0].uri.fsPath);
+    }),
+
+    vscode.commands.registerCommand('radium.dependencyGraph', () => {
+      if (!store) {
+        vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
+        return;
+      }
+      DependencyGraphPanel.createOrShow(context.extensionUri, store, outputChannel);
     })
 
   );

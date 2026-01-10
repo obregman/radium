@@ -45,6 +45,11 @@
         "command": "radium.symbolChanges",
         "title": "Radium: Real-time Symbol Visualization",
         "icon": "$(symbol-class)"
+      },
+      {
+        "command": "radium.dependencyGraph",
+        "title": "Radium: Dependency Graph",
+        "icon": "$(type-hierarchy)"
       }
     ],
     "viewsContainers": {

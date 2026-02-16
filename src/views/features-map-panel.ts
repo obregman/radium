@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { GraphStore } from '../store/schema';
-import { FeaturesConfigLoader, FeaturesConfig, FeatureConfig, FeatureCapability, FeatureStatus } from '../config/features-config';
+import { FeaturesConfigLoader, FeaturesConfig, FeatureConfig, FeatureCapability } from '../config/features-config';
 import * as path from 'path';
 
 interface FeaturesGraphNode {
@@ -8,7 +8,6 @@ interface FeaturesGraphNode {
   kind: 'app' | 'feature' | 'capability' | 'file';
   name: string;
   description?: string;
-  status?: FeatureStatus;
   filePath?: string;
   parentId?: string;
   color?: string;
@@ -138,7 +137,6 @@ spec:
     - feature_key:
         name: Feature Display Name
         description: What this feature does
-        status: completed  # completed | in_progress | planned
         capabilities:
           - capability_key:
               name: Capability Name
@@ -153,8 +151,7 @@ Instructions:
 1. Identify the main product features by analyzing the codebase structure, routes, components, and business logic
 2. For each feature, identify its sub-capabilities (distinct functionalities within the feature)
 3. Map the source files that implement each capability
-4. Set appropriate status based on code completeness (TODOs, stubs = in_progress or planned)
-5. Group features under apps only if the project contains multiple distinct applications
+4. Group features under apps only if the project contains multiple distinct applications
 
 Focus on user-facing product features, not technical infrastructure.`;
 
@@ -278,7 +275,6 @@ Focus on user-facing product features, not technical infrastructure.`;
       kind: 'feature',
       name: feature.name,
       description: feature.description,
-      status: feature.status,
       parentId,
       color
     });
@@ -430,47 +426,6 @@ Focus on user-facing product features, not technical infrastructure.`;
     .control-button:hover {
       background: var(--vscode-button-hoverBackground);
     }
-    .legend {
-      position: absolute;
-      bottom: 10px;
-      right: 10px;
-      background: var(--vscode-editor-background);
-      border: 1px solid var(--vscode-panel-border);
-      padding: 10px;
-      border-radius: 4px;
-      font-size: 12px;
-      z-index: 1000;
-    }
-    .legend-title {
-      font-weight: bold;
-      margin-bottom: 8px;
-    }
-    .legend-item {
-      margin: 5px 0;
-      display: flex;
-      align-items: center;
-    }
-    .legend-color {
-      width: 12px;
-      height: 12px;
-      margin-right: 8px;
-      border-radius: 2px;
-    }
-    .legend-status {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid var(--vscode-panel-border);
-    }
-    .status-indicator {
-      width: 12px;
-      height: 12px;
-      margin-right: 8px;
-      border-radius: 2px;
-      border: 2px solid;
-    }
-    .status-completed { border-color: #4CAF50; background: rgba(76, 175, 80, 0.2); }
-    .status-in_progress { border-color: #FFC107; background: rgba(255, 193, 7, 0.2); }
-    .status-planned { border-color: #9E9E9E; background: transparent; border-style: dashed; }
     .error-message {
       position: absolute;
       top: 50%;
@@ -516,42 +471,7 @@ Focus on user-facing product features, not technical infrastructure.`;
   <div id="map"></div>
   <div class="controls">
     <button class="control-button" id="reset-view-btn">Reset View</button>
-    <button class="control-button" id="expand-all-btn">Expand All</button>
-    <button class="control-button" id="collapse-all-btn">Collapse All</button>
     <button class="control-button" id="copy-prompt-btn">Copy Prompt</button>
-  </div>
-  <div class="legend">
-    <div class="legend-title">Features View</div>
-    <div class="legend-item">
-      <div class="legend-color" style="background: #FFF9C4; border: 2px solid #F9A825;"></div>
-      <span>App</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-color" style="background: #FFE082;"></div>
-      <span>Feature</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-color" style="background: #E1BEE7;"></div>
-      <span>Capability</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-color" style="background: #BDBDBD;"></div>
-      <span>File</span>
-    </div>
-    <div class="legend-status">
-      <div class="legend-item">
-        <div class="status-indicator status-completed"></div>
-        <span>Completed</span>
-      </div>
-      <div class="legend-item">
-        <div class="status-indicator status-in_progress"></div>
-        <span>In Progress</span>
-      </div>
-      <div class="legend-item">
-        <div class="status-indicator status-planned"></div>
-        <span>Planned</span>
-      </div>
-    </div>
   </div>
   <div id="tooltip" class="tooltip" style="display: none;"></div>
   <div id="error-container"></div>
@@ -566,7 +486,6 @@ Focus on user-facing product features, not technical infrastructure.`;
     let width = 0;
     let height = 0;
     let transform = { k: 1, x: 0, y: 0 };
-    let collapsedNodes = new Set();
 
     // Layout constants
     const PADDING = 20;
@@ -658,18 +577,6 @@ Focus on user-facing product features, not technical infrastructure.`;
         updateTransform();
       });
 
-      d3.select('#expand-all-btn').on('click', () => {
-        collapsedNodes.clear();
-        renderGraph();
-      });
-
-      d3.select('#collapse-all-btn').on('click', () => {
-        graphData.nodes.filter(n => n.kind === 'feature').forEach(n => {
-          collapsedNodes.add(n.id);
-        });
-        renderGraph();
-      });
-
       const copyBtn = document.getElementById('copy-prompt-btn');
       if (copyBtn) {
         copyBtn.addEventListener('click', (e) => {
@@ -677,6 +584,13 @@ Focus on user-facing product features, not technical infrastructure.`;
           vscode.postMessage({ type: 'copy:prompt' });
         });
       }
+
+      // Handle window resize
+      window.addEventListener('resize', () => {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        svg.attr('width', width).attr('height', height);
+      });
     }
 
     function showError(message) {
@@ -706,10 +620,6 @@ Focus on user-facing product features, not technical infrastructure.`;
       }
       if (node.filePath) {
         html += \`<div class="tooltip-description">\${node.filePath}</div>\`;
-      }
-      if (node.status) {
-        const statusLabel = node.status.replace('_', ' ');
-        html += \`<div class="tooltip-description">Status: \${statusLabel}</div>\`;
       }
       
       tooltip.html(html)
@@ -748,12 +658,6 @@ Focus on user-facing product features, not technical infrastructure.`;
 
       // Calculate sizes bottom-up
       function calculateSize(node) {
-        if (collapsedNodes.has(node.id)) {
-          node._width = 200;
-          node._height = HEADER_HEIGHT + 10;
-          return;
-        }
-
         if (node.kind === 'file') {
           node._width = FILE_WIDTH;
           node._height = FILE_HEIGHT;
@@ -823,8 +727,6 @@ Focus on user-facing product features, not technical infrastructure.`;
         node._x = x;
         node._y = y;
 
-        if (collapsedNodes.has(node.id)) return;
-
         if (node.kind === 'app') {
           let childX = x + APP_PADDING;
           const childY = y + HEADER_HEIGHT + APP_PADDING;
@@ -867,49 +769,77 @@ Focus on user-facing product features, not technical infrastructure.`;
         }
       }
 
-      // Position root nodes in a balanced grid
-      // Calculate optimal number of columns based on node count
-      const numRoots = roots.length;
-      const optimalCols = Math.ceil(Math.sqrt(numRoots)); // Square-ish grid
+      // Brick/masonry layout aiming for roughly square total dimensions (4:3 to 5:4 ratio)
+      // Calculate total area and find optimal column count for square-ish layout
+      const totalArea = roots.reduce((sum, r) => sum + r._width * r._height, 0);
+      const avgHeight = roots.reduce((sum, r) => sum + r._height, 0) / roots.length;
+      const avgWidth = roots.reduce((sum, r) => sum + r._width, 0) / roots.length;
       
-      // Calculate max width per column
-      const avgWidth = roots.reduce((sum, r) => sum + r._width, 0) / numRoots;
-      const targetCols = Math.max(2, Math.min(optimalCols, Math.floor((maxRowWidth + FEATURE_GAP) / (avgWidth + FEATURE_GAP))));
+      // Target aspect ratio between 1:1 and 4:3 (width:height)
+      // Estimate total dimensions for different column counts and pick best
+      let bestCols = 1;
+      let bestRatio = Infinity;
+      const targetRatio = 1.25; // Aim for 5:4 aspect ratio
       
-      // Distribute roots into rows
-      const rowCount = Math.ceil(numRoots / targetCols);
-      const rows = [];
-      for (let i = 0; i < rowCount; i++) {
-        rows.push(roots.slice(i * targetCols, (i + 1) * targetCols));
-      }
-      
-      // Position each row
-      rows.forEach(rowNodes => {
-        // Calculate row dimensions
-        const rowWidth = rowNodes.reduce((sum, n) => sum + n._width + FEATURE_GAP, 0) - FEATURE_GAP;
-        const rowHeight = Math.max(...rowNodes.map(n => n._height));
+      for (let cols = 1; cols <= Math.min(roots.length, 6); cols++) {
+        // Estimate layout dimensions with this column count using masonry simulation
+        const colHeights = new Array(cols).fill(0);
+        const colWidths = new Array(cols).fill(0);
         
-        // Center the row horizontally
-        let rowX = PADDING + (maxRowWidth - rowWidth) / 2;
-        
-        rowNodes.forEach(node => {
-          positionNode(node, rowX, currentY);
-          rowX += node._width + FEATURE_GAP;
+        roots.forEach(node => {
+          // Find shortest column
+          const minColIdx = colHeights.indexOf(Math.min(...colHeights));
+          colHeights[minColIdx] += node._height + FEATURE_GAP;
+          colWidths[minColIdx] = Math.max(colWidths[minColIdx], node._width);
         });
         
-        currentY += rowHeight + FEATURE_GAP;
+        const estWidth = colWidths.reduce((sum, w) => sum + w, 0) + (cols - 1) * FEATURE_GAP;
+        const estHeight = Math.max(...colHeights) - FEATURE_GAP;
+        const ratio = estWidth / estHeight;
+        
+        // Pick column count closest to target ratio
+        if (Math.abs(ratio - targetRatio) < Math.abs(bestRatio - targetRatio)) {
+          bestRatio = ratio;
+          bestCols = cols;
+        }
+      }
+      
+      // Masonry layout: place each node in the shortest column
+      const numCols = bestCols;
+      const colHeights = new Array(numCols).fill(PADDING);
+      const colXPositions = new Array(numCols).fill(0);
+      const colMaxWidths = new Array(numCols).fill(0);
+      
+      // First pass: assign nodes to columns to determine max widths
+      const nodeColumns = [];
+      roots.forEach(node => {
+        const minColIdx = colHeights.indexOf(Math.min(...colHeights));
+        nodeColumns.push(minColIdx);
+        colHeights[minColIdx] += node._height + FEATURE_GAP;
+        colMaxWidths[minColIdx] = Math.max(colMaxWidths[minColIdx], node._width);
+      });
+      
+      // Calculate column X positions based on max widths
+      let currentColX = PADDING;
+      for (let i = 0; i < numCols; i++) {
+        colXPositions[i] = currentColX;
+        currentColX += colMaxWidths[i] + FEATURE_GAP;
+      }
+      
+      // Reset column heights for actual positioning
+      colHeights.fill(PADDING);
+      
+      // Second pass: position nodes
+      roots.forEach((node, idx) => {
+        const colIdx = nodeColumns[idx];
+        const x = colXPositions[colIdx];
+        const y = colHeights[colIdx];
+        
+        positionNode(node, x, y);
+        colHeights[colIdx] += node._height + FEATURE_GAP;
       });
 
       return nodeMap;
-    }
-
-    function getStatusBorderStyle(status) {
-      switch (status) {
-        case 'completed': return { color: '#4CAF50', dashArray: 'none' };
-        case 'in_progress': return { color: '#FFC107', dashArray: 'none' };
-        case 'planned': return { color: '#9E9E9E', dashArray: '5,3' };
-        default: return { color: '#9E9E9E', dashArray: 'none' };
-      }
     }
 
     function renderGraph() {
@@ -927,14 +857,6 @@ Focus on user-facing product features, not technical infrastructure.`;
         const kindNodes = nodes.filter(n => n.kind === kind);
         
         kindNodes.forEach(node => {
-          if (node.parentId && collapsedNodes.has(node.parentId)) return;
-          // Check all ancestors
-          let ancestor = nodeMap.get(node.parentId);
-          while (ancestor) {
-            if (collapsedNodes.has(ancestor.id)) return;
-            ancestor = nodeMap.get(ancestor.parentId);
-          }
-
           const group = g.append('g')
             .attr('class', 'node-group')
             .attr('transform', \`translate(\${node._x},\${node._y})\`);
@@ -959,45 +881,27 @@ Focus on user-facing product features, not technical infrastructure.`;
               .text(node.name);
 
           } else if (node.kind === 'feature') {
-            const statusStyle = getStatusBorderStyle(node.status);
-            const isCollapsed = collapsedNodes.has(node.id);
-            
             // Feature box - yellow background
             group.append('rect')
               .attr('width', node._width)
               .attr('height', node._height)
               .attr('rx', 6)
               .attr('fill', node.color || '#FFE082')
-              .attr('stroke', statusStyle.color)
-              .attr('stroke-width', 3)
-              .attr('stroke-dasharray', statusStyle.dashArray)
-              .style('cursor', 'pointer')
-              .on('click', () => {
-                if (collapsedNodes.has(node.id)) {
-                  collapsedNodes.delete(node.id);
-                } else {
-                  collapsedNodes.add(node.id);
-                }
-                renderGraph();
-              })
+              .attr('stroke', '#666')
+              .attr('stroke-width', 2)
               .on('mouseenter', (event) => showTooltip(event, node))
               .on('mouseleave', hideTooltip);
 
-            // Collapse indicator
             group.append('text')
               .attr('x', 12)
-              .attr('y', 22)
-              .attr('font-size', '14px')
-              .attr('fill', '#333')
-              .text(isCollapsed ? '▶' : '▼');
-
-            group.append('text')
-              .attr('x', 28)
-              .attr('y', 24)
-              .attr('font-size', '14px')
+              .attr('y', 32)
+              .attr('font-size', '30px')
               .attr('font-weight', 'bold')
               .attr('fill', '#333')
-              .text(node.name);
+              .style('cursor', 'default')
+              .text(node.name)
+              .on('mouseenter', (event) => showTooltip(event, node))
+              .on('mouseleave', hideTooltip);
 
           } else if (node.kind === 'capability') {
             // Capability box - purple/pink background
@@ -1017,7 +921,10 @@ Focus on user-facing product features, not technical infrastructure.`;
               .attr('font-size', '12px')
               .attr('font-weight', 'bold')
               .attr('fill', '#4A148C')
-              .text(node.name);
+              .style('cursor', 'default')
+              .text(node.name)
+              .on('mouseenter', (event) => showTooltip(event, node))
+              .on('mouseleave', hideTooltip);
 
           } else if (node.kind === 'file') {
             // File box - gray with stacked effect
@@ -1060,7 +967,15 @@ Focus on user-facing product features, not technical infrastructure.`;
               .attr('y', 18)
               .attr('font-size', '11px')
               .attr('fill', '#333')
-              .text(truncateText(node.name, 20));
+              .style('cursor', 'pointer')
+              .text(truncateText(node.name, 20))
+              .on('click', () => {
+                if (node.filePath) {
+                  vscode.postMessage({ type: 'file:open', filePath: node.filePath });
+                }
+              })
+              .on('mouseenter', (event) => showTooltip(event, node))
+              .on('mouseleave', hideTooltip);
           }
         });
       });

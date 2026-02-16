@@ -23,12 +23,12 @@
     "commands": [
       {
         "command": "radium.openMap",
-        "title": "Radium: Codebase Map",
+        "title": "Radium: Components View",
         "icon": "$(graph)"
       },
       {
         "command": "radium.openFeaturesMap",
-        "title": "Radium: Features Map",
+        "title": "Radium: Features View",
         "icon": "$(symbol-namespace)"
       },
       {

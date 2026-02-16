@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { GraphStore, Node, Edge } from '../store/schema';
+import { RadiumConfigLoader } from '../config/radium-config';
 import { GitDiffTracker } from '../git/git-diff-tracker';
 import { RadiumIgnore } from '../config/radium-ignore';
 import * as path from 'path';
@@ -11,16 +12,20 @@ export class MapPanel {
   private static outputChannel: vscode.OutputChannel;
   private changeCheckTimer?: NodeJS.Timeout;
   private readonly CHANGE_CHECK_INTERVAL = 60000; // 1 minute in milliseconds
+  private newFilePaths: Set<string> = new Set(); // Track new files to display in "New Files" component
   private fileWatcher?: vscode.FileSystemWatcher;
   private radiumIgnore: RadiumIgnore;
   private workspaceRoot: string;
+  private configLoader: RadiumConfigLoader;
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
     private store: GraphStore,
+    configLoader: RadiumConfigLoader,
     private gitDiffTracker?: GitDiffTracker
   ) {
+    this.configLoader = configLoader;
     this.panel = panel;
     
     // Get workspace root from config loader
@@ -66,7 +71,7 @@ export class MapPanel {
     // File watching will be started when auto-focus is enabled
   }
 
-  public static createOrShow(extensionUri: vscode.Uri, store: GraphStore, gitDiffTracker?: GitDiffTracker) {
+  public static createOrShow(extensionUri: vscode.Uri, store: GraphStore, configLoader: RadiumConfigLoader, gitDiffTracker?: GitDiffTracker) {
     // Initialize output channel if needed
     if (!MapPanel.outputChannel) {
       MapPanel.outputChannel = vscode.window.createOutputChannel('Radium Map');
@@ -95,7 +100,7 @@ export class MapPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'vibeMap',
-      'Radium: Codebase Map',
+      'Radium: Components View',
       column || vscode.ViewColumn.Two,
       {
         enableScripts: true,
@@ -104,7 +109,7 @@ export class MapPanel {
       }
     );
 
-    MapPanel.currentPanel = new MapPanel(panel, extensionUri, store, gitDiffTracker);
+    MapPanel.currentPanel = new MapPanel(panel, extensionUri, store, configLoader, gitDiffTracker);
   }
 
   private async handleMessage(message: any) {
@@ -135,12 +140,46 @@ export class MapPanel {
       case 'autoFocus:toggle':
         this.handleAutoFocusToggle(message.enabled);
         break;
+      case 'copy:prompt':
+        await this.handleCopyPrompt();
+        break;
       case 'ready':
         this.updateGraph();
         break;
       default:
         console.log('[Radium] Unknown message type:', message.type);
     }
+  }
+
+  private async handleCopyPrompt() {
+    const prompt = `Analyze this codebase and generate or update the .radium/radium-components.yaml file.
+
+The file should document the architectural components using this structure:
+
+\`\`\`yaml
+spec:
+  components:
+    - component_key:
+        name: Component Display Name
+        description: What this component does
+        files:
+          - src/path/to/files/**
+        external:
+          - type: Database
+            name: PostgreSQL
+            description: Main data store
+\`\`\`
+
+Instructions:
+1. Identify the main architectural components by analyzing the codebase structure (e.g., views, store, indexer, api, services)
+2. For each component, list the file patterns that belong to it
+3. Identify external dependencies (databases, APIs, services) and which components use them
+4. Group related files together under meaningful component names
+
+Focus on architectural/technical components, not product features.`;
+
+    await vscode.env.clipboard.writeText(prompt);
+    vscode.window.showInformationMessage('Prompt copied to clipboard');
   }
 
   private handleAutoFocusToggle(enabled: boolean) {
@@ -415,6 +454,21 @@ export class MapPanel {
   }
 
   public updateGraph() {
+    // Try to load config (re-reads the file)
+    this.configLoader.load();
+    
+    // Check if config exists
+    const config = this.configLoader.getConfig();
+    if (!config) {
+      MapPanel.outputChannel.appendLine('No components configuration loaded');
+      this.panel.webview.postMessage({
+        type: 'graph:update',
+        data: { nodes: [], edges: [] },
+        error: 'No radium-components.yaml configuration found.'
+      });
+      return;
+    }
+
     const allNodes = this.store.getAllNodes();
     const allEdges = this.store.getAllEdges();
     const allFilesRaw = this.store.getAllFiles();
@@ -432,13 +486,351 @@ export class MapPanel {
   }
 
 
+  private buildComponentBasedGraph(allNodes: any[], allEdges: any[], allFiles: any[], config: any) {
+    const nodes: any[] = [];
+    const edges: any[] = [];
+    const nodeMap = new Map<string, number>();
+    let nodeId = 1;
+
+    // Predefined palette of 16 distinct colors for components
+    const componentColorPalette = [
+      '#E57373', // Coral Red
+      '#64B5F6', // Sky Blue
+      '#81C784', // Light Green
+      '#FFB74D', // Orange
+      '#BA68C8', // Purple
+      '#4DB6AC', // Teal
+      '#F06292', // Pink
+      '#7986CB', // Indigo
+      '#AED581', // Lime Green
+      '#FFD54F', // Amber
+      '#9575CD', // Deep Purple
+      '#4DD0E1', // Cyan
+      '#FF8A65', // Deep Orange
+      '#A1887F', // Brown
+      '#90A4AE', // Blue Grey
+      '#DCE775'  // Yellow Green
+    ];
+    
+    // Hash function to consistently assign colors from palette
+    const hashStringToColor = (str: string): string => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const index = Math.abs(hash) % componentColorPalette.length;
+      return componentColorPalette[index];
+    };
+
+    // Map to store component colors
+    const componentColors = new Map<string, string>();
+
+    // Group files by component, separating new files
+    const filesByComponent = new Map<string, any[]>();
+    const unmatchedFiles: any[] = [];
+    const newFiles: any[] = [];
+    
+    // Create a set of all indexed file paths for quick lookup
+    const indexedFilePaths = new Set(allFiles.map(f => f.path));
+    
+    // Add files explicitly listed in component definitions that aren't indexed
+    const syntheticFileId = -1000;
+    let syntheticId = syntheticFileId;
+    const syntheticFiles: any[] = [];
+    
+    for (const componentKey in config.projectSpec.components) {
+      const component = config.projectSpec.components[componentKey];
+      if (component.files && Array.isArray(component.files)) {
+        for (const filePath of component.files) {
+          const normalizedPath = filePath.replace(/\\/g, '/');
+          
+          // Filter out glob patterns and unwanted file types
+          if (normalizedPath.endsWith('**') || normalizedPath.endsWith('*')) {
+            continue;
+          }
+          if (normalizedPath.endsWith('.md') || normalizedPath.endsWith('.txt')) {
+            continue;
+          }
+          const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.bmp', '.webp', '.ico'];
+          if (imageExtensions.some(ext => normalizedPath.toLowerCase().endsWith(ext))) {
+            continue;
+          }
+          
+          if (!indexedFilePaths.has(normalizedPath)) {
+            syntheticFiles.push({
+              id: syntheticId--,
+              path: normalizedPath,
+              hash: '',
+              indexed_at: Date.now(),
+              isSynthetic: true
+            });
+            indexedFilePaths.add(normalizedPath);
+          }
+        }
+      }
+    }
+    
+    const allFilesWithSynthetic = [...allFiles, ...syntheticFiles];
+
+    for (const file of allFilesWithSynthetic) {
+      if (this.newFilePaths.has(file.path)) {
+        newFiles.push(file);
+        continue;
+      }
+
+      const componentInfo = this.configLoader.getComponentForFile(file.path);
+      if (componentInfo) {
+        if (!filesByComponent.has(componentInfo.key)) {
+          filesByComponent.set(componentInfo.key, []);
+        }
+        filesByComponent.get(componentInfo.key)!.push(file);
+      } else {
+        unmatchedFiles.push(file);
+      }
+    }
+
+    // Create "New Files" component if there are new files
+    if (newFiles.length > 0) {
+      filesByComponent.set('__new_files__', newFiles);
+    }
+
+    // Ensure all components from config are included, even if they have no files
+    for (const componentKey in config.projectSpec.components) {
+      if (!filesByComponent.has(componentKey)) {
+        filesByComponent.set(componentKey, []);
+      }
+    }
+
+    // Create component nodes with unique colors
+    const componentNodes = new Map<string, number>();
+    const externalNodes = new Map<string, number>();
+    
+    for (const [componentKey, files] of filesByComponent.entries()) {
+      // Handle special "New Files" component
+      if (componentKey === '__new_files__') {
+        const componentId = nodeId++;
+        const componentColor = '#90EE90'; // Light green for new files
+        
+        componentNodes.set(componentKey, componentId);
+        nodeMap.set(`component:${componentKey}`, componentId);
+        componentColors.set(componentKey, componentColor);
+
+        nodes.push({
+          id: componentId,
+          name: 'New Files',
+          kind: 'component',
+          path: componentKey,
+          size: files.length,
+          description: 'Newly added files',
+          fullPath: componentKey,
+          color: componentColor,
+          componentKey: componentKey
+        });
+        
+        console.log(`[Radium] Created "New Files" component node, ID: ${componentId}, ${files.length} files`);
+        continue;
+      }
+
+      const component = config.projectSpec.components[componentKey];
+      
+      // Filter out components with no files and no external sources
+      const hasFiles = files.length > 0;
+      const hasExternal = component.external && component.external.length > 0;
+      
+      if (!hasFiles && !hasExternal) {
+        console.log(`[Radium] Skipping component ${component.name} - no files or external sources`);
+        continue;
+      }
+      
+      const componentId = nodeId++;
+      const componentColor = hashStringToColor(component.name);
+      
+      componentNodes.set(componentKey, componentId);
+      nodeMap.set(`component:${componentKey}`, componentId);
+      componentColors.set(componentKey, componentColor);
+
+      nodes.push({
+        id: componentId,
+        name: component.name,
+        kind: 'component',
+        path: componentKey,
+        size: files.length,
+        description: component.description,
+        fullPath: componentKey,
+        color: componentColor,
+        componentKey: componentKey
+      });
+      
+      console.log(`[Radium] Created component node: ${component.name}, ID: ${componentId}, color: ${componentColor}`);
+      
+      // Create external object nodes for this component
+      if (component.external && component.external.length > 0) {
+        for (const external of component.external) {
+          const externalId = nodeId++;
+          const externalKey = `${componentKey}:${external.name}`;
+          externalNodes.set(externalKey, externalId);
+          nodeMap.set(`external:${externalKey}`, externalId);
+          
+          nodes.push({
+            id: externalId,
+            name: external.name,
+            kind: 'external',
+            path: externalKey,
+            externalType: external.type,
+            description: external.description,
+            fullPath: externalKey,
+            componentKey: componentKey,
+            usedBy: external.usedBy || []
+          });
+          
+          // Create edge from component to external object
+          edges.push({
+            source: componentId,
+            target: externalId,
+            kind: 'uses',
+            weight: 1.0,
+            color: componentColor
+          });
+          
+          console.log(`[Radium] Created external node: ${external.name} (${external.type}), ID: ${externalId}`);
+        }
+      }
+    }
+
+    // Create file nodes and connect to components
+    const fileNodes = new Map<string, number>();
+    const fileNodeObjects: any[] = [];
+    
+    for (const file of allFilesWithSynthetic) {
+      const fileId = nodeId++;
+      fileNodes.set(file.path, fileId);
+      nodeMap.set(`file:${file.path}`, fileId);
+
+      const isNewFile = this.newFilePaths.has(file.path);
+      
+      let componentInfo = this.configLoader.getComponentForFile(file.path);
+      let fileColor: string | undefined;
+      let componentKey: string | undefined;
+
+      if (isNewFile) {
+        componentKey = '__new_files__';
+        fileColor = componentColors.get('__new_files__');
+      } else if (componentInfo) {
+        componentKey = componentInfo.key;
+        fileColor = componentColors.get(componentInfo.key);
+      }
+
+      const fileName = file.path.split('/').pop() || file.path;
+      const fileNode = {
+        id: fileId,
+        name: fileName,
+        kind: 'file',
+        path: file.path,
+        lang: file.lang,
+        size: file.size,
+        functions: [] as any[],
+        componentColor: fileColor,
+        componentKey: componentKey
+      };
+      fileNodeObjects.push(fileNode);
+      nodes.push(fileNode);
+
+      // Connect file to component
+      if (componentKey) {
+        const componentId = componentNodes.get(componentKey);
+        if (componentId) {
+          edges.push({
+            source: componentId,
+            target: fileId,
+            kind: 'contains',
+            weight: 0.5,
+            color: fileColor
+          });
+        }
+      }
+    }
+
+    // Create edges from external objects to files based on explicit configuration
+    for (const [componentKey, files] of filesByComponent.entries()) {
+      const component = config.projectSpec.components[componentKey];
+      if (component && component.external && component.external.length > 0) {
+        for (const external of component.external) {
+          const externalKey = `${componentKey}:${external.name}`;
+          const externalId = externalNodes.get(externalKey);
+          
+          if (externalId && external.usedBy && external.usedBy.length > 0) {
+            for (const filePath of external.usedBy) {
+              const fileId = fileNodes.get(filePath);
+              if (fileId) {
+                const fileColor = componentColors.get(componentKey);
+                edges.push({
+                  source: externalId,
+                  target: fileId,
+                  kind: 'external-uses',
+                  weight: 0.3,
+                  color: fileColor
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Add file-to-file edges for imports
+    const fileImports = new Map<string, Set<string>>();
+    for (const edge of allEdges) {
+      if (edge.kind === 'imports') {
+        const srcNode = allNodes.find(n => n.id === edge.src);
+        const dstNode = allNodes.find(n => n.id === edge.dst);
+        if (srcNode && dstNode && srcNode.path !== dstNode.path) {
+          if (!fileImports.has(srcNode.path)) {
+            fileImports.set(srcNode.path, new Set());
+          }
+          fileImports.get(srcNode.path)!.add(dstNode.path);
+        }
+      }
+    }
+
+    for (const [srcPath, dstPaths] of fileImports.entries()) {
+      const srcFileId = fileNodes.get(srcPath);
+      if (!srcFileId) continue;
+
+      const componentInfo = this.configLoader.getComponentForFile(srcPath);
+      const edgeColor = componentInfo ? componentColors.get(componentInfo.key) : undefined;
+
+      for (const dstPath of dstPaths) {
+        const dstFileId = fileNodes.get(dstPath);
+        if (dstFileId) {
+          edges.push({
+            source: srcFileId,
+            target: dstFileId,
+            kind: 'imports',
+            weight: 1.5,
+            color: edgeColor
+          });
+        }
+      }
+    }
+
+    return { nodes, edges };
+  }
+
   private buildHierarchicalGraph(allNodes: any[], allEdges: any[], allFiles: any[]) {
     const nodes: any[] = [];
     const edges: any[] = [];
     const nodeMap = new Map<string, number>();
     let nodeId = 1;
 
-    // Display files without grouping (directories are not displayed)
+    const config = this.configLoader.getConfig();
+    
+    // If radium-components.yaml exists, use component-based grouping
+    if (config) {
+      return this.buildComponentBasedGraph(allNodes, allEdges, allFiles, config);
+    }
+
+    // Without radium-components.yaml, display files without grouping
+    // (directories are not displayed)
 
     // Create file nodes (no directory grouping)
     const fileNodes = new Map<string, number>();
@@ -1048,7 +1440,7 @@ export class MapPanel {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}' https://d3js.org; connect-src 'none';">
-  <title>Radium: Codebase Map v2</title>
+  <title>Radium: Components View</title>
   <style>
     body { 
       margin: 0; 
@@ -1125,6 +1517,44 @@ export class MapPanel {
       border-radius: 4px;
       z-index: 1000;
       pointer-events: auto;
+    }
+    #error-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 100;
+      text-align: center;
+    }
+    .error-message {
+      background: var(--vscode-editor-background);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 8px;
+      padding: 30px 40px;
+      max-width: 500px;
+    }
+    .error-message h3 {
+      margin: 0 0 15px 0;
+      color: var(--vscode-foreground);
+    }
+    .error-message p {
+      margin: 0 0 15px 0;
+      color: var(--vscode-descriptionForeground);
+    }
+    .error-message ol {
+      text-align: left;
+      margin: 0;
+      padding-left: 20px;
+      color: var(--vscode-foreground);
+    }
+    .error-message li {
+      margin: 8px 0;
+    }
+    .error-message code {
+      background: var(--vscode-textCodeBlock-background);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: var(--vscode-editor-font-family);
     }
     .control-button {
       display: block;
@@ -1312,6 +1742,7 @@ export class MapPanel {
 </head>
 <body>
   <div id="map"></div>
+  <div id="error-container"></div>
   <div class="search-bar">
     <input type="text" class="search-input" id="search-input" placeholder="Search components, files, external sources...">
     <button class="clear-search-btn" id="clear-search-btn">Clear</button>
@@ -1321,6 +1752,7 @@ export class MapPanel {
     <button class="control-button" id="reset-view-btn">Reset View</button>
     <button class="control-button" id="show-all-btn" style="display: none;">Show All Files</button>
     <button class="control-button" id="changes-btn">Changes</button>
+    <button class="control-button" id="copy-prompt-btn">Copy Prompt</button>
   </div>
   <button id="auto-focus-toggle" title="Auto-focus on changes">
     <span class="toggle-checkbox"></span>
@@ -3136,13 +3568,37 @@ export class MapPanel {
       animate();
     }
 
+    function showError(message) {
+      const container = d3.select('#error-container');
+      container.html(\`
+        <div class="error-message">
+          <h3>No Components Configuration</h3>
+          <p>To generate the components configuration:</p>
+          <ol>
+            <li>Click the <strong>"Copy Prompt"</strong> button above</li>
+            <li>Paste the prompt in your coding agent chat</li>
+            <li>The agent will analyze your codebase and create the <code>.radium/radium-components.yaml</code> file</li>
+          </ol>
+        </div>
+      \`);
+    }
+
+    function hideError() {
+      d3.select('#error-container').html('');
+    }
+
     // Listen for messages from extension
     window.addEventListener('message', event => {
       const message = event.data;
       console.log('[Radium Map] Received message:', message.type, message);
       switch (message.type) {
         case 'graph:update':
-          updateGraph(message.data, message.filtered || false);
+          if (message.error) {
+            showError(message.error);
+          } else {
+            hideError();
+            updateGraph(message.data, message.filtered || false);
+          }
           break;
         case 'overlay:session':
           console.log('[Radium Map] overlay:session - sessionId:', message.sessionId, 'changes:', message.changes);
@@ -3268,6 +3724,9 @@ export class MapPanel {
     document.getElementById('changes-btn')?.addEventListener('click', () => {
       console.log('[Radium Map] Changes button clicked');
       toggleLayer('changes');
+    });
+    document.getElementById('copy-prompt-btn')?.addEventListener('click', () => {
+      vscode.postMessage({ type: 'copy:prompt' });
     });
 
     // Auto-focus toggle

@@ -9,11 +9,16 @@ import { FilesMapPanel } from './views/files-map-panel';
 import { SymbolChangesPanel } from './views/symbol-changes-panel';
 import { DependencyGraphPanel } from './views/dependency-graph-panel';
 import { GitDiffTracker } from './git/git-diff-tracker';
+import { RadiumConfigLoader } from './config/radium-config';
+import { FeaturesConfigLoader } from './config/features-config';
+import { FeaturesMapPanel } from './views/features-map-panel';
 
 let store: GraphStore;
 let indexer: Indexer;
 let orchestrator: LLMOrchestrator;
 let gitDiffTracker: GitDiffTracker;
+let configLoader: RadiumConfigLoader;
+let featuresConfigLoader: FeaturesConfigLoader;
 let outputChannel: vscode.OutputChannel;
 
 /**
@@ -155,6 +160,16 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize git diff tracker with indexer reference
     gitDiffTracker = new GitDiffTracker(store, workspaceRoot, indexer);
 
+    // Initialize config loader and load radium-components.yaml if present
+    configLoader = new RadiumConfigLoader(workspaceRoot);
+    configLoader.load();
+
+    // Initialize features config loader and load radium-features.yaml if present
+    outputChannel.appendLine(`Initializing FeaturesConfigLoader with workspaceRoot: ${workspaceRoot}`);
+    featuresConfigLoader = new FeaturesConfigLoader(workspaceRoot);
+    const featuresConfig = featuresConfigLoader.load();
+    outputChannel.appendLine(`Features config loaded: ${!!featuresConfig}`);
+
     // Don't auto-index on startup - only index on manual re-index command
     outputChannel.appendLine('Radium: Skipping automatic indexing on startup');
     console.log('Radium: Skipping automatic indexing on startup');
@@ -185,7 +200,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
         return;
       }
-      MapPanel.createOrShow(context.extensionUri, store, gitDiffTracker);
+      MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
     }),
 
     vscode.commands.registerCommand('radium.openFilesMap', () => {
@@ -262,6 +277,14 @@ function registerCommands(context: vscode.ExtensionContext) {
         return;
       }
       DependencyGraphPanel.createOrShow(context.extensionUri, store, outputChannel);
+    }),
+
+    vscode.commands.registerCommand('radium.openFeaturesMap', () => {
+      if (!store) {
+        vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
+        return;
+      }
+      FeaturesMapPanel.createOrShow(context.extensionUri, store, featuresConfigLoader);
     })
 
   );

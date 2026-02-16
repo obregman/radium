@@ -1,0 +1,84 @@
+# Radium Features Configuration
+# This file defines the product features and capabilities for visualization in the Features View.
+# Copy this file to radium-features.yaml and customize for your project.
+
+spec:
+  # Optional: Define apps if your project contains multiple applications
+  apps:
+    - main_app:
+        name: Main Application
+        description: The primary application
+        features:
+          - authentication
+          - user_management
+
+  # Required: Define features and their capabilities
+  features:
+    - authentication:
+        name: User Authentication
+        description: Login, logout, and session management
+        status: completed  # completed | in_progress | planned
+        capabilities:
+          - login:
+              name: User Login
+              description: Email/password authentication
+              files:
+                - src/auth/login.ts
+                - src/components/LoginForm.tsx
+          - logout:
+              name: User Logout
+              description: Session termination
+              files:
+                - src/auth/logout.ts
+          - session:
+              name: Session Management
+              description: JWT token handling and refresh
+              files:
+                - src/auth/session.ts
+                - src/middleware/auth.ts
+        # Feature-level files (not tied to a specific capability)
+        files:
+          - src/auth/types.ts
+
+    - user_management:
+        name: User Management
+        description: CRUD operations for user accounts
+        status: in_progress
+        capabilities:
+          - create_user:
+              name: Create User
+              description: New user registration
+              files:
+                - src/users/create.ts
+                - src/components/UserForm.tsx
+          - list_users:
+              name: List Users
+              description: Display all users with pagination
+              files:
+                - src/users/list.ts
+                - src/components/UserList.tsx
+          - update_user:
+              name: Update User
+              description: Edit user profile
+              files:
+                - src/users/update.ts
+        files:
+          - src/users/types.ts
+          - src/users/validation.ts
+
+    - dashboard:
+        name: Dashboard
+        description: Main dashboard with analytics
+        status: planned
+        capabilities:
+          - metrics:
+              name: Metrics Display
+              description: Show key performance indicators
+              files:
+                - src/dashboard/metrics.ts
+          - charts:
+              name: Charts
+              description: Interactive data visualizations
+              files:
+                - src/dashboard/charts.ts
+        files: []

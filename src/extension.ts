@@ -12,6 +12,7 @@ import { GitDiffTracker } from './git/git-diff-tracker';
 import { RadiumConfigLoader } from './config/radium-config';
 import { FeaturesConfigLoader } from './config/features-config';
 import { FeaturesMapPanel } from './views/features-map-panel';
+import { GitTimelinePanel } from './views/git-timeline-panel';
 
 let store: GraphStore;
 let indexer: Indexer;
@@ -285,6 +286,10 @@ function registerCommands(context: vscode.ExtensionContext) {
         return;
       }
       FeaturesMapPanel.createOrShow(context.extensionUri, store, featuresConfigLoader);
+    }),
+
+    vscode.commands.registerCommand('radium.gitTimeline', () => {
+      GitTimelinePanel.createOrShow(context.extensionUri, outputChannel);
     })
 
   );

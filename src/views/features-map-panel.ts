@@ -867,17 +867,37 @@ Focus on user-facing product features, not technical infrastructure.`;
         }
       }
 
-      // Position root nodes in rows
-      roots.forEach(root => {
-        if (currentX + root._width > maxRowWidth && currentX > PADDING) {
-          currentX = PADDING;
-          currentY += maxRowHeight + FEATURE_GAP;
-          maxRowHeight = 0;
-        }
+      // Position root nodes in a balanced grid
+      // Calculate optimal number of columns based on node count
+      const numRoots = roots.length;
+      const optimalCols = Math.ceil(Math.sqrt(numRoots)); // Square-ish grid
+      
+      // Calculate max width per column
+      const avgWidth = roots.reduce((sum, r) => sum + r._width, 0) / numRoots;
+      const targetCols = Math.max(2, Math.min(optimalCols, Math.floor((maxRowWidth + FEATURE_GAP) / (avgWidth + FEATURE_GAP))));
+      
+      // Distribute roots into rows
+      const rowCount = Math.ceil(numRoots / targetCols);
+      const rows = [];
+      for (let i = 0; i < rowCount; i++) {
+        rows.push(roots.slice(i * targetCols, (i + 1) * targetCols));
+      }
+      
+      // Position each row
+      rows.forEach(rowNodes => {
+        // Calculate row dimensions
+        const rowWidth = rowNodes.reduce((sum, n) => sum + n._width + FEATURE_GAP, 0) - FEATURE_GAP;
+        const rowHeight = Math.max(...rowNodes.map(n => n._height));
         
-        positionNode(root, currentX, currentY);
-        currentX += root._width + FEATURE_GAP;
-        maxRowHeight = Math.max(maxRowHeight, root._height);
+        // Center the row horizontally
+        let rowX = PADDING + (maxRowWidth - rowWidth) / 2;
+        
+        rowNodes.forEach(node => {
+          positionNode(node, rowX, currentY);
+          rowX += node._width + FEATURE_GAP;
+        });
+        
+        currentY += rowHeight + FEATURE_GAP;
       });
 
       return nodeMap;

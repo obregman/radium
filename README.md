@@ -57,6 +57,7 @@ Radium supports VS Code multi-root workspaces. When you have multiple projects i
 - `Radium: Dependency Graph` - Interactive file-to-file dependency visualization
 - `Radium: Real-time Symbol Visualization` - Visualize code changes as symbols (functions, classes) with call relationships
 - `Radium: Semantic Changes` - Track semantic changes by category (logic, API calls, file I/O, etc.)
+- `Radium: Git Timeline` - Animated visualization of repository evolution over time
 
 ### Files Map
 
@@ -216,6 +217,57 @@ The Dependency Graph provides an interactive visualization of file-to-file depen
 - Visualize circular dependencies
 
 To use: Run `Radium: Dependency Graph` from the command palette.
+
+### Git Timeline
+
+The Git Timeline provides an animated visualization of your repository's evolution over time, similar to Gource or evolo. Watch your codebase grow from its first commit to the present day.
+
+**Features:**
+- **Animated Playback**: Watch commits unfold over time with play/pause controls
+- **Time Grouping**: Group commits by day, week, or month
+- **Force-Directed Graph**: Files and directories visualized as an expanding graph
+- **Multiple Color Modes**:
+  - None: Default depth-based coloring
+  - Age: Older files are gray, newer files are green
+  - Heat: Files colored by change frequency (blue to red)
+  - Author: Each contributor gets a unique color
+
+**Visual Elements:**
+- **Root Node**: Golden sun-like node at the center representing the repository
+- **Directory Nodes**: Larger blue circles that grow with file count
+- **File Nodes**: Small circles orbiting their parent directories
+- **New Files**: Highlighted with green pulsing border
+- **Modified Files**: Highlighted with yellow border
+- **Commit Messages**: Float up from the graph during playback
+
+**Controls:**
+- **Play/Pause**: Start or stop the animation
+- **Previous/Next**: Step through frames manually
+- **Speed Controls**: Adjust playback speed (0.1x to 10x)
+- **Timeline Slider**: Scrub to any point in history
+- **Keyboard Shortcuts**:
+  - Space: Play/Pause
+  - Arrow Left/Right: Previous/Next frame
+  - Arrow Up/Down: Faster/Slower
+
+**Statistics Display:**
+- Total files count over time
+- Total lines of code
+- Cumulative commit count
+- Number of contributors
+
+**Legend Panel:**
+- In Author mode: Shows contributors ranked by file ownership
+- In Heat mode: Shows change frequency gradient
+
+**Use Cases:**
+- Understand how your codebase evolved
+- Identify periods of rapid growth or refactoring
+- See which contributors worked on which parts
+- Find files that change frequently (hotspots)
+- Create presentations showing project history
+
+To use: Run `Radium: Git Timeline` from the command palette.
 
 ### Semantic Changes
 

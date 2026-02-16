@@ -2,6 +2,10 @@
 # This file defines the product features and capabilities for visualization in the Features View.
 # Copy this file to radium-features.yaml and customize for your project.
 
+metadata:
+  last_updated: "2024-01-15T10:30:00Z"
+  commit_id: "abc1234"
+
 spec:
   # Optional: Define apps if your project contains multiple applications
   apps:

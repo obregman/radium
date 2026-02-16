@@ -124,6 +124,10 @@ export class FeaturesMapPanel {
 The file should document the product features and capabilities using this structure:
 
 \`\`\`yaml
+metadata:
+  last_updated: "<current ISO 8601 timestamp>"
+  commit_id: "<current HEAD commit hash>"
+
 spec:
   apps:  # Optional - only if project has multiple apps
     - app_key:
@@ -148,10 +152,13 @@ spec:
 \`\`\`
 
 Instructions:
-1. Identify the main product features by analyzing the codebase structure, routes, components, and business logic
-2. For each feature, identify its sub-capabilities (distinct functionalities within the feature)
-3. Map the source files that implement each capability
-4. Group features under apps only if the project contains multiple distinct applications
+1. If .radium/radium-features.yaml already exists, read it and note the commit_id in its metadata. Then review all changes since that commit (git diff <commit_id>..HEAD) and update the file incrementally based on what changed — add new features/capabilities, update file lists, remove deleted files, etc. Do NOT regenerate from scratch.
+2. If the file does not exist, generate it from scratch by analyzing the full codebase.
+3. Identify the main product features by analyzing the codebase structure, routes, components, and business logic
+4. For each feature, identify its sub-capabilities (distinct functionalities within the feature)
+5. Map the source files that implement each capability
+6. Group features under apps only if the project contains multiple distinct applications
+7. Always set metadata.last_updated to the current timestamp and metadata.commit_id to the current HEAD commit hash
 
 Focus on user-facing product features, not technical infrastructure.`;
 
@@ -498,6 +505,7 @@ Focus on user-facing product features, not technical infrastructure.`;
     const CAPABILITY_GAP = 15;
     const FEATURE_GAP = 25;
     const HEADER_HEIGHT = 35;
+    const APP_HEADER_HEIGHT = 65;
     const CAP_HEADER_HEIGHT = 28;
 
     function initVisualization() {
@@ -700,18 +708,46 @@ Focus on user-facing product features, not technical infrastructure.`;
           node._width = Math.max(250, contentWidth + FEATURE_PADDING * 2);
           node._height = HEADER_HEIGHT + contentHeight + FEATURE_PADDING * 2;
         } else if (node.kind === 'app') {
-          // Features in a row
+          // Features in brick/masonry layout
           const features = node.children.filter(c => c.kind === 'feature');
-          let totalWidth = 0;
-          let maxHeight = 0;
+
+          // Find optimal column count for masonry layout
+          let appBestCols = 1;
+          let appBestRatio = Infinity;
+          const appTargetRatio = 1.5;
+
+          for (let cols = 1; cols <= Math.min(features.length, 4); cols++) {
+            const cHeights = new Array(cols).fill(0);
+            const cWidths = new Array(cols).fill(0);
+            features.forEach(f => {
+              const minIdx = cHeights.indexOf(Math.min(...cHeights));
+              cHeights[minIdx] += f._height + FEATURE_GAP;
+              cWidths[minIdx] = Math.max(cWidths[minIdx], f._width);
+            });
+            const estW = cWidths.reduce((s, w) => s + w, 0) + (cols - 1) * FEATURE_GAP;
+            const estH = Math.max(...cHeights) - (features.length > 0 ? FEATURE_GAP : 0);
+            const ratio = estW / (estH || 1);
+            if (Math.abs(ratio - appTargetRatio) < Math.abs(appBestRatio - appTargetRatio)) {
+              appBestRatio = ratio;
+              appBestCols = cols;
+            }
+          }
+
+          // Calculate actual dimensions with masonry
+          const appColHeights = new Array(appBestCols).fill(0);
+          const appColWidths = new Array(appBestCols).fill(0);
           features.forEach(f => {
-            totalWidth += f._width + FEATURE_GAP;
-            maxHeight = Math.max(maxHeight, f._height);
+            const minIdx = appColHeights.indexOf(Math.min(...appColHeights));
+            appColHeights[minIdx] += f._height + FEATURE_GAP;
+            appColWidths[minIdx] = Math.max(appColWidths[minIdx], f._width);
           });
-          if (features.length > 0) totalWidth -= FEATURE_GAP;
+
+          const totalWidth = appColWidths.reduce((s, w) => s + w, 0) + (appBestCols - 1) * FEATURE_GAP;
+          const maxColHeight = features.length > 0 ? Math.max(...appColHeights) - FEATURE_GAP : 0;
 
           node._width = Math.max(300, totalWidth + APP_PADDING * 2);
-          node._height = HEADER_HEIGHT + maxHeight + APP_PADDING * 2;
+          node._height = APP_HEADER_HEIGHT + maxColHeight + APP_PADDING * 2;
+          node._masonryCols = appBestCols;
         }
       }
 
@@ -728,11 +764,35 @@ Focus on user-facing product features, not technical infrastructure.`;
         node._y = y;
 
         if (node.kind === 'app') {
-          let childX = x + APP_PADDING;
-          const childY = y + HEADER_HEIGHT + APP_PADDING;
-          node.children.filter(c => c.kind === 'feature').forEach(feature => {
-            positionNode(feature, childX, childY);
-            childX += feature._width + FEATURE_GAP;
+          // Brick/masonry layout for features inside app
+          const features = node.children.filter(c => c.kind === 'feature');
+          const numAppCols = node._masonryCols || 1;
+          const appColHeights = new Array(numAppCols).fill(0);
+          const appColMaxWidths = new Array(numAppCols).fill(0);
+          const appNodeCols = [];
+
+          // First pass: assign features to columns
+          features.forEach(f => {
+            const minIdx = appColHeights.indexOf(Math.min(...appColHeights));
+            appNodeCols.push(minIdx);
+            appColHeights[minIdx] += f._height + FEATURE_GAP;
+            appColMaxWidths[minIdx] = Math.max(appColMaxWidths[minIdx], f._width);
+          });
+
+          // Calculate column X positions
+          const appColXPositions = [];
+          let appColX = x + APP_PADDING;
+          for (let i = 0; i < numAppCols; i++) {
+            appColXPositions.push(appColX);
+            appColX += appColMaxWidths[i] + FEATURE_GAP;
+          }
+
+          // Reset and position
+          appColHeights.fill(y + APP_HEADER_HEIGHT + APP_PADDING);
+          features.forEach((feature, idx) => {
+            const colIdx = appNodeCols[idx];
+            positionNode(feature, appColXPositions[colIdx], appColHeights[colIdx]);
+            appColHeights[colIdx] += feature._height + FEATURE_GAP;
           });
         } else if (node.kind === 'feature') {
           const capabilities = node.children.filter(c => c.kind === 'capability');
@@ -873,9 +933,9 @@ Focus on user-facing product features, not technical infrastructure.`;
 
             group.append('text')
               .attr('x', node._width / 2)
-              .attr('y', 24)
+              .attr('y', 48)
               .attr('text-anchor', 'middle')
-              .attr('font-size', '16px')
+              .attr('font-size', '48px')
               .attr('font-weight', 'bold')
               .attr('fill', '#333')
               .text(node.name);

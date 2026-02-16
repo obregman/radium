@@ -1,3 +1,7 @@
+metadata:
+  last_updated: "2024-01-15T10:30:00Z"
+  commit_id: "abc1234"
+
 spec:
   components:
     - views:

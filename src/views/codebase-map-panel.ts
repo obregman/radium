@@ -157,6 +157,10 @@ export class MapPanel {
 The file should document the architectural components using this structure:
 
 \`\`\`yaml
+metadata:
+  last_updated: "<current ISO 8601 timestamp>"
+  commit_id: "<current HEAD commit hash>"
+
 spec:
   components:
     - component_key:
@@ -171,10 +175,13 @@ spec:
 \`\`\`
 
 Instructions:
-1. Identify the main architectural components by analyzing the codebase structure (e.g., views, store, indexer, api, services)
-2. For each component, list the file patterns that belong to it
-3. Identify external dependencies (databases, APIs, services) and which components use them
-4. Group related files together under meaningful component names
+1. If .radium/radium-components.yaml already exists, read it and note the commit_id in its metadata. Then review all changes since that commit (git diff <commit_id>..HEAD) and update the file incrementally based on what changed — add new components, update file lists, remove deleted files, etc. Do NOT regenerate from scratch.
+2. If the file does not exist, generate it from scratch by analyzing the full codebase.
+3. Identify the main architectural components by analyzing the codebase structure (e.g., views, store, indexer, api, services)
+4. For each component, list the file patterns that belong to it
+5. Identify external dependencies (databases, APIs, services) and which components use them
+6. Group related files together under meaningful component names
+7. Always set metadata.last_updated to the current timestamp and metadata.commit_id to the current HEAD commit hash
 
 Focus on architectural/technical components, not product features.`;
 
@@ -1604,18 +1611,18 @@ Focus on architectural/technical components, not product features.`;
       cursor: pointer;
       stroke: var(--vscode-editor-foreground);
       stroke-width: 2px;
-      fill: var(--vscode-editor-background);
+      fill: #FFE4E8;
       rx: 4;
       ry: 4;
     }
     .file-box:hover {
       stroke-width: 3px;
-      fill: var(--vscode-list-hoverBackground);
+      fill: #FFD0D6;
     }
     .file-title {
       font-size: 12px;
       font-weight: bold;
-      fill: var(--vscode-editor-foreground);
+      fill: #333333;
       pointer-events: none;
     }
     .function-item {
@@ -1639,7 +1646,7 @@ Focus on architectural/technical components, not product features.`;
       pointer-events: none;
     }
     .component-container {
-      pointer-events: none;
+      pointer-events: auto;
     }
     .new-files-container {
       fill: #3a3a3a !important;
@@ -1780,6 +1787,18 @@ Focus on architectural/technical components, not product features.`;
     let filteredNodeIds = new Set();
     const ZOOM_THRESHOLD = 0.3; // Below this zoom level, show only components
     let autoFocusEnabled = false; // Auto-focus disabled by default
+
+    function isColorBright(hex) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return (0.299 * r + 0.587 * g + 0.114 * b) > 160;
+    }
+
+    function labelColor(d) {
+      if (d.componentKey === '__new_files__') return '#FFFFFF';
+      return isColorBright(d.color) ? '#333333' : '#FFFFFF';
+    }
     let transform = { k: 1, x: 0, y: 0 }; // Pan/zoom transform state
     let lastFocusedFilePath = null; // Track the last file that was auto-focused
 
@@ -2474,7 +2493,7 @@ Focus on architectural/technical components, not product features.`;
 
       // FIRST: Draw all component container boxes (background layer)
       // Draw directly to main g element, not in groups
-      g.selectAll('.component-container')
+      const componentContainers = g.selectAll('.component-container')
         .data(componentNodes)
         .join('rect')
         .attr('class', d => d.componentKey === '__new_files__' ? 'component-container new-files-container' : 'component-container')
@@ -2482,54 +2501,40 @@ Focus on architectural/technical components, not product features.`;
         .attr('y', d => d._boxY)
         .attr('width', d => d._boxWidth)
         .attr('height', d => d._boxHeight)
-        .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : 'var(--vscode-editor-background)')
+        .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : d.color)
         .attr('stroke', d => d.componentKey === '__new_files__' ? '#5a5a5a' : d.color)
         .attr('stroke-width', 3)
-        .attr('rx', 8)
-        .attr('ry', 8);
-
-      // Draw the header bars for each component
-      const componentHeaders = g.selectAll('.component-header')
-        .data(componentNodes)
-        .join('rect')
-        .attr('class', d => d.componentKey === '__new_files__' ? 'component-header new-files-header' : 'component-header')
-        .attr('x', d => d._boxX)
-        .attr('y', d => d._boxY)
-        .attr('width', d => d._boxWidth)
-        .attr('height', 50)
-        .attr('fill', d => d.componentKey === '__new_files__' ? '#5a5a5a' : d.color)
-        .attr('fill-opacity', 0.9)
         .attr('rx', 8)
         .attr('ry', 8)
         .on('click', (event, d) => {
           // Only handle click if it wasn't a drag
           if (event.defaultPrevented) return;
           event.stopPropagation();
-          
+
           // Auto-focus on the clicked component
           if (autoFocusEnabled && d._boxX !== undefined && d._boxY !== undefined) {
             const centerX = d._boxX + d._boxWidth / 2;
             const centerY = d._boxY + d._boxHeight / 2;
-            
+
             // Calculate the transform needed to center this component
             const targetX = width / 2 - centerX * transform.k;
             const targetY = height / 2 - centerY * transform.k;
-            
+
             // Smoothly transition to the new position
             svg.transition()
               .duration(750)
               .call(zoom.transform, d3.zoomIdentity.translate(targetX, targetY).scale(transform.k));
           }
-          
+
           vscode.postMessage({
             type: 'node:selected',
             nodeId: d.originalId || d.id
           });
         })
         .style('cursor', 'pointer');
-      
-      // Add tooltip to component headers
-      componentHeaders.append('title')
+
+      // Add tooltip to component containers
+      componentContainers.append('title')
         .text(d => d.description || d.name);
 
       // Add component name text in headers
@@ -2538,11 +2543,11 @@ Focus on architectural/technical components, not product features.`;
         .join('text')
         .attr('class', 'component-label')
         .attr('x', d => d._boxX + d._boxWidth / 2)
-        .attr('y', d => d._boxY + 33)
+        .attr('y', d => d._boxY + 36)
         .attr('text-anchor', 'middle')
-        .attr('font-size', '18px')
+        .attr('font-size', '24px')
         .attr('font-weight', 'bold')
-        .attr('fill', '#FFFFFF')
+        .attr('fill', d => labelColor(d))
         .text(d => d.name)
         .append('title')
         .text(d => d.description || d.name);
@@ -2567,7 +2572,7 @@ Focus on architectural/technical components, not product features.`;
         .attr('height', d => d._height || 30)
         .attr('x', d => -(d._width || 100) / 2)
         .attr('y', d => -(d._height || 30) / 2)
-        .attr('fill', 'var(--vscode-editor-background)')
+        .attr('fill', '#FFE4E8')
         .attr('stroke', d => d.componentColor || 'var(--vscode-editor-foreground)')
         .attr('stroke-width', 2)
         .attr('rx', 3)
@@ -2829,7 +2834,7 @@ Focus on architectural/technical components, not product features.`;
         .attr('y', 4)
         .attr('text-anchor', 'middle')
         .attr('font-size', '10px')
-        .attr('fill', 'var(--vscode-editor-foreground)')
+        .attr('fill', '#333333')
         .text(d => d.name);
 
       // THIRD: Create external object rounded rectangles (inside component containers)
@@ -3133,10 +3138,9 @@ Focus on architectural/technical components, not product features.`;
         // Track tooltip timeout for each component
         let componentTooltipTimeout = null;
         
-        // When zoomed out: Fill entire box with component color
+        // When zoomed out: Keep component color fill
         g.selectAll('.component-container')
           .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : d.color)
-          .attr('fill-opacity', 0.9)
           .style('pointer-events', 'all')
           .style('cursor', 'pointer')
           .on('mouseenter', function(event, d) {
@@ -3189,10 +3193,6 @@ Focus on architectural/technical components, not product features.`;
             // Remove any existing tooltips
             d3.selectAll('.component-tooltip').remove();
           });
-        
-        // Hide the header bar (it's redundant when box is filled)
-        g.selectAll('.component-header')
-          .style('display', 'none');
         
         // Enlarge and center the component label with multi-line support
         g.selectAll('.component-label')
@@ -3275,23 +3275,18 @@ Focus on architectural/technical components, not product features.`;
       } else {
         // Restore normal appearance
         g.selectAll('.component-container')
-          .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : 'var(--vscode-editor-background)')
+          .attr('fill', d => d.componentKey === '__new_files__' ? '#3a3a3a' : d.color)
           .attr('fill-opacity', 1)
-          .style('pointer-events', 'none')
-          .style('cursor', null)
+          .style('cursor', 'pointer')
           .on('mouseenter', null)
           .on('mouseleave', null);
         
         // Remove any lingering tooltips
         d3.selectAll('.component-tooltip').remove();
         
-        // Show the header bar
-        g.selectAll('.component-header')
-          .style('display', 'block');
-        
         // Restore normal label size and position (single line)
         g.selectAll('.component-label')
-          .attr('font-size', '18px')
+          .attr('font-size', '24px')
           .each(function(d) {
             const textElement = d3.select(this);
             textElement.text('');
@@ -3674,7 +3669,7 @@ Focus on architectural/technical components, not product features.`;
       
       if (!searchQuery) {
         // Clear search - show all nodes
-        g.selectAll('.component-container, .component-header, .component-label').style('opacity', 1);
+        g.selectAll('.component-container, .component-label').style('opacity', 1);
         g.selectAll('.file-group').style('opacity', 1);
         g.selectAll('.external-group').style('opacity', 1);
         document.getElementById('search-results').textContent = '';
@@ -3697,7 +3692,7 @@ Focus on architectural/technical components, not product features.`;
       });
       
       // Update visibility
-      g.selectAll('.component-container, .component-header, .component-label')
+      g.selectAll('.component-container, .component-label')
         .style('opacity', d => filteredNodeIds.has(d.id) ? 1 : 0.15);
       
       g.selectAll('.file-group')

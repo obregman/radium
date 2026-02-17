@@ -110,12 +110,52 @@ export class FeaturesMapPanel {
       case 'copy:prompt':
         await this.handleCopyPrompt();
         break;
+      case 'context:explain':
+        await this.handleContextExplain(message.nodeKind, message.nodeName, message.nodeDescription);
+        break;
+      case 'context:report-bug':
+        await this.handleContextReportBug(message.nodeKind, message.nodeName, message.nodeDescription);
+        break;
       case 'ready':
         this.updateGraph();
         break;
       default:
         console.log('[Radium Features] Unknown message type:', message.type);
     }
+  }
+
+  private async handleContextExplain(nodeKind: string, nodeName: string, nodeDescription?: string) {
+    const kindLabel = nodeKind === 'feature' ? 'feature' : 'capability';
+    const descPart = nodeDescription ? `\nDescription: ${nodeDescription}` : '';
+    
+    const prompt = `Explain how the "${nodeName}" ${kindLabel} is implemented in this codebase.${descPart}
+
+Please provide:
+1. An overview of what this ${kindLabel} does
+2. The main components/files involved
+3. The key code paths and how they work together
+4. Any important patterns or architectural decisions used`;
+
+    await vscode.env.clipboard.writeText(prompt);
+    vscode.window.showInformationMessage('Prompt copied to clipboard');
+  }
+
+  private async handleContextReportBug(nodeKind: string, nodeName: string, nodeDescription?: string) {
+    const kindLabel = nodeKind === 'feature' ? 'feature' : 'capability';
+    const descPart = nodeDescription ? `\nDescription: ${nodeDescription}` : '';
+    
+    const prompt = `I'm experiencing a bug in the "${nodeName}" ${kindLabel}.${descPart}
+
+Please help me investigate this issue:
+1. Review the implementation of this ${kindLabel}
+2. Identify potential problem areas or edge cases
+3. Check for common issues like null checks, error handling, race conditions
+4. Suggest debugging steps or fixes
+
+Bug description: [DESCRIBE THE BUG HERE]`;
+
+    await vscode.env.clipboard.writeText(prompt);
+    vscode.window.showInformationMessage('Prompt copied to clipboard');
   }
 
   private async handleCopyPrompt() {
@@ -474,6 +514,25 @@ Focus on user-facing product features, not technical infrastructure.`;
     .tooltip-description {
       color: var(--vscode-descriptionForeground);
     }
+    .context-menu {
+      position: absolute;
+      background: var(--vscode-menu-background);
+      border: 1px solid var(--vscode-menu-border);
+      border-radius: 4px;
+      padding: 4px 0;
+      z-index: 3000;
+      min-width: 150px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    .context-menu-item {
+      padding: 6px 12px;
+      cursor: pointer;
+      color: var(--vscode-menu-foreground);
+    }
+    .context-menu-item:hover {
+      background: var(--vscode-menu-selectionBackground);
+      color: var(--vscode-menu-selectionForeground);
+    }
   </style>
 </head>
 <body>
@@ -483,6 +542,10 @@ Focus on user-facing product features, not technical infrastructure.`;
     <button class="control-button" id="copy-prompt-btn">Copy Prompt</button>
   </div>
   <div id="tooltip" class="tooltip" style="display: none;"></div>
+  <div id="context-menu" class="context-menu" style="display: none;">
+    <div class="context-menu-item" data-action="explain">Explain</div>
+    <div class="context-menu-item" data-action="report-bug">Report a bug</div>
+  </div>
   <div id="error-container"></div>
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -495,6 +558,47 @@ Focus on user-facing product features, not technical infrastructure.`;
     let width = 0;
     let height = 0;
     let transform = { k: 1, x: 0, y: 0 };
+    let contextMenuNode = null;
+
+    // Context menu functions
+    function showContextMenu(event, node) {
+      event.preventDefault();
+      contextMenuNode = node;
+      const menu = document.getElementById('context-menu');
+      menu.style.display = 'block';
+      menu.style.left = event.pageX + 'px';
+      menu.style.top = event.pageY + 'px';
+    }
+
+    function hideContextMenu() {
+      const menu = document.getElementById('context-menu');
+      menu.style.display = 'none';
+      contextMenuNode = null;
+    }
+
+    // Initialize context menu handlers
+    document.addEventListener('click', hideContextMenu);
+    document.getElementById('context-menu').addEventListener('click', (e) => {
+      const action = e.target.dataset.action;
+      if (action && contextMenuNode) {
+        if (action === 'explain') {
+          vscode.postMessage({
+            type: 'context:explain',
+            nodeKind: contextMenuNode.kind,
+            nodeName: contextMenuNode.name,
+            nodeDescription: contextMenuNode.description
+          });
+        } else if (action === 'report-bug') {
+          vscode.postMessage({
+            type: 'context:report-bug',
+            nodeKind: contextMenuNode.kind,
+            nodeName: contextMenuNode.name,
+            nodeDescription: contextMenuNode.description
+          });
+        }
+        hideContextMenu();
+      }
+    });
 
     // Layout constants
     const PADDING = 20;
@@ -542,8 +646,11 @@ Focus on user-facing product features, not technical infrastructure.`;
       svg.on('wheel', (event) => {
         event.preventDefault();
         const delta = -event.deltaY;
-        const scaleBy = delta > 0 ? 1.05 : 0.95;
-        const newScale = Math.max(0.1, Math.min(5, transform.k * scaleBy));
+        // Reduced zoom speed for smoother experience, especially on Mac trackpads
+        // When Shift is held, zoom three times as fast
+        const baseScaleBy = delta > 0 ? 1.03 : 0.97;
+        const scaleBy = event.shiftKey ? (delta > 0 ? 1.09 : 0.91) : baseScaleBy;
+        const newScale = Math.max(0.1, Math.min(10, transform.k * scaleBy));
         
         const rect = svg.node().getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
@@ -710,7 +817,10 @@ Focus on user-facing product features, not technical infrastructure.`;
           const contentWidth = capsWidth + (files.length > 0 ? FEATURE_PADDING + filesWidth : 0);
           const contentHeight = Math.max(capsHeight, filesHeight);
 
-          node._width = Math.max(250, contentWidth + FEATURE_PADDING * 2);
+          // Estimate label width (30px font, ~18px per character average)
+          const featureLabelWidth = node.name.length * 18 + FEATURE_PADDING * 2;
+
+          node._width = Math.max(featureLabelWidth, contentWidth + FEATURE_PADDING * 2);
           node._height = HEADER_HEIGHT + contentHeight + FEATURE_PADDING * 2;
         } else if (node.kind === 'app') {
           // Features in brick/masonry layout
@@ -955,7 +1065,8 @@ Focus on user-facing product features, not technical infrastructure.`;
               .attr('stroke', '#666')
               .attr('stroke-width', 2)
               .on('mouseenter', (event) => showTooltip(event, node))
-              .on('mouseleave', hideTooltip);
+              .on('mouseleave', hideTooltip)
+              .on('contextmenu', (event) => showContextMenu(event, node));
 
             group.append('text')
               .attr('x', 12)
@@ -966,7 +1077,8 @@ Focus on user-facing product features, not technical infrastructure.`;
               .style('cursor', 'default')
               .text(node.name)
               .on('mouseenter', (event) => showTooltip(event, node))
-              .on('mouseleave', hideTooltip);
+              .on('mouseleave', hideTooltip)
+              .on('contextmenu', (event) => showContextMenu(event, node));
 
           } else if (node.kind === 'capability') {
             // Capability box - purple/pink background
@@ -978,7 +1090,8 @@ Focus on user-facing product features, not technical infrastructure.`;
               .attr('stroke', '#9C27B0')
               .attr('stroke-width', 1.5)
               .on('mouseenter', (event) => showTooltip(event, node))
-              .on('mouseleave', hideTooltip);
+              .on('mouseleave', hideTooltip)
+              .on('contextmenu', (event) => showContextMenu(event, node));
 
             group.append('text')
               .attr('x', CAPABILITY_PADDING)
@@ -989,7 +1102,8 @@ Focus on user-facing product features, not technical infrastructure.`;
               .style('cursor', 'default')
               .text(node.name)
               .on('mouseenter', (event) => showTooltip(event, node))
-              .on('mouseleave', hideTooltip);
+              .on('mouseleave', hideTooltip)
+              .on('contextmenu', (event) => showContextMenu(event, node));
 
           } else if (node.kind === 'file') {
             // File box - gray with stacked effect

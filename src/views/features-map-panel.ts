@@ -397,6 +397,8 @@ Focus on user-facing product features, not technical infrastructure.`;
       background: var(--vscode-editor-background);
       color: var(--vscode-editor-foreground);
       font-family: var(--vscode-font-family);
+      user-select: none;
+      -webkit-user-select: none;
     }
     #map { 
       width: 100vw; 
@@ -683,7 +685,10 @@ Focus on user-facing product features, not technical infrastructure.`;
           const filesWidth = Math.min(files.length, filesPerRow) * (FILE_WIDTH + FILE_GAP) - FILE_GAP;
           const filesHeight = rows * (FILE_HEIGHT + FILE_GAP) - FILE_GAP;
           
-          node._width = Math.max(180, filesWidth + CAPABILITY_PADDING * 2);
+          // Estimate label width (12px font, ~7px per character average)
+          const labelWidth = node.name.length * 7 + CAPABILITY_PADDING * 2;
+          
+          node._width = Math.max(labelWidth, filesWidth + CAPABILITY_PADDING * 2);
           node._height = CAP_HEADER_HEIGHT + filesHeight + CAPABILITY_PADDING * 2;
         } else if (node.kind === 'feature') {
           // Capabilities and files side by side

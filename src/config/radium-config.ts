@@ -151,10 +151,12 @@ export class RadiumConfigLoader {
 
     // Wildcard pattern support
     if (normalizedPattern.includes('*')) {
+      // Use placeholder to avoid double-replacement of ** -> .* -> .[^/]*
       const regexPattern = normalizedPattern
         .replace(/\./g, '\\.')
-        .replace(/\*\*/g, '.*')
-        .replace(/\*/g, '[^/]*');
+        .replace(/\*\*/g, '\x00DOUBLESTAR\x00')
+        .replace(/\*/g, '[^/]*')
+        .replace(/\x00DOUBLESTAR\x00/g, '.*');
       
       const regex = new RegExp(`^${regexPattern}$`);
       return regex.test(normalizedPath);

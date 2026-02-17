@@ -124,6 +124,9 @@ export class MapPanel {
       case 'file:preview':
         await this.handleFilePreview(message.filePath);
         break;
+      case 'directory:focus':
+        await this.handleDirectoryFocus(message.dirPath);
+        break;
       case 'external:focus':
         await this.handleExternalFocus(message.filePaths);
         break;
@@ -333,6 +336,36 @@ Focus on architectural/technical components, not product features.`;
     }
   }
 
+  private async handleDirectoryFocus(dirPath: string) {
+    console.log(`[Radium] Focusing directory: ${dirPath}`);
+    try {
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        throw new Error('No workspace folder open');
+      }
+      
+      const workspaceRoot = workspaceFolders[0].uri.fsPath;
+      
+      // Build absolute path
+      let absolutePath: string;
+      if (dirPath.startsWith(workspaceRoot)) {
+        absolutePath = dirPath;
+      } else {
+        const relativePath = dirPath.startsWith('/') ? dirPath.substring(1) : dirPath;
+        absolutePath = path.join(workspaceRoot, relativePath);
+      }
+      
+      console.log(`[Radium] Revealing directory: ${absolutePath}`);
+      const uri = vscode.Uri.file(absolutePath);
+      
+      // Reveal the directory in the Explorer view
+      await vscode.commands.executeCommand('revealInExplorer', uri);
+    } catch (error) {
+      console.error(`[Radium] Failed to focus directory:`, error);
+      vscode.window.showErrorMessage(`Failed to focus directory: ${dirPath}`);
+    }
+  }
+
   private async handleExternalFocus(filePaths: string[]) {
     console.log(`[Radium] Focusing external source with files:`, filePaths);
     try {
@@ -532,68 +565,56 @@ Focus on architectural/technical components, not product features.`;
     // Map to store component colors
     const componentColors = new Map<string, string>();
 
-    // Group files by component, separating new files
+    // Group files by component - ONLY from config, not from indexed data
     const filesByComponent = new Map<string, any[]>();
-    const unmatchedFiles: any[] = [];
     const newFiles: any[] = [];
     
-    // Create a set of all indexed file paths for quick lookup
-    const indexedFilePaths = new Set(allFiles.map(f => f.path));
+    // Helper to check if a path should be excluded
+    const shouldExcludeFile = (filePath: string): boolean => {
+      if (filePath.endsWith('.md') || filePath.endsWith('.txt')) {
+        return true;
+      }
+      const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.bmp', '.webp', '.ico'];
+      if (imageExtensions.some(ext => filePath.toLowerCase().endsWith(ext))) {
+        return true;
+      }
+      return false;
+    };
     
-    // Add files explicitly listed in component definitions that aren't indexed
-    const syntheticFileId = -1000;
-    let syntheticId = syntheticFileId;
-    const syntheticFiles: any[] = [];
+    // Helper to check if a pattern is a glob pattern
+    const isGlobPattern = (pattern: string): boolean => {
+      return pattern.includes('*') || pattern.includes('?') || pattern.includes('[');
+    };
+    
+    // Build component files directly from config - no indexed data
+    let syntheticId = -1000;
     
     for (const componentKey in config.projectSpec.components) {
       const component = config.projectSpec.components[componentKey];
+      const componentFiles: any[] = [];
+      
       if (component.files && Array.isArray(component.files)) {
         for (const filePath of component.files) {
           const normalizedPath = filePath.replace(/\\/g, '/');
           
-          // Filter out glob patterns and unwanted file types
-          if (normalizedPath.endsWith('**') || normalizedPath.endsWith('*')) {
-            continue;
-          }
-          if (normalizedPath.endsWith('.md') || normalizedPath.endsWith('.txt')) {
-            continue;
-          }
-          const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.bmp', '.webp', '.ico'];
-          if (imageExtensions.some(ext => normalizedPath.toLowerCase().endsWith(ext))) {
+          // Skip unwanted file types (but allow glob patterns)
+          if (!isGlobPattern(normalizedPath) && shouldExcludeFile(normalizedPath)) {
             continue;
           }
           
-          if (!indexedFilePaths.has(normalizedPath)) {
-            syntheticFiles.push({
-              id: syntheticId--,
-              path: normalizedPath,
-              hash: '',
-              indexed_at: Date.now(),
-              isSynthetic: true
-            });
-            indexedFilePaths.add(normalizedPath);
-          }
+          componentFiles.push({
+            id: syntheticId--,
+            path: normalizedPath,
+            hash: '',
+            indexed_at: Date.now(),
+            isSynthetic: true,
+            isGlobPattern: isGlobPattern(normalizedPath),
+            componentKey: componentKey
+          });
         }
       }
-    }
-    
-    const allFilesWithSynthetic = [...allFiles, ...syntheticFiles];
-
-    for (const file of allFilesWithSynthetic) {
-      if (this.newFilePaths.has(file.path)) {
-        newFiles.push(file);
-        continue;
-      }
-
-      const componentInfo = this.configLoader.getComponentForFile(file.path);
-      if (componentInfo) {
-        if (!filesByComponent.has(componentInfo.key)) {
-          filesByComponent.set(componentInfo.key, []);
-        }
-        filesByComponent.get(componentInfo.key)!.push(file);
-      } else {
-        unmatchedFiles.push(file);
-      }
+      
+      filesByComponent.set(componentKey, componentFiles);
     }
 
     // Create "New Files" component if there are new files
@@ -704,47 +725,41 @@ Focus on architectural/technical components, not product features.`;
       }
     }
 
-    // Create file nodes and connect to components
+    // Create file nodes from config and connect to components
     const fileNodes = new Map<string, number>();
     const fileNodeObjects: any[] = [];
     
-    for (const file of allFilesWithSynthetic) {
-      const fileId = nodeId++;
-      fileNodes.set(file.path, fileId);
-      nodeMap.set(`file:${file.path}`, fileId);
-
-      const isNewFile = this.newFilePaths.has(file.path);
+    for (const [componentKey, files] of filesByComponent.entries()) {
+      if (componentKey === '__new_files__') continue; // Handle separately
       
-      let componentInfo = this.configLoader.getComponentForFile(file.path);
-      let fileColor: string | undefined;
-      let componentKey: string | undefined;
-
-      if (isNewFile) {
-        componentKey = '__new_files__';
-        fileColor = componentColors.get('__new_files__');
-      } else if (componentInfo) {
-        componentKey = componentInfo.key;
-        fileColor = componentColors.get(componentInfo.key);
-      }
-
-      const fileName = file.path.split('/').pop() || file.path;
-      const fileNode = {
-        id: fileId,
-        name: fileName,
-        kind: 'file',
-        path: file.path,
-        lang: file.lang,
-        size: file.size,
-        functions: [] as any[],
-        componentColor: fileColor,
-        componentKey: componentKey
-      };
-      fileNodeObjects.push(fileNode);
-      nodes.push(fileNode);
-
-      // Connect file to component
-      if (componentKey) {
-        const componentId = componentNodes.get(componentKey);
+      const fileColor = componentColors.get(componentKey);
+      const componentId = componentNodes.get(componentKey);
+      
+      for (const file of files) {
+        const fileId = nodeId++;
+        fileNodes.set(file.path, fileId);
+        nodeMap.set(`file:${file.path}`, fileId);
+        
+        // For glob patterns, show full path; for regular files, show filename
+        const isGlob = file.isGlobPattern;
+        const fileName = isGlob ? file.path : (file.path.split('/').pop() || file.path);
+        
+        const fileNode = {
+          id: fileId,
+          name: fileName,
+          kind: isGlob ? 'glob' : 'file',
+          path: file.path,
+          lang: undefined,
+          size: undefined,
+          functions: [] as any[],
+          componentColor: fileColor,
+          componentKey: componentKey,
+          isGlobPattern: isGlob
+        };
+        fileNodeObjects.push(fileNode);
+        nodes.push(fileNode);
+        
+        // Connect file to component
         if (componentId) {
           edges.push({
             source: componentId,
@@ -754,6 +769,42 @@ Focus on architectural/technical components, not product features.`;
             color: fileColor
           });
         }
+      }
+    }
+    
+    // Handle new files separately
+    const newFilesArray = filesByComponent.get('__new_files__') || [];
+    for (const file of newFilesArray) {
+      const fileId = nodeId++;
+      fileNodes.set(file.path, fileId);
+      nodeMap.set(`file:${file.path}`, fileId);
+      
+      const fileColor = componentColors.get('__new_files__');
+      const componentId = componentNodes.get('__new_files__');
+      
+      const fileName = file.path.split('/').pop() || file.path;
+      const fileNode = {
+        id: fileId,
+        name: fileName,
+        kind: 'file',
+        path: file.path,
+        lang: undefined,
+        size: undefined,
+        functions: [] as any[],
+        componentColor: fileColor,
+        componentKey: '__new_files__'
+      };
+      fileNodeObjects.push(fileNode);
+      nodes.push(fileNode);
+      
+      if (componentId) {
+        edges.push({
+          source: componentId,
+          target: fileId,
+          kind: 'contains',
+          weight: 0.5,
+          color: fileColor
+        });
       }
     }
 
@@ -1455,6 +1506,8 @@ Focus on architectural/technical components, not product features.`;
       overflow: hidden;
       background: var(--vscode-editor-background);
       color: var(--vscode-editor-foreground);
+      user-select: none;
+      -webkit-user-select: none;
     }
     #map { 
       width: 100vw; 
@@ -1490,6 +1543,8 @@ Focus on architectural/technical components, not product features.`;
       font-size: 13px;
       width: 250px;
       outline: none;
+      user-select: text;
+      -webkit-user-select: text;
     }
     .search-input:focus {
       border-color: var(--vscode-focusBorder);
@@ -2001,13 +2056,13 @@ Focus on architectural/technical components, not product features.`;
         .force('charge', d3.forceManyBody().strength(d => {
           if (d.kind === 'component') return -4000; // Stronger repulsion for larger components
           if (d.kind === 'external') return -1500; // Medium repulsion for external objects
-          if (d.kind === 'file') return -1200;
+          if (d.kind === 'file' || d.kind === 'glob') return -1200;
           return -800;
         }))
         .force('collision', d3.forceCollide().radius(d => {
           if (d.kind === 'component') return 150; // Larger for bigger component boxes
           if (d.kind === 'external') return 80; // Medium size for external ellipses
-          if (d.kind === 'file') return 60;
+          if (d.kind === 'file' || d.kind === 'glob') return 60;
           return 30;
         }).strength(1.0).iterations(3))
         .force('center', d3.forceCenter(width / 2, height / 2))
@@ -2057,7 +2112,7 @@ Focus on architectural/technical components, not product features.`;
           }))
           .filter(c => c.node);
         
-        const files = children.filter(c => c.node.kind === 'file').map(c => c.node);
+        const files = children.filter(c => c.node.kind === 'file' || c.node.kind === 'glob').map(c => c.node);
         const externals = children.filter(c => c.node.kind === 'external').map(c => c.node);
         
         console.log('[Radium Map] Component ' + component.name + ': ' + files.length + ' files, ' + externals.length + ' externals');
@@ -2392,7 +2447,7 @@ Focus on architectural/technical components, not product features.`;
       );
       
       const fileNodes = data.nodes.filter(d => 
-        d.kind === 'file' && fileIdsConnectedToComponents.has(d.id)
+        (d.kind === 'file' || d.kind === 'glob') && fileIdsConnectedToComponents.has(d.id)
       );
       const componentNodes = data.nodes.filter(d => d.kind === 'component');
       const externalNodes = data.nodes.filter(d => d.kind === 'external');
@@ -2428,7 +2483,7 @@ Focus on architectural/technical components, not product features.`;
         // Collect all boxes that could be obstacles (except source and target)
         const obstacles = allNodes
           .filter(n => n.id !== sourceNode.id && n.id !== targetNode.id)
-          .filter(n => n.kind === 'file' || n.kind === 'external')
+          .filter(n => n.kind === 'file' || n.kind === 'glob' || n.kind === 'external')
           .map(n => ({
             x: n.x,
             y: n.y,
@@ -2581,7 +2636,7 @@ Focus on architectural/technical components, not product features.`;
           // Only handle click if it wasn't a drag
           if (event.defaultPrevented) return;
           event.stopPropagation();
-          console.log('[Radium Map] File box clicked:', d.path);
+          console.log('[Radium Map] File box clicked:', d.path, 'kind:', d.kind);
           
           // Auto-focus on the clicked file
           if (autoFocusEnabled && d.x !== undefined && d.y !== undefined) {
@@ -2595,10 +2650,35 @@ Focus on architectural/technical components, not product features.`;
               .call(zoom.transform, d3.zoomIdentity.translate(targetX, targetY).scale(transform.k));
           }
           
-          vscode.postMessage({
-            type: 'file:open',
-            filePath: d.path
-          });
+          // Check if this is a glob pattern or a regular file
+          const isGlobPattern = d.kind === 'glob' || d.isGlobPattern || d.path.includes('*') || d.path.includes('?') || d.path.includes('[');
+          
+          if (isGlobPattern) {
+            // For glob patterns, extract the directory before any wildcards
+            // e.g., "src/components/**/*.tsx" -> "src/components"
+            const parts = d.path.split('/');
+            const dirParts = [];
+            for (const part of parts) {
+              if (part.includes('*') || part.includes('?') || part.includes('[')) {
+                break;
+              }
+              dirParts.push(part);
+            }
+            const dirPath = dirParts.join('/') || '.';
+            
+            console.log('[Radium Map] Focusing directory:', dirPath);
+            vscode.postMessage({
+              type: 'directory:focus',
+              dirPath: dirPath
+            });
+          } else {
+            // For regular files, open the file
+            console.log('[Radium Map] Opening file:', d.path);
+            vscode.postMessage({
+              type: 'file:open',
+              filePath: d.path
+            });
+          }
         })
         .on('mouseover', function(event, d) {
           // Clear any existing timeout

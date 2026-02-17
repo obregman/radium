@@ -418,6 +418,42 @@ export class GitTimelinePanel {
       color: var(--vscode-button-foreground);
     }
 
+    #messages-container {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      width: 350px;
+      max-height: calc(100% - 20px);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      z-index: 50;
+    }
+
+    #toggle-messages {
+      background: transparent;
+      border: 1px solid var(--vscode-panel-border);
+      color: var(--vscode-descriptionForeground);
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: 3px;
+      cursor: pointer;
+      margin-bottom: 8px;
+      transition: all 0.2s;
+    }
+
+    #toggle-messages:hover {
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border-color: var(--vscode-button-background);
+    }
+
+    #toggle-messages.active {
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border-color: var(--vscode-button-background);
+    }
+
     #visualization {
       flex: 1;
       position: relative;
@@ -627,13 +663,36 @@ export class GitTimelinePanel {
       text-anchor: middle;
     }
 
-    .commit-message {
-      fill: var(--vscode-textLink-foreground);
-      font-size: 14px;
-      font-weight: bold;
-      text-anchor: middle;
+    #commit-messages-panel {
+      width: 100%;
+      overflow: hidden;
       pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .commit-message-item {
+      font-size: 15px;
+      color: var(--vscode-editor-foreground);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+      text-align: right;
       opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .commit-message-text {
+      display: inline;
+    }
+
+    .commit-message-changes {
+      color: var(--vscode-descriptionForeground);
+      font-size: 13px;
+      margin-left: 8px;
     }
 
     .loading-message, .empty-message {
@@ -726,6 +785,10 @@ export class GitTimelinePanel {
     <div id="legend-panel">
       <div id="legend-content"></div>
     </div>
+    <div id="messages-container">
+      <button id="toggle-messages" class="active">Show messages</button>
+      <div id="commit-messages-panel"></div>
+    </div>
     <svg id="graph-svg"></svg>
   </main>
 
@@ -762,7 +825,6 @@ export class GitTimelinePanel {
         this.linkGroup = null;
         this.nodeGroup = null;
         this.labelGroup = null;
-        this.commitMessageGroup = null;
         this.simulation = null;
         this.zoom = null;
         this.tooltip = d3.select('#tooltip');
@@ -781,6 +843,7 @@ export class GitTimelinePanel {
         this.authorChangeCounts = new Map();
         this.maxChangeCount = 1;
         this.dirMaxHeat = new Map();
+        this.showMessages = true;
 
         this.init();
       }
@@ -808,7 +871,6 @@ export class GitTimelinePanel {
         this.linkGroup = this.container.append('g').attr('class', 'links');
         this.nodeGroup = this.container.append('g').attr('class', 'nodes');
         this.labelGroup = this.container.append('g').attr('class', 'labels');
-        this.commitMessageGroup = this.svg.append('g').attr('class', 'commit-messages');
 
         // Create force simulation
         this.simulation = d3.forceSimulation([])
@@ -861,6 +923,22 @@ export class GitTimelinePanel {
           radio.addEventListener('change', (e) => {
             vscode.postMessage({ type: 'interval', value: e.target.value });
           });
+        });
+
+        document.getElementById('toggle-messages').addEventListener('click', (e) => {
+          this.showMessages = !this.showMessages;
+          const btn = e.target;
+          const panel = document.getElementById('commit-messages-panel');
+          
+          if (this.showMessages) {
+            btn.classList.add('active');
+            btn.textContent = 'Show messages';
+            if (panel) panel.style.display = 'flex';
+          } else {
+            btn.classList.remove('active');
+            btn.textContent = 'Show messages';
+            if (panel) panel.style.display = 'none';
+          }
         });
 
         // Keyboard shortcuts
@@ -1172,36 +1250,48 @@ export class GitTimelinePanel {
 
       displayCommitMessages(commitMessages) {
         if (!commitMessages || commitMessages.length === 0) return;
+        if (!this.showMessages) return;
 
-        const centerX = this.width / 2;
-        const centerY = this.height / 2;
-        const clusterRadius = Math.min(this.width, this.height) * 0.3;
+        const panel = document.getElementById('commit-messages-panel');
+        if (!panel) return;
 
-        commitMessages.slice(0, 3).forEach((commit, index) => {
-          const angle = Math.random() * Math.PI * 2;
-          const distance = clusterRadius * (0.8 + Math.random() * 0.4);
-          const x = centerX + Math.cos(angle) * distance;
-          const y = centerY + Math.sin(angle) * distance;
-          const delay = index * 200;
+        const staggerDelay = 80; // Delay between each message appearing
+        const displayDuration = 3000; // How long each message stays visible
 
-          const text = this.commitMessageGroup.append('text')
-            .attr('class', 'commit-message')
-            .attr('x', x)
-            .attr('y', y)
-            .attr('opacity', 0)
-            .text(commit.message);
+        // Display all commit messages - they stack and push down when new ones arrive
+        commitMessages.forEach((commit, index) => {
+          const item = document.createElement('div');
+          item.className = 'commit-message-item';
+          
+          const text = document.createElement('span');
+          text.className = 'commit-message-text';
+          text.textContent = commit.message;
+          
+          item.appendChild(text);
 
-          text.transition()
-            .delay(delay)
-            .duration(400)
-            .attr('opacity', 0.8)
-            .transition()
-            .duration(1200)
-            .attr('y', y - 20)
-            .transition()
-            .duration(400)
-            .attr('opacity', 0)
-            .remove();
+          const delay = index * staggerDelay;
+          
+          setTimeout(() => {
+            // Insert at the top, pushing others down
+            panel.insertBefore(item, panel.firstChild);
+            
+            // Fade in
+            requestAnimationFrame(() => {
+              item.style.opacity = '0.9';
+            });
+            
+            // Fade out after display duration
+            setTimeout(() => {
+              item.style.opacity = '0';
+            }, displayDuration - 300);
+            
+            // Remove after fade out
+            setTimeout(() => {
+              if (item.parentNode) {
+                item.remove();
+              }
+            }, displayDuration);
+          }, delay);
         });
       }
 
@@ -1264,7 +1354,14 @@ export class GitTimelinePanel {
         if (!d) return 4;
         if (d.id === 'root') return 30;
         if (d.isDir) return Math.max(8, Math.min(16, 6 + Math.sqrt(d.files || 1) * 1.5));
-        return 4;
+        
+        const baseRadius = 4;
+        // Only scale file size by changeCount in heat mode
+        if (this.colorMode === 'heat' && d.changeCount) {
+          const changeScale = Math.min(1, d.changeCount / this.maxChangeCount);
+          return baseRadius + changeScale * 8;
+        }
+        return baseRadius;
       }
 
       getNodeColor(d) {
@@ -1342,6 +1439,7 @@ export class GitTimelinePanel {
         }
 
         this.nodeGroup.selectAll('.node-circle')
+          .attr('r', d => this.getNodeRadius(d))
           .attr('fill', d => this.getNodeColor(d))
           .attr('stroke', d => this.getNodeStroke(d));
 

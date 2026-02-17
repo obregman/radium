@@ -376,6 +376,7 @@ export class GitHistoryTracker {
 
   /**
    * Add a file to the tree
+   * Only marks files as new (not directories)
    */
   private addFileToTree(tree: TreeNode, filePath: string, commit: GitCommit): void {
     const parts = filePath.split('/');
@@ -399,7 +400,7 @@ export class GitHistoryTracker {
           modifiedAt: commit.timestamp,
           lastAuthor: commit.author,
           changeCount: 1,
-          isNew: true,
+          isNew: isFile, // Only mark files as new, not directories
           parent: current.id
         });
       }
@@ -414,6 +415,7 @@ export class GitHistoryTracker {
 
   /**
    * Update a file in the tree
+   * Only marks files as modified (not directories), increments changeCount for size scaling
    */
   private updateFileInTree(tree: TreeNode, filePath: string, commit: GitCommit): void {
     const parts = filePath.split('/');
@@ -429,11 +431,13 @@ export class GitHistoryTracker {
       }
 
       const node = current.children.get(part)!;
-      node.modifiedAt = commit.timestamp;
-      node.lastAuthor = commit.author;
-      node.changeCount++;
+      const isFile = i === parts.length - 1;
       
-      if (i === parts.length - 1) {
+      // Only mark files as modified, not directories
+      if (isFile) {
+        node.modifiedAt = commit.timestamp;
+        node.lastAuthor = commit.author;
+        node.changeCount++;
         node.isModified = true;
       }
 

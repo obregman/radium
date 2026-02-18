@@ -22,11 +22,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "radium.openMap",
-        "title": "Radium: Components View",
-        "icon": "$(graph)"
-      },
-      {
         "command": "radium.openFeaturesMap",
         "title": "Radium: Features View",
         "icon": "$(symbol-namespace)"

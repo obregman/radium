@@ -5,7 +5,7 @@
  * and serves them with a mock VS Code API, avoiding code duplication.
  * 
  * Usage: npx ts-node dev/panel-server.ts [panel-name]
- *   panel-name: files-map | symbol-changes | codebase-map
+ *   panel-name: files-map | symbol-changes | dependency-graph
  */
 
 import * as http from 'http';
@@ -34,12 +34,6 @@ const PANELS: Record<string, PanelConfig> = {
     sourceFile: 'src/views/symbol-changes-panel.ts',
     mockDataFn: 'getSymbolChangesMockDataScript',
     title: 'Symbol Changes'
-  },
-  'codebase-map': {
-    name: 'CodebaseMapPanel',
-    sourceFile: 'src/views/codebase-map-panel.ts',
-    mockDataFn: 'getCodebaseMapMockDataScript',
-    title: 'Codebase Map'
   },
   'dependency-graph': {
     name: 'DependencyGraphPanel',
@@ -198,9 +192,6 @@ function getMockApiScript(panelKey: string): string {
       break;
     case 'symbol-changes':
       mockDataScript = getSymbolChangesMockDataScript();
-      break;
-    case 'codebase-map':
-      mockDataScript = getCodebaseMapMockDataScript();
       break;
     case 'dependency-graph':
       mockDataScript = getDependencyGraphMockDataScript();
@@ -1032,44 +1023,6 @@ function getSymbolChangesMockDataScript(): string {
   `;
 }
 
-function getCodebaseMapMockDataScript(): string {
-  return `
-    const mockGraphData = {
-      nodes: [
-        { id: 'auth.ts:login', name: 'login', type: 'function', filePath: 'src/services/auth.ts', line: 10, size: 25 },
-        { id: 'auth.ts:logout', name: 'logout', type: 'function', filePath: 'src/services/auth.ts', line: 25, size: 15 },
-        { id: 'auth.ts:User', name: 'User', type: 'class', filePath: 'src/services/auth.ts', line: 1, size: 80 },
-        { id: 'api.ts:fetch', name: 'fetch', type: 'function', filePath: 'src/services/api.ts', line: 5, size: 20 },
-        { id: 'api.ts:ApiClient', name: 'ApiClient', type: 'class', filePath: 'src/services/api.ts', line: 1, size: 60 },
-        { id: 'helpers.ts:formatDate', name: 'formatDate', type: 'function', filePath: 'src/utils/helpers.ts', line: 1, size: 10 },
-        { id: 'helpers.ts:parseJSON', name: 'parseJSON', type: 'function', filePath: 'src/utils/helpers.ts', line: 15, size: 12 },
-        { id: 'logger.ts:Logger', name: 'Logger', type: 'class', filePath: 'src/utils/logger.ts', line: 1, size: 45 }
-      ],
-      edges: [
-        { source: 'auth.ts:login', target: 'auth.ts:User', type: 'uses', weight: 2 },
-        { source: 'auth.ts:logout', target: 'auth.ts:User', type: 'uses', weight: 1 },
-        { source: 'api.ts:ApiClient', target: 'api.ts:fetch', type: 'contains', weight: 1 },
-        { source: 'auth.ts:login', target: 'api.ts:fetch', type: 'calls', weight: 3 },
-        { source: 'auth.ts:login', target: 'helpers.ts:formatDate', type: 'calls', weight: 1 },
-        { source: 'api.ts:fetch', target: 'helpers.ts:parseJSON', type: 'calls', weight: 2 },
-        { source: 'auth.ts:User', target: 'logger.ts:Logger', type: 'uses', weight: 1 }
-      ]
-    };
-    
-    window.__handleWebviewMessage = function(message) {
-      switch (message.type) {
-        case 'ready':
-          console.log('[Mock] Sending codebase graph data...');
-          setTimeout(() => window.__postMessageToWebview({ type: 'graph:update', data: mockGraphData }), 100);
-          break;
-        case 'goToSymbol':
-          alert('Would go to: ' + message.filePath + ':' + message.line);
-          break;
-      }
-    };
-  `;
-}
-
 function getDependencyGraphMockDataScript(): string {
   return `
     const mockGraphData = {
@@ -1245,12 +1198,6 @@ function getIndexPage(): string {
         <div class="panel-desc">Real-time code change tracker</div>
       </a>
       
-      <a href="/panel/codebase-map" class="panel-card">
-        <div class="panel-icon">🗺️</div>
-        <div class="panel-name">Codebase Map</div>
-        <div class="panel-desc">Symbol relationship graph</div>
-      </a>
-      
       <a href="/panel/dependency-graph" class="panel-card">
         <div class="panel-icon">🔗</div>
         <div class="panel-name">Dependency Graph</div>
@@ -1283,7 +1230,7 @@ function startServer(): void {
         return;
       }
 
-      // Handle panel requests: /panel/files-map, /panel/symbol-changes, /panel/codebase-map
+      // Handle panel requests: /panel/files-map, /panel/symbol-changes, /panel/dependency-graph
       const panelMatch = pathname.match(/^\/panel\/([a-z-]+)$/);
       if (panelMatch) {
         const panelKey = panelMatch[1];
@@ -1322,7 +1269,6 @@ function startServer(): void {
 ║  Available panels:                                         ║
 ║    • http://localhost:${PORT}/panel/files-map                 ║
 ║    • http://localhost:${PORT}/panel/symbol-changes            ║
-║    • http://localhost:${PORT}/panel/codebase-map              ║
 ║    • http://localhost:${PORT}/panel/dependency-graph          ║
 ║                                                            ║
 ║  Press Ctrl+C to stop                                      ║

@@ -4,10 +4,18 @@ import * as yaml from 'js-yaml';
 
 export type FeatureStatus = 'completed' | 'in_progress' | 'planned';
 
+export interface ExternalSource {
+  type: string;
+  name: string;
+  description?: string;
+  usedBy?: string[];
+}
+
 export interface FeatureCapability {
   name: string;
   description?: string;
   files: string[];
+  external?: ExternalSource[];
 }
 
 export interface FeatureConfig {
@@ -16,6 +24,7 @@ export interface FeatureConfig {
   status: FeatureStatus;
   capabilities: Record<string, FeatureCapability>;
   files: string[];
+  external?: ExternalSource[];
 }
 
 export interface AppConfig {
@@ -124,7 +133,8 @@ export class FeaturesConfigLoader {
           capabilities[capKey] = {
             name: capData.name,
             description: capData.description,
-            files: Array.isArray(capData.files) ? capData.files : []
+            files: Array.isArray(capData.files) ? capData.files : [],
+            external: this.parseExternalSources(capData.external)
           };
         }
       }
@@ -134,7 +144,8 @@ export class FeaturesConfigLoader {
         description: featureData.description,
         status: this.parseStatus(featureData.status),
         capabilities,
-        files: Array.isArray(featureData.files) ? featureData.files : []
+        files: Array.isArray(featureData.files) ? featureData.files : [],
+        external: this.parseExternalSources(featureData.external)
       };
     }
 
@@ -146,6 +157,26 @@ export class FeaturesConfigLoader {
       return status;
     }
     return 'planned';
+  }
+
+  private parseExternalSources(external: any): ExternalSource[] | undefined {
+    if (!external || !Array.isArray(external)) {
+      return undefined;
+    }
+
+    const sources: ExternalSource[] = [];
+    for (const item of external) {
+      if (item.type && item.name) {
+        sources.push({
+          type: item.type,
+          name: item.name,
+          description: item.description,
+          usedBy: Array.isArray(item.usedBy) ? item.usedBy : undefined
+        });
+      }
+    }
+
+    return sources.length > 0 ? sources : undefined;
   }
 
   /**

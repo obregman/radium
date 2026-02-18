@@ -4,12 +4,10 @@ import * as fs from 'fs';
 import { GraphStore } from './store/schema';
 import { Indexer } from './indexer/indexer';
 import { LLMOrchestrator, LLMPlan } from './orchestrator/llm-orchestrator';
-import { MapPanel } from './views/codebase-map-panel';
 import { FilesMapPanel } from './views/files-map-panel';
 import { SymbolChangesPanel } from './views/symbol-changes-panel';
 import { DependencyGraphPanel } from './views/dependency-graph-panel';
 import { GitDiffTracker } from './git/git-diff-tracker';
-import { RadiumConfigLoader } from './config/radium-config';
 import { FeaturesConfigLoader } from './config/features-config';
 import { FeaturesMapPanel } from './views/features-map-panel';
 import { GitTimelinePanel } from './views/git-timeline-panel';
@@ -18,7 +16,6 @@ let store: GraphStore;
 let indexer: Indexer;
 let orchestrator: LLMOrchestrator;
 let gitDiffTracker: GitDiffTracker;
-let configLoader: RadiumConfigLoader;
 let featuresConfigLoader: FeaturesConfigLoader;
 let outputChannel: vscode.OutputChannel;
 
@@ -161,10 +158,6 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize git diff tracker with indexer reference
     gitDiffTracker = new GitDiffTracker(store, workspaceRoot, indexer);
 
-    // Initialize config loader and load radium-components.yaml if present
-    configLoader = new RadiumConfigLoader(workspaceRoot);
-    configLoader.load();
-
     // Initialize features config loader and load radium-features.yaml if present
     outputChannel.appendLine(`Initializing FeaturesConfigLoader with workspaceRoot: ${workspaceRoot}`);
     featuresConfigLoader = new FeaturesConfigLoader(workspaceRoot);
@@ -196,14 +189,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
 function registerCommands(context: vscode.ExtensionContext) {
   context.subscriptions.push(
-    vscode.commands.registerCommand('radium.openMap', () => {
-      if (!store) {
-        vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
-        return;
-      }
-      MapPanel.createOrShow(context.extensionUri, store, configLoader, gitDiffTracker);
-    }),
-
     vscode.commands.registerCommand('radium.openFilesMap', () => {
       if (!store) {
         vscode.window.showWarningMessage('Radium is still initializing. Please wait...');
@@ -252,7 +237,7 @@ function registerCommands(context: vscode.ExtensionContext) {
           );
           
           // Refresh views
-          if (MapPanel.currentPanel) MapPanel.currentPanel.updateGraph();
+          if (FilesMapPanel.currentPanel) FilesMapPanel.currentPanel.updateGraph();
         } catch (error) {
           outputChannel.appendLine(`RADIUM: Re-indexing failed: ${error}`);
           outputChannel.appendLine(`RADIUM: Error stack: ${(error as Error).stack}`);
@@ -315,11 +300,11 @@ function startIndexing() {
 
 function showWelcome() {
   vscode.window.showInformationMessage(
-    'Radium is active! Open the map with "Vibe: Open Map"',
-    'Open Map'
+    'Radium is active! Open the Features View with "Radium: Features View"',
+    'Open Features View'
   ).then(action => {
-    if (action === 'Open Map') {
-      vscode.commands.executeCommand('radium.openMap');
+    if (action === 'Open Features View') {
+      vscode.commands.executeCommand('radium.openFeaturesMap');
     }
   });
 }

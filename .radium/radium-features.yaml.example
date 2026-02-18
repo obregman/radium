@@ -40,9 +40,23 @@ spec:
               files:
                 - src/auth/session.ts
                 - src/middleware/auth.ts
+              # External sources at capability level
+              external:
+                - type: Cache
+                  name: Redis Session Store
+                  description: Stores active user sessions
+                  usedBy:
+                    - src/auth/session.ts
         # Feature-level files (not tied to a specific capability)
         files:
           - src/auth/types.ts
+        # External sources at feature level
+        external:
+          - type: API
+            name: OAuth Provider
+            description: Third-party OAuth authentication
+            usedBy:
+              - src/auth/oauth.ts
 
     - user_management:
         name: User Management
@@ -55,6 +69,10 @@ spec:
               files:
                 - src/users/create.ts
                 - src/components/UserForm.tsx
+              external:
+                - type: Email
+                  name: SendGrid
+                  description: Sends welcome emails to new users
           - list_users:
               name: List Users
               description: Display all users with pagination
@@ -69,6 +87,12 @@ spec:
         files:
           - src/users/types.ts
           - src/users/validation.ts
+        external:
+          - type: Database
+            name: PostgreSQL
+            description: Primary user data storage
+            usedBy:
+              - src/users/repository.ts
 
     - dashboard:
         name: Dashboard
@@ -80,9 +104,17 @@ spec:
               description: Show key performance indicators
               files:
                 - src/dashboard/metrics.ts
+              external:
+                - type: Analytics
+                  name: Mixpanel
+                  description: User behavior analytics
           - charts:
               name: Charts
               description: Interactive data visualizations
               files:
                 - src/dashboard/charts.ts
         files: []
+        external:
+          - type: API
+            name: Analytics API
+            description: Internal analytics service

@@ -42,11 +42,6 @@
         "icon": "$(symbol-class)"
       },
       {
-        "command": "radium.dependencyGraph",
-        "title": "Radium: Dependency Graph",
-        "icon": "$(type-hierarchy)"
-      },
-      {
         "command": "radium.gitTimeline",
         "title": "Radium: Git Timeline",
         "icon": "$(history)"

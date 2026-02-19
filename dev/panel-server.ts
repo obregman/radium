@@ -5,7 +5,7 @@
  * and serves them with a mock VS Code API, avoiding code duplication.
  * 
  * Usage: npx ts-node dev/panel-server.ts [panel-name]
- *   panel-name: files-map | symbol-changes | dependency-graph
+ *   panel-name: files-map | symbol-changes
  */
 
 import * as http from 'http';
@@ -34,12 +34,6 @@ const PANELS: Record<string, PanelConfig> = {
     sourceFile: 'src/views/symbol-changes-panel.ts',
     mockDataFn: 'getSymbolChangesMockDataScript',
     title: 'Symbol Changes'
-  },
-  'dependency-graph': {
-    name: 'DependencyGraphPanel',
-    sourceFile: 'src/views/dependency-graph-panel.ts',
-    mockDataFn: 'getDependencyGraphMockDataScript',
-    title: 'Dependency Graph'
   }
 };
 
@@ -192,9 +186,6 @@ function getMockApiScript(panelKey: string): string {
       break;
     case 'symbol-changes':
       mockDataScript = getSymbolChangesMockDataScript();
-      break;
-    case 'dependency-graph':
-      mockDataScript = getDependencyGraphMockDataScript();
       break;
   }
 
@@ -1023,78 +1014,6 @@ function getSymbolChangesMockDataScript(): string {
   `;
 }
 
-function getDependencyGraphMockDataScript(): string {
-  return `
-    const mockGraphData = {
-      nodes: [
-        { id: 'file:src/index.ts', type: 'file', label: 'index.ts', path: 'src/index.ts', lang: 'typescript', size: 150, inDegree: 0, outDegree: 4 },
-        { id: 'file:src/app.ts', type: 'file', label: 'app.ts', path: 'src/app.ts', lang: 'typescript', size: 280, inDegree: 1, outDegree: 3 },
-        { id: 'file:src/services/auth.ts', type: 'file', label: 'auth.ts', path: 'src/services/auth.ts', lang: 'typescript', size: 450, inDegree: 2, outDegree: 6 },
-        { id: 'file:src/services/api.ts', type: 'file', label: 'api.ts', path: 'src/services/api.ts', lang: 'typescript', size: 320, inDegree: 3, outDegree: 2 },
-        { id: 'file:src/services/database.ts', type: 'file', label: 'database.ts', path: 'src/services/database.ts', lang: 'typescript', size: 520, inDegree: 2, outDegree: 4 },
-        { id: 'file:src/services/cache.ts', type: 'file', label: 'cache.ts', path: 'src/services/cache.ts', lang: 'typescript', size: 180, inDegree: 2, outDegree: 1 },
-        { id: 'file:src/utils/helpers.ts', type: 'file', label: 'helpers.ts', path: 'src/utils/helpers.ts', lang: 'typescript', size: 100, inDegree: 5, outDegree: 0 },
-        { id: 'file:src/utils/logger.ts', type: 'file', label: 'logger.ts', path: 'src/utils/logger.ts', lang: 'typescript', size: 80, inDegree: 7, outDegree: 0 },
-        { id: 'file:src/utils/validator.ts', type: 'file', label: 'validator.ts', path: 'src/utils/validator.ts', lang: 'typescript', size: 220, inDegree: 3, outDegree: 1 },
-        { id: 'file:src/utils/crypto.ts', type: 'file', label: 'crypto.ts', path: 'src/utils/crypto.ts', lang: 'typescript', size: 140, inDegree: 1, outDegree: 0 },
-        { id: 'file:src/models/User.ts', type: 'file', label: 'User.ts', path: 'src/models/User.ts', lang: 'typescript', size: 120, inDegree: 2, outDegree: 0 },
-        { id: 'file:src/models/Product.ts', type: 'file', label: 'Product.ts', path: 'src/models/Product.ts', lang: 'typescript', size: 90, inDegree: 1, outDegree: 0 },
-        { id: 'file:src/models/Order.ts', type: 'file', label: 'Order.ts', path: 'src/models/Order.ts', lang: 'typescript', size: 150, inDegree: 1, outDegree: 0 },
-        { id: 'file:src/components/Button.tsx', type: 'file', label: 'Button.tsx', path: 'src/components/Button.tsx', lang: 'typescript', size: 95, inDegree: 3, outDegree: 0 },
-        { id: 'file:src/components/Form.tsx', type: 'file', label: 'Form.tsx', path: 'src/components/Form.tsx', lang: 'typescript', size: 260, inDegree: 1, outDegree: 3 },
-        { id: 'file:src/components/Input.tsx', type: 'file', label: 'Input.tsx', path: 'src/components/Input.tsx', lang: 'typescript', size: 110, inDegree: 1, outDegree: 0 }
-      ],
-      edges: [
-        { source: 'file:src/index.ts', target: 'file:src/app.ts', type: 'imports', weight: 5 },
-        { source: 'file:src/index.ts', target: 'file:src/services/auth.ts', type: 'imports', weight: 3 },
-        { source: 'file:src/index.ts', target: 'file:src/services/api.ts', type: 'imports', weight: 2 },
-        { source: 'file:src/index.ts', target: 'file:src/utils/logger.ts', type: 'imports', weight: 1 },
-        { source: 'file:src/app.ts', target: 'file:src/services/database.ts', type: 'imports', weight: 4 },
-        { source: 'file:src/app.ts', target: 'file:src/services/cache.ts', type: 'imports', weight: 2 },
-        { source: 'file:src/app.ts', target: 'file:src/utils/logger.ts', type: 'imports', weight: 3 },
-        { source: 'file:src/services/auth.ts', target: 'file:src/services/database.ts', type: 'imports', weight: 5 },
-        { source: 'file:src/services/auth.ts', target: 'file:src/services/cache.ts', type: 'imports', weight: 3 },
-        { source: 'file:src/services/auth.ts', target: 'file:src/utils/crypto.ts', type: 'imports', weight: 4 },
-        { source: 'file:src/services/auth.ts', target: 'file:src/utils/validator.ts', type: 'imports', weight: 2 },
-        { source: 'file:src/services/auth.ts', target: 'file:src/utils/logger.ts', type: 'imports', weight: 2 },
-        { source: 'file:src/services/auth.ts', target: 'file:src/models/User.ts', type: 'imports', weight: 6 },
-        { source: 'file:src/services/api.ts', target: 'file:src/utils/helpers.ts', type: 'imports', weight: 3 },
-        { source: 'file:src/services/api.ts', target: 'file:src/utils/logger.ts', type: 'imports', weight: 2 },
-        { source: 'file:src/services/database.ts', target: 'file:src/utils/logger.ts', type: 'imports', weight: 4 },
-        { source: 'file:src/services/database.ts', target: 'file:src/models/User.ts', type: 'imports', weight: 3 },
-        { source: 'file:src/services/database.ts', target: 'file:src/models/Product.ts', type: 'imports', weight: 2 },
-        { source: 'file:src/services/database.ts', target: 'file:src/models/Order.ts', type: 'imports', weight: 2 },
-        { source: 'file:src/services/cache.ts', target: 'file:src/utils/logger.ts', type: 'imports', weight: 1 },
-        { source: 'file:src/utils/validator.ts', target: 'file:src/utils/helpers.ts', type: 'imports', weight: 2 },
-        { source: 'file:src/components/Form.tsx', target: 'file:src/components/Input.tsx', type: 'imports', weight: 4 },
-        { source: 'file:src/components/Form.tsx', target: 'file:src/components/Button.tsx', type: 'imports', weight: 3 },
-        { source: 'file:src/components/Form.tsx', target: 'file:src/utils/validator.ts', type: 'imports', weight: 2 },
-        { source: 'file:src/services/api.ts', target: 'file:src/services/auth.ts', type: 'calls', weight: 2 }
-      ]
-    };
-    
-    window.__handleWebviewMessage = function(message) {
-      switch (message.type) {
-        case 'ready':
-          console.log('[Mock] Sending dependency graph data...');
-          if (window.__devLog) window.__devLog('✅ Ready, sending data...');
-          setTimeout(() => {
-            console.log('[Mock] Sending graph:update with', mockGraphData.nodes.length, 'nodes');
-            if (window.__devLog) window.__devLog('📊 Sent ' + mockGraphData.nodes.length + ' nodes');
-            window.__postMessageToWebview({ type: 'graph:update', data: mockGraphData });
-          }, 100);
-          break;
-        case 'file:open':
-          alert('Would open file: ' + message.filePath);
-          break;
-        case 'file:copy':
-          navigator.clipboard.writeText(message.filePath).then(() => alert('Copied: ' + message.filePath));
-          break;
-      }
-    };
-  `;
-}
-
 /**
  * Generates the index page with links to all panels
  */
@@ -1197,12 +1116,6 @@ function getIndexPage(): string {
         <div class="panel-name">Symbol Changes</div>
         <div class="panel-desc">Real-time code change tracker</div>
       </a>
-      
-      <a href="/panel/dependency-graph" class="panel-card">
-        <div class="panel-icon">🔗</div>
-        <div class="panel-name">Dependency Graph</div>
-        <div class="panel-desc">File-to-file dependency visualization</div>
-      </a>
     </div>
     
     <p class="footer">
@@ -1230,7 +1143,7 @@ function startServer(): void {
         return;
       }
 
-      // Handle panel requests: /panel/files-map, /panel/symbol-changes, /panel/dependency-graph
+      // Handle panel requests: /panel/files-map, /panel/symbol-changes
       const panelMatch = pathname.match(/^\/panel\/([a-z-]+)$/);
       if (panelMatch) {
         const panelKey = panelMatch[1];
@@ -1269,7 +1182,6 @@ function startServer(): void {
 ║  Available panels:                                         ║
 ║    • http://localhost:${PORT}/panel/files-map                 ║
 ║    • http://localhost:${PORT}/panel/symbol-changes            ║
-║    • http://localhost:${PORT}/panel/dependency-graph          ║
 ║                                                            ║
 ║  Press Ctrl+C to stop                                      ║
 ╚════════════════════════════════════════════════════════════╝

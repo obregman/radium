@@ -422,8 +422,8 @@ export class GitTimelinePanel {
       position: absolute;
       top: 10px;
       right: 20px;
+      bottom: 10px;
       width: 350px;
-      max-height: calc(100% - 20px);
       display: flex;
       flex-direction: column;
       align-items: flex-end;
@@ -667,9 +667,10 @@ export class GitTimelinePanel {
       width: 100%;
       overflow: hidden;
       pointer-events: none;
+      flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 8px;
     }
 
     .commit-message-item {
@@ -683,6 +684,7 @@ export class GitTimelinePanel {
       text-align: right;
       opacity: 0;
       transition: opacity 0.3s ease;
+      flex-shrink: 0;
     }
 
     .commit-message-text {
@@ -867,8 +869,12 @@ export class GitTimelinePanel {
 
         this.svg.call(this.zoom);
 
+        // Create defs for gradients
+        this.defs = this.svg.append('defs');
+
         this.container = this.svg.append('g').attr('class', 'graph-container');
         this.linkGroup = this.container.append('g').attr('class', 'links');
+        this.glowGroup = this.container.append('g').attr('class', 'glows');
         this.nodeGroup = this.container.append('g').attr('class', 'nodes');
         this.labelGroup = this.container.append('g').attr('class', 'labels');
 
@@ -1194,6 +1200,20 @@ export class GitTimelinePanel {
 
       updateNodes(nodes, newFileSet, modifiedFileSet) {
         this.nodeGroup.selectAll('.node').remove();
+        this.glowGroup.selectAll('.glow-circle').remove();
+
+        // Add glow circles for files in color modes (rendered behind nodes)
+        const glowNodes = nodes.filter(d => this.shouldShowGlow(d));
+        this.glowGroup.selectAll('.glow-circle')
+          .data(glowNodes, d => d.id)
+          .enter()
+          .append('circle')
+          .attr('class', 'glow-circle')
+          .attr('cx', d => d.x || 0)
+          .attr('cy', d => d.y || 0)
+          .attr('r', d => this.getNodeRadius(d) * 2.5)
+          .attr('fill', d => this.getNodeColor(d))
+          .attr('opacity', 0.25);
 
         const nodeEnter = this.nodeGroup.selectAll('.node')
           .data(nodes)
@@ -1213,7 +1233,7 @@ export class GitTimelinePanel {
           .attr('fill', d => this.getNodeColor(d))
           .attr('stroke', d => this.getNodeStroke(d))
           .attr('stroke-width', d => d.id === 'root' ? 3 : (d.isDir ? 1.5 : 1))
-          .style('filter', d => d.id === 'root' ? 'drop-shadow(0 0 8px #FFD700)' : null);
+          .style('filter', d => this.getNodeFilter(d));
 
         const allNodes = this.nodeGroup.selectAll('.node');
 
@@ -1231,6 +1251,14 @@ export class GitTimelinePanel {
               vscode.postMessage({ type: 'file:open', filePath: d.path });
             }
           });
+      }
+
+      shouldShowGlow(d) {
+        if (!d || d.isDir || d.id === 'root') return false;
+        if (this.colorMode === 'age' && this.timelineStartDate && this.timelineEndDate && d.addedAt) return true;
+        if (this.colorMode === 'heat' && d.changeCount) return true;
+        if (this.colorMode === 'contributor' && d.lastAuthor) return true;
+        return false;
       }
 
       updateLabels(nodes) {
@@ -1255,23 +1283,20 @@ export class GitTimelinePanel {
         const panel = document.getElementById('commit-messages-panel');
         if (!panel) return;
 
-        const staggerDelay = 80; // Delay between each message appearing
-        const displayDuration = 3000; // How long each message stays visible
+        const FADE_OUT_DELAY = 3000; // Fade out after 3 seconds
 
-        // Display all commit messages - they stack and push down when new ones arrive
+        // Add messages one by one with stagger
         commitMessages.forEach((commit, index) => {
-          const item = document.createElement('div');
-          item.className = 'commit-message-item';
-          
-          const text = document.createElement('span');
-          text.className = 'commit-message-text';
-          text.textContent = commit.message;
-          
-          item.appendChild(text);
-
-          const delay = index * staggerDelay;
-          
           setTimeout(() => {
+            const item = document.createElement('div');
+            item.className = 'commit-message-item';
+            
+            const text = document.createElement('span');
+            text.className = 'commit-message-text';
+            text.textContent = commit.message;
+            
+            item.appendChild(text);
+            
             // Insert at the top, pushing others down
             panel.insertBefore(item, panel.firstChild);
             
@@ -1280,18 +1305,34 @@ export class GitTimelinePanel {
               item.style.opacity = '0.9';
             });
             
-            // Fade out after display duration
+            // Fade out after delay
             setTimeout(() => {
               item.style.opacity = '0';
-            }, displayDuration - 300);
+            }, FADE_OUT_DELAY);
             
-            // Remove after fade out
+            // Check for overflow and remove items that are past the bottom
+            this.cleanupOverflowMessages(panel);
+          }, index * 100);
+        });
+      }
+
+      cleanupOverflowMessages(panel) {
+        if (!panel) return;
+        
+        const panelRect = panel.getBoundingClientRect();
+        const items = panel.querySelectorAll('.commit-message-item');
+        
+        items.forEach(item => {
+          const itemRect = item.getBoundingClientRect();
+          // If item is below the panel bottom, remove it
+          if (itemRect.top >= panelRect.bottom) {
+            item.style.opacity = '0';
             setTimeout(() => {
               if (item.parentNode) {
                 item.remove();
               }
-            }, displayDuration);
-          }, delay);
+            }, 100);
+          }
         });
       }
 
@@ -1301,6 +1342,10 @@ export class GitTimelinePanel {
           .attr('y1', d => d.source?.y || 0)
           .attr('x2', d => d.target?.x || 0)
           .attr('y2', d => d.target?.y || 0);
+
+        this.glowGroup.selectAll('.glow-circle')
+          .attr('cx', d => d.x || 0)
+          .attr('cy', d => d.y || 0);
 
         this.nodeGroup.selectAll('.node')
           .attr('transform', d => 'translate(' + (d.x || 0) + ',' + (d.y || 0) + ')');
@@ -1368,7 +1413,7 @@ export class GitTimelinePanel {
         if (!d) return '#99c1f1';
         if (d.id === 'root') return '#FFD700';
 
-        if (this.colorMode === 'age' && this.timelineStartDate && this.timelineEndDate && d.addedAt) {
+        if (this.colorMode === 'age' && !d.isDir && this.timelineStartDate && this.timelineEndDate && d.addedAt) {
           const addedTime = new Date(d.addedAt).getTime();
           const startTime = this.timelineStartDate.getTime();
           const endTime = this.timelineEndDate.getTime();
@@ -1397,6 +1442,12 @@ export class GitTimelinePanel {
         if (d.id === 'root') return '#FFA500';
         if (d.isDir) return '#1a5fb4';
         return '#62a0ea';
+      }
+
+      getNodeFilter(d) {
+        if (!d) return null;
+        if (d.id === 'root') return 'drop-shadow(0 0 8px #FFD700)';
+        return null;
       }
 
       getContributorColor(name) {
@@ -1441,7 +1492,22 @@ export class GitTimelinePanel {
         this.nodeGroup.selectAll('.node-circle')
           .attr('r', d => this.getNodeRadius(d))
           .attr('fill', d => this.getNodeColor(d))
-          .attr('stroke', d => this.getNodeStroke(d));
+          .attr('stroke', d => this.getNodeStroke(d))
+          .style('filter', d => this.getNodeFilter(d));
+
+        // Update glow circles
+        this.glowGroup.selectAll('.glow-circle').remove();
+        const glowNodes = this.currentNodes.filter(d => this.shouldShowGlow(d));
+        this.glowGroup.selectAll('.glow-circle')
+          .data(glowNodes, d => d.id)
+          .enter()
+          .append('circle')
+          .attr('class', 'glow-circle')
+          .attr('cx', d => d.x || 0)
+          .attr('cy', d => d.y || 0)
+          .attr('r', d => this.getNodeRadius(d) * 2.5)
+          .attr('fill', d => this.getNodeColor(d))
+          .attr('opacity', 0.25);
 
         this.updateLegend(this.currentNodes);
       }

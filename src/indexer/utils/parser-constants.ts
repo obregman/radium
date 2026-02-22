@@ -23,5 +23,3 @@ export const LANGUAGE_NAMES = {
   GO: 'go'
 } as const;
 
-export type LanguageName = typeof LANGUAGE_NAMES[keyof typeof LANGUAGE_NAMES];
-

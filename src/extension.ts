@@ -3,18 +3,14 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { GraphStore } from './store/schema';
 import { Indexer } from './indexer/indexer';
-import { LLMOrchestrator, LLMPlan } from './orchestrator/llm-orchestrator';
 import { FilesMapPanel } from './views/files-map-panel';
 import { SymbolChangesPanel } from './views/symbol-changes-panel';
-import { GitDiffTracker } from './git/git-diff-tracker';
 import { FeaturesConfigLoader } from './config/features-config';
 import { FeaturesMapPanel } from './views/features-map-panel';
 import { GitTimelinePanel } from './views/git-timeline-panel';
 
 let store: GraphStore;
 let indexer: Indexer;
-let orchestrator: LLMOrchestrator;
-let gitDiffTracker: GitDiffTracker;
 let featuresConfigLoader: FeaturesConfigLoader;
 let outputChannel: vscode.OutputChannel;
 
@@ -150,12 +146,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Initialize indexer
     indexer = new Indexer(store, workspaceRoot);
-    
-    // Initialize orchestrator
-    orchestrator = new LLMOrchestrator(store, workspaceRoot);
-
-    // Initialize git diff tracker with indexer reference
-    gitDiffTracker = new GitDiffTracker(store, workspaceRoot, indexer);
 
     // Initialize features config loader and load radium-features.yaml if present
     outputChannel.appendLine(`Initializing FeaturesConfigLoader with workspaceRoot: ${workspaceRoot}`);
@@ -167,9 +157,6 @@ export async function activate(context: vscode.ExtensionContext) {
     outputChannel.appendLine('Radium: Skipping automatic indexing on startup');
     console.log('Radium: Skipping automatic indexing on startup');
 
-    // Show welcome message
-    // showWelcome();
-    
     console.log('Radium activation complete');
   } catch (error) {
     console.error('============================================');
@@ -269,35 +256,6 @@ function registerCommands(context: vscode.ExtensionContext) {
     })
 
   );
-}
-
-function startIndexing() {
-  if (!indexer) return;
-  
-  vscode.window.withProgress({
-    location: vscode.ProgressLocation.Notification,
-    title: 'Radium: Indexing workspace',
-    cancellable: false
-  }, async (progress) => {
-    try {
-      await indexer.start();
-      progress.report({ increment: 100 });
-    } catch (error) {
-      console.error('Indexing failed:', error);
-      vscode.window.showErrorMessage(`Radium indexing failed: ${error}`);
-    }
-  });
-}
-
-function showWelcome() {
-  vscode.window.showInformationMessage(
-    'Radium is active! Open the Features View with "Radium: Features View"',
-    'Open Features View'
-  ).then(action => {
-    if (action === 'Open Features View') {
-      vscode.commands.executeCommand('radium.openFeaturesMap');
-    }
-  });
 }
 
 export function deactivate() {

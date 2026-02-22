@@ -31,12 +31,6 @@ export interface SemanticChange {
   functionName?: string; // Name of the function where the change occurred
 }
 
-export interface DiffLine {
-  type: 'added' | 'deleted' | 'context';
-  lineNumber: number;
-  content: string;
-}
-
 export class SemanticAnalyzer {
   // Pattern definitions for each category
   private static readonly LOGIC_CHANGE_PATTERNS = [

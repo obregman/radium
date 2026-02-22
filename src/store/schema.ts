@@ -312,11 +312,6 @@ export class GraphStore {
     return stmt.get(sessionId) as Session | undefined;
   }
 
-  getRecentSessions(limit: number = 20): Session[] {
-    const stmt = this.db.prepare('SELECT * FROM session ORDER BY started_at DESC LIMIT ?');
-    return stmt.all(limit) as Session[];
-  }
-
   // Change operations
   insertChange(change: Change): number {
     const stmt = this.db.prepare(`
@@ -336,57 +331,6 @@ export class GraphStore {
   getChangesBySession(sessionId: number): Change[] {
     const stmt = this.db.prepare('SELECT * FROM change WHERE session_id = ?');
     return stmt.all(sessionId) as Change[];
-  }
-
-  // Issue operations
-  insertIssue(issue: Issue): number {
-    const stmt = this.db.prepare(`
-      INSERT INTO issue (session_id, severity, kind, message, node_id, file_id, ts)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    const result = stmt.run(
-      issue.session_id || null,
-      issue.severity,
-      issue.kind,
-      issue.message,
-      issue.node_id || null,
-      issue.file_id || null,
-      issue.ts
-    );
-    return result.lastInsertRowid as number;
-  }
-
-  getIssues(filters?: { sessionId?: number; severity?: string }): Issue[] {
-    let query = 'SELECT * FROM issue WHERE 1=1';
-    const params: any[] = [];
-
-    if (filters?.sessionId) {
-      query += ' AND session_id = ?';
-      params.push(filters.sessionId);
-    }
-    if (filters?.severity) {
-      query += ' AND severity = ?';
-      params.push(filters.severity);
-    }
-
-    query += ' ORDER BY ts DESC';
-    const stmt = this.db.prepare(query);
-    return stmt.all(...params) as Issue[];
-  }
-
-  // Metric operations
-  insertMetric(metric: Metric): number {
-    const stmt = this.db.prepare(`
-      INSERT INTO metric (node_id, kind, value, ts)
-      VALUES (?, ?, ?, ?)
-    `);
-    const result = stmt.run(metric.node_id, metric.kind, metric.value, metric.ts);
-    return result.lastInsertRowid as number;
-  }
-
-  getMetricsByNode(nodeId: number): Metric[] {
-    const stmt = this.db.prepare('SELECT * FROM metric WHERE node_id = ?');
-    return stmt.all(nodeId) as Metric[];
   }
 
   // FileSmell operations
@@ -416,20 +360,6 @@ export class GraphStore {
       smell.ts
     );
     return result.lastInsertRowid as number;
-  }
-
-  getFileSmellByFileId(fileId: number): FileSmell | undefined {
-    const stmt = this.db.prepare('SELECT * FROM file_smell WHERE file_id = ?');
-    return stmt.get(fileId) as FileSmell | undefined;
-  }
-
-  getFileSmellByPath(filePath: string): FileSmell | undefined {
-    const stmt = this.db.prepare(`
-      SELECT fs.* FROM file_smell fs
-      JOIN file f ON fs.file_id = f.id
-      WHERE f.path = ?
-    `);
-    return stmt.get(filePath) as FileSmell | undefined;
   }
 
   getAllFileSmells(): FileSmell[] {

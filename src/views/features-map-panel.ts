@@ -786,8 +786,7 @@ IMPORTANT YAML formatting rules:
 
       // Controls
       d3.select('#reset-view-btn').on('click', () => {
-        transform = { k: 1, x: 0, y: 0 };
-        updateTransform();
+        fitAllInView();
       });
 
       const copyBtn = document.getElementById('copy-prompt-btn');
@@ -1377,6 +1376,51 @@ IMPORTANT YAML formatting rules:
       });
     }
 
+    function fitAllInView() {
+      if (graphData.nodes.length === 0) return;
+      
+      const nodeMap = calculateLayout();
+      const nodes = Array.from(nodeMap.values());
+      
+      // Calculate bounding box of all nodes
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      
+      nodes.forEach(node => {
+        if (node._x === undefined || node._y === undefined) return;
+        
+        minX = Math.min(minX, node._x);
+        maxX = Math.max(maxX, node._x + node._width);
+        minY = Math.min(minY, node._y);
+        maxY = Math.max(maxY, node._y + node._height);
+      });
+      
+      if (minX === Infinity) return; // No valid nodes
+      
+      // Add padding
+      const padding = 50;
+      minX -= padding;
+      maxX += padding;
+      minY -= padding;
+      maxY += padding;
+      
+      // Calculate scale to fit
+      const contentWidth = maxX - minX;
+      const contentHeight = maxY - minY;
+      const scale = Math.min(width / contentWidth, height / contentHeight, 1); // Cap at 1x
+      
+      // Calculate center of content
+      const contentCenterX = (minX + maxX) / 2;
+      const contentCenterY = (minY + maxY) / 2;
+      
+      // Calculate transform to center the content
+      transform.k = scale;
+      transform.x = width / 2 - contentCenterX * scale;
+      transform.y = height / 2 - contentCenterY * scale;
+      
+      g.attr('transform', \`translate(\${transform.x},\${transform.y}) scale(\${transform.k})\`);
+    }
+
     function getExternalIcon(type) {
       if (!type) return '🔗';
       const t = type.toLowerCase();
@@ -1417,6 +1461,7 @@ IMPORTANT YAML formatting rules:
             graphData = message.data;
           }
           renderGraph();
+          fitAllInView();
           break;
       }
     });

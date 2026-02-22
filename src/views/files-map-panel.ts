@@ -144,6 +144,75 @@ export class FilesMapPanel {
       case 'dir:unpin':
         await this.handleDirUnpin(message.dirPath);
         break;
+      case 'index:start':
+        await this.handleIndexProject();
+        break;
+    }
+  }
+
+  private async handleIndexProject() {
+    try {
+      // Execute the radium reindex command
+      // Note: This command uses withProgress internally and the actual indexing
+      // happens asynchronously inside withProgress
+      vscode.commands.executeCommand('radium.reindex');
+      
+      // Wait for indexing to complete
+      // The reindex command clears the store first (count goes to 0), then repopulates
+      // We wait for: store cleared -> files added -> count stabilizes
+      const startTime = Date.now();
+      const maxWaitTime = 60000; // 60 seconds max
+      const pollInterval = 500; // Check every 500ms
+      
+      await new Promise<void>((resolve) => {
+        let stableCount = 0;
+        let lastFileCount = -1;
+        let sawEmpty = false; // Track if we saw the store get cleared
+        
+        const checkComplete = () => {
+          const currentFileCount = this.store.getAllFiles().length;
+          const elapsed = Date.now() - startTime;
+          
+          // Track if store was cleared
+          if (currentFileCount === 0) {
+            sawEmpty = true;
+          }
+          
+          // If file count changed, reset stability counter
+          if (currentFileCount !== lastFileCount) {
+            stableCount = 0;
+            lastFileCount = currentFileCount;
+          } else {
+            stableCount++;
+          }
+          
+          // Consider complete if:
+          // 1. Store was cleared, then repopulated, and count is stable for 3 checks, OR
+          // 2. Timeout reached
+          const isComplete = sawEmpty && currentFileCount > 0 && stableCount >= 3;
+          
+          if (isComplete || elapsed >= maxWaitTime) {
+            resolve();
+          } else {
+            setTimeout(checkComplete, pollInterval);
+          }
+        };
+        
+        // Start checking after a short delay to let indexing begin
+        setTimeout(checkComplete, 500);
+      });
+      
+      // Update the graph after indexing
+      this.updateGraph();
+      
+      // Notify webview that indexing is complete
+      this.panel.webview.postMessage({ type: 'index:complete' });
+    } catch (error) {
+      console.error('[Files Map] Error indexing project:', error);
+      vscode.window.showErrorMessage('Failed to index project');
+      
+      // Still notify webview to reset button state
+      this.panel.webview.postMessage({ type: 'index:complete' });
     }
   }
 
@@ -736,6 +805,48 @@ export class FilesMapPanel {
       border-color: #007acc;
     }
     
+    .control-button {
+      background: #2d2d2d;
+      color: #d4d4d4;
+      border: 1px solid #555;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      outline: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    
+    .control-button:hover {
+      background: #3d3d3d;
+      border-color: #666;
+    }
+    
+    .control-button:active {
+      background: #4d4d4d;
+    }
+    
+    .control-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #555;
+      border-top-color: #007acc;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
     #graph {
       width: 100vw;
       height: 100vh;
@@ -989,6 +1100,13 @@ export class FilesMapPanel {
       <option value="symbol">Color by Symbol Use</option>
       <option value="smell">Color by Code Smell</option>
     </select>
+    <button id="reset-view-btn" class="control-button" title="Fit entire tree in view">
+      Reset View
+    </button>
+    <button id="index-project-btn" class="control-button" title="Re-index the project">
+      <span id="index-btn-text">Index Project</span>
+      <span id="index-spinner" class="spinner" style="display: none;"></span>
+    </button>
   </div>
   <div id="tooltip">
     <div class="tooltip-filename"></div>
@@ -1241,6 +1359,27 @@ export class FilesMapPanel {
           // Always check for centered file when switching modes
           checkAndShowCenteredFile();
         }
+      });
+      
+      // Setup reset view button
+      const resetViewBtn = document.getElementById('reset-view-btn');
+      resetViewBtn.addEventListener('click', () => {
+        fitTreeInView();
+      });
+      
+      // Setup index project button
+      const indexProjectBtn = document.getElementById('index-project-btn');
+      const indexBtnText = document.getElementById('index-btn-text');
+      const indexSpinner = document.getElementById('index-spinner');
+      
+      indexProjectBtn.addEventListener('click', () => {
+        // Disable button and show spinner
+        indexProjectBtn.disabled = true;
+        indexBtnText.textContent = 'Indexing...';
+        indexSpinner.style.display = 'block';
+        
+        // Send message to extension to start indexing
+        vscode.postMessage({ type: 'index:start' });
       });
       
       // Add arrow markers for each edge type
@@ -1824,6 +1963,63 @@ export class FilesMapPanel {
       // Note: smell details will be updated by the zoom event handler
     }
     
+    // Fit the entire tree in view
+    function fitTreeInView() {
+      if (!svg || !zoom || !graphData || graphData.nodes.length === 0) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      
+      // Calculate bounding box of all nodes
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      
+      graphData.nodes.forEach(node => {
+        if (node.x === undefined || node.y === undefined) return;
+        
+        // Account for node size
+        const nodeWidth = node.type === 'directory' ? (node.baseWidth || 200) : node.size;
+        const nodeHeight = node.type === 'directory' ? (node.baseHeight || 100) : (node.size / 2);
+        
+        minX = Math.min(minX, node.x - nodeWidth / 2);
+        maxX = Math.max(maxX, node.x + nodeWidth / 2);
+        minY = Math.min(minY, node.y - nodeHeight / 2);
+        maxY = Math.max(maxY, node.y + nodeHeight / 2);
+      });
+      
+      if (minX === Infinity) return; // No valid nodes
+      
+      // Add padding
+      const padding = 50;
+      minX -= padding;
+      maxX += padding;
+      minY -= padding;
+      maxY += padding;
+      
+      // Calculate scale to fit
+      const treeWidth = maxX - minX;
+      const treeHeight = maxY - minY;
+      const scale = Math.min(width / treeWidth, height / treeHeight, 1); // Cap at 1x
+      
+      // Calculate center of tree
+      const treeCenterX = (minX + maxX) / 2;
+      const treeCenterY = (minY + maxY) / 2;
+      
+      // Calculate transform to center the tree
+      const x = width / 2 - treeCenterX * scale;
+      const y = height / 2 - treeCenterY * scale;
+      
+      // Stop simulation
+      if (simulation) {
+        simulation.stop();
+      }
+      
+      // Apply transform with smooth transition
+      svg.transition()
+        .duration(750)
+        .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+    }
+    
     // Check if a node matches the search query
     function nodeMatchesSearch(node) {
       if (!searchQuery) return true;
@@ -2321,39 +2517,24 @@ export class FilesMapPanel {
       const DIRS_PER_LAYER = 8;
       
       // Calculate required vertical space for a directory's file grid
+      // This MUST match the actual grid layout calculation
       function calculateFileSpace(dirPath, dirNode) {
         const files = dirToFiles.get(dirPath) || [];
         if (files.length === 0) return 0;
         
-        // Estimate the grid height based on files
-        const dirWidth = dirNode?.baseWidth || 200;
-        const FILE_SPACING = 5;
+        const fileCount = files.length;
+        const cols = Math.ceil(Math.sqrt(fileCount));
+        const rows = Math.ceil(fileCount / cols);
         
-        // Sort files by size to estimate rows
-        const sortedFiles = [...files].sort((a, b) => b.size - a.size);
+        // Use MAXIMUM file size (same as actual grid layout uses)
+        const maxWidth = Math.max(...files.map(f => f.size));
+        const maxHeight = maxWidth / 2;
+        const cellHeight = maxHeight + FILE_GRID_SPACING;
         
-        let currentX = 0;
-        let rowHeight = 0;
-        let totalHeight = 0;
+        // File grid height - exactly matching the actual layout
+        const fileGridHeight = rows * cellHeight - FILE_GRID_SPACING + 10; // +10 for DIR_FILE_GAP
         
-        sortedFiles.forEach(file => {
-          const fileWidth = file.size;
-          const fileHeight = file.size / 2;
-          
-          if (currentX + fileWidth > dirWidth && currentX > 0) {
-            totalHeight += rowHeight + FILE_SPACING;
-            currentX = 0;
-            rowHeight = 0;
-          }
-          
-          currentX += fileWidth + FILE_SPACING;
-          rowHeight = Math.max(rowHeight, fileHeight);
-        });
-        
-        // Add last row
-        totalHeight += rowHeight;
-        
-        return totalHeight + 20; // Add some padding
+        return fileGridHeight;
       }
       
       // TOP-DOWN TREE LAYOUT
@@ -2797,8 +2978,7 @@ export class FilesMapPanel {
         .attr('height', d => d.baseHeight)
         .attr('class', 'dir-rect')
         .style('fill', d => getDirBoxColor(d.path))
-        .style('stroke', '#fff')
-        .style('stroke-width', 3);
+        .style('stroke', 'none');
       
       // Add line count badge for files (small, at top center inside the box)
       
@@ -3290,6 +3470,15 @@ export class FilesMapPanel {
               }
             }
           }
+          break;
+        case 'index:complete':
+          // Re-enable the index button and hide spinner
+          const indexBtn = document.getElementById('index-project-btn');
+          const btnText = document.getElementById('index-btn-text');
+          const spinner = document.getElementById('index-spinner');
+          if (indexBtn) indexBtn.disabled = false;
+          if (btnText) btnText.textContent = 'Index Project';
+          if (spinner) spinner.style.display = 'none';
           break;
       }
     });

@@ -11,7 +11,9 @@ export const LANGUAGE_EXTENSIONS: Record<string, string> = {
   'jsx': 'javascript',
   'py': 'python',
   'cs': 'csharp',
-  'go': 'go'
+  'go': 'go',
+  'kt': 'kotlin',
+  'kts': 'kotlin'
 };
 
 export const LANGUAGE_NAMES = {
@@ -20,6 +22,7 @@ export const LANGUAGE_NAMES = {
   JAVASCRIPT: 'javascript',
   PYTHON: 'python',
   CSHARP: 'csharp',
-  GO: 'go'
+  GO: 'go',
+  KOTLIN: 'kotlin'
 } as const;
 

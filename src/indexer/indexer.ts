@@ -54,7 +54,10 @@ export class Indexer {
       '**/*.js',
       '**/*.jsx',
       '**/*.py',
-      '**/*.cs'
+      '**/*.cs',
+      '**/*.go',
+      '**/*.kt',
+      '**/*.kts'
     ];
 
     // Base ignore patterns (always ignored)
@@ -232,7 +235,10 @@ export class Indexer {
       '**/*.js',
       '**/*.jsx',
       '**/*.py',
-      '**/*.cs'
+      '**/*.cs',
+      '**/*.go',
+      '**/*.kt',
+      '**/*.kts'
     ];
 
     // Base exclude patterns (always excluded)

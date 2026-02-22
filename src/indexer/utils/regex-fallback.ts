@@ -13,6 +13,7 @@ export function extractSymbolsWithRegex(code: string, filePath: string): ParsedS
   const isCSharp = ext === 'cs' || filePath.toLowerCase().endsWith('.xaml.cs');
   const isPython = ext === 'py';
   const isGo = ext === 'go';
+  const isKotlin = ext === 'kt' || ext === 'kts';
   const isTypeScript = ext === 'ts' || ext === 'tsx' || ext === 'js' || ext === 'jsx';
   
   if (isCSharp) {
@@ -229,6 +230,75 @@ export function extractSymbolsWithRegex(code: string, filePath: string): ParsedS
         name,
         fqname: name,
         range: { start: startIndex, end: startIndex + match[0].length }
+      });
+    }
+  } else if (isKotlin) {
+    // Kotlin functions: fun functionName(
+    const functionRegex = /fun\s+(?:<[^>]+>\s+)?(\w+)\s*\(/g;
+    while ((match = functionRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      const endIndex = findBlockEnd(code, startIndex);
+      symbols.push({
+        kind: 'function',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: endIndex }
+      });
+    }
+    
+    // Kotlin classes: class ClassName
+    const classRegex = /(?:data\s+|sealed\s+|abstract\s+|open\s+|inner\s+|enum\s+)*class\s+(\w+)/g;
+    while ((match = classRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      const endIndex = findBlockEnd(code, startIndex);
+      symbols.push({
+        kind: 'class',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: endIndex }
+      });
+    }
+    
+    // Kotlin interfaces: interface InterfaceName
+    const interfaceRegex = /interface\s+(\w+)/g;
+    while ((match = interfaceRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      const endIndex = findBlockEnd(code, startIndex);
+      symbols.push({
+        kind: 'interface',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: endIndex }
+      });
+    }
+    
+    // Kotlin objects: object ObjectName
+    const objectRegex = /(?:companion\s+)?object\s+(\w+)/g;
+    while ((match = objectRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      const endIndex = findBlockEnd(code, startIndex);
+      symbols.push({
+        kind: 'class',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: endIndex }
+      });
+    }
+    
+    // Kotlin properties: val/var propertyName
+    const propertyRegex = /(?:val|var)\s+(\w+)\s*[:=]/g;
+    while ((match = propertyRegex.exec(code)) !== null) {
+      const name = match[1];
+      const startIndex = match.index;
+      symbols.push({
+        kind: 'variable',
+        name,
+        fqname: name,
+        range: { start: startIndex, end: startIndex + match[0].length + 50 }
       });
     }
   }

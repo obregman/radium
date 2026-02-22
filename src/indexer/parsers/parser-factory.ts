@@ -3,6 +3,7 @@ import { TypeScriptParser } from './typescript-parser';
 import { PythonParser } from './python-parser';
 import { CSharpParser } from './csharp-parser';
 import { GoParser } from './go-parser';
+import { KotlinParser } from './kotlin-parser';
 import { LANGUAGE_NAMES } from '../utils/parser-constants';
 
 /**
@@ -43,6 +44,10 @@ export class ParserFactory {
 
         case LANGUAGE_NAMES.GO:
           parser = new GoParser();
+          break;
+
+        case LANGUAGE_NAMES.KOTLIN:
+          parser = new KotlinParser();
           break;
 
         default:

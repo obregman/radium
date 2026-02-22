@@ -19,7 +19,8 @@ interface FileNode {
   path: string;
   lines: number;
   lang: string;
-  size: number;
+  size: number;  // width (fixed)
+  height: number; // height (based on lines)
   exportedSymbols: number;
   smellScore: number;
   smellDetails: SmellDetails | null;
@@ -425,22 +426,24 @@ export class FilesMapPanel {
       const fileName = path.basename(file.path);
       const dirPath = path.dirname(file.path);
       
-      // Calculate visual size (width) - linear scaling based on lines
-      // File boxes are rectangles with size proportional to line count
-      const MIN_SIZE = 80;
-      const MAX_SIZE = 200;
-      const MAX_LINES = 3000;
+      // Fixed width for all files, height based on line count
+      const FILE_WIDTH = 120; // Fixed width for all file boxes
+      const MIN_HEIGHT = 50; // Minimum height to fit badges and buttons
+      const MAX_HEIGHT = 150;
+      const MAX_LINES = 2000;
       
-      // Linear interpolation based on line count
-      let size;
+      // Calculate height based on line count
+      let fileHeight;
       if (lines <= 1) {
-        size = MIN_SIZE;
+        fileHeight = MIN_HEIGHT;
       } else if (lines >= MAX_LINES) {
-        size = MAX_SIZE;
+        fileHeight = MAX_HEIGHT;
       } else {
         // Linear scale based on line count
-        size = MIN_SIZE + ((lines - 1) / (MAX_LINES - 1)) * (MAX_SIZE - MIN_SIZE);
+        fileHeight = MIN_HEIGHT + ((lines - 1) / (MAX_LINES - 1)) * (MAX_HEIGHT - MIN_HEIGHT);
       }
+      
+      const size = FILE_WIDTH; // Keep 'size' as width for compatibility
       
       // Get exported symbols count
       const exportedSymbols = fileExportedSymbols.get(file.path)?.size || 0;
@@ -468,13 +471,15 @@ export class FilesMapPanel {
         .filter(n => n.kind === 'class' || n.kind === 'interface' || n.kind === 'type' || n.kind === 'enum' || n.kind === 'struct')
         .map(n => ({ name: n.name, start: n.range_start, end: n.range_end }));
       
-      // Determine if this is a C# or TypeScript file and get the main class name
+      // Determine if this is a C#, TypeScript, Go, or Kotlin file and get the main class name
       const isCSharp = file.lang === 'csharp';
       const isTypeScript = file.lang === 'typescript' || file.lang === 'javascript';
-      const fileNameWithoutExt = fileName.replace(/\.(cs|xaml\.cs|ts|tsx|js|jsx)$/i, '');
+      const isGo = file.lang === 'go';
+      const isKotlin = file.lang === 'kotlin';
+      const fileNameWithoutExt = fileName.replace(/\.(cs|xaml\.cs|ts|tsx|js|jsx|go|kt|kts)$/i, '');
       
-      // For C# and TypeScript files, find the main class (the one matching the filename)
-      const mainClassRange = (isCSharp || isTypeScript) ? typeRanges.find(t => t.name === fileNameWithoutExt) : null;
+      // For C#, TypeScript, Go, and Kotlin files, find the main class/struct (the one matching the filename)
+      const mainClassRange = (isCSharp || isTypeScript || isGo || isKotlin) ? typeRanges.find(t => t.name === fileNameWithoutExt) : null;
       
       // Filter variables based on language
       const variables = fileNodes
@@ -489,8 +494,8 @@ export class FilesMapPanel {
             n.range_start > fn.start && n.range_end < fn.end
           );
           
-          // For C# and TypeScript files: include class member variables (inside the main class) but exclude function-level variables
-          if ((isCSharp || isTypeScript) && mainClassRange) {
+          // For C#, TypeScript, Go, and Kotlin files: include class/struct member variables (inside the main class) but exclude function-level variables
+          if ((isCSharp || isTypeScript || isGo || isKotlin) && mainClassRange) {
             const isInsideMainClass = n.range_start > mainClassRange.start && n.range_end < mainClassRange.end;
             return isInsideMainClass && !isInsideFunction;
           }
@@ -512,8 +517,8 @@ export class FilesMapPanel {
           if (!(n.kind === 'class' || n.kind === 'interface' || n.kind === 'type' || n.kind === 'enum' || n.kind === 'struct')) {
             return false;
           }
-          // For C# and TypeScript files, exclude the main class
-          if ((isCSharp || isTypeScript) && n.name === fileNameWithoutExt) {
+          // For C#, TypeScript, Go, and Kotlin files, exclude the main class/struct
+          if ((isCSharp || isTypeScript || isGo || isKotlin) && n.name === fileNameWithoutExt) {
             return false;
           }
           return true;
@@ -530,6 +535,7 @@ export class FilesMapPanel {
         lines,
         lang: file.lang,
         size,
+        height: fileHeight,
         exportedSymbols,
         smellScore,
         smellDetails,
@@ -1030,6 +1036,7 @@ export class FilesMapPanel {
       stroke: #000;
       stroke-width: 1;
       transition: fill 0.3s;
+      cursor: pointer;
     }
     
     .symbol-triangle.empty rect {
@@ -1491,7 +1498,7 @@ export class FilesMapPanel {
         .attr('transform', \`translate(\${node.x}, \${node.y})\`);
       
       // Calculate tooltip dimensions based on content
-      const fileBoxHeight = node.size / 2;
+      const fileBoxHeight = node.height;
       const tooltipHeight = 200;
       
       // Calculate width based on longest symbol name
@@ -1620,7 +1627,7 @@ export class FilesMapPanel {
       // Position it below the file box, vertically centered
       const panelGroup = g.append('g')
         .attr('class', 'smell-details-group')
-        .attr('transform', \`translate(\${node.x}, \${node.y + node.size / 4 + 20})\`);
+        .attr('transform', \`translate(\${node.x}, \${node.y + node.height / 2 + 20})\`);
       
       // Create the panel HTML
       let metricsHTML = '';
@@ -1698,7 +1705,7 @@ export class FilesMapPanel {
       if (currentSmellDetailsNode) {
         const node = currentSmellDetailsNode;
         d3.selectAll('.smell-details-group')
-          .attr('transform', \`translate(\${node.x}, \${node.y + node.size / 4 + 20})\`);
+          .attr('transform', \`translate(\${node.x}, \${node.y + node.height / 2 + 20})\`);
       }
     }
     
@@ -1979,7 +1986,7 @@ export class FilesMapPanel {
         
         // Account for node size
         const nodeWidth = node.type === 'directory' ? (node.baseWidth || 200) : node.size;
-        const nodeHeight = node.type === 'directory' ? (node.baseHeight || 100) : (node.size / 2);
+        const nodeHeight = node.type === 'directory' ? (node.baseHeight || 100) : node.height;
         
         minX = Math.min(minX, node.x - nodeWidth / 2);
         maxX = Math.max(maxX, node.x + nodeWidth / 2);
@@ -2384,7 +2391,7 @@ export class FilesMapPanel {
           .attr('y', function() {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'file') return 0;
-            return -node.size / 4 + 3 * elementScale;
+            return -node.height / 2 + 3 * elementScale;
           })
           .attr('rx', 2 * elementScale)
           .attr('ry', 2 * elementScale);
@@ -2395,7 +2402,7 @@ export class FilesMapPanel {
           .attr('y', function() {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'file') return 0;
-            return -node.size / 4 + 7.5 * elementScale;
+            return -node.height / 2 + 7.5 * elementScale;
           })
           .style('font-size', (6 * elementScale) + 'px');
         
@@ -2405,7 +2412,7 @@ export class FilesMapPanel {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'file') return '';
             const x = node.size / 2 - 10 * elementScale;
-            const y = node.size / 4 - 10 * elementScale;
+            const y = node.height / 2 - 10 * elementScale;
             return \`translate(\${x}, \${y}) scale(\${elementScale})\`;
           });
         
@@ -2414,7 +2421,7 @@ export class FilesMapPanel {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'file') return '';
             const x = -node.size / 2 + 10 * elementScale;
-            const y = node.size / 4 - 10 * elementScale;
+            const y = node.height / 2 - 10 * elementScale;
             return \`translate(\${x}, \${y}) scale(\${elementScale})\`;
           });
         
@@ -2423,7 +2430,7 @@ export class FilesMapPanel {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'file') return '';
             const x = 0;
-            const y = node.size / 4 - 10 * elementScale;
+            const y = node.height / 2 - 10 * elementScale;
             return \`translate(\${x}, \${y}) scale(\${elementScale})\`;
           });
         
@@ -2433,7 +2440,7 @@ export class FilesMapPanel {
             const node = d3.select(this.parentNode).datum();
             if (!node || node.type !== 'file') return '';
             const x = node.size / 2 - 10 * elementScale;
-            const y = -node.size / 4 + 10 * elementScale;
+            const y = -node.height / 2 + 10 * elementScale;
             return \`translate(\${x}, \${y}) scale(\${elementScale})\`;
           });
         
@@ -2516,30 +2523,170 @@ export class FilesMapPanel {
       const BASE_DIR_RADIUS = 400; // Base vertical spacing between directories
       const DIRS_PER_LAYER = 8;
       
+      // Skyline Bottom-Left bin packing algorithm
+      // Places rectangles freely in 2D space, finding the lowest available position
+      // All files have fixed width, variable height based on line count
+      // Returns { width, height, placements: Map<file, {x, y}> }
+      function skylinePack(files, spacing) {
+        if (files.length === 0) return { width: 0, height: 0, placements: new Map() };
+        
+        // Sort by height descending for better packing (tallest first)
+        const sortedFiles = [...files].sort((a, b) => b.height - a.height);
+        
+        // Calculate container width based on total area
+        // With fixed width, we can calculate optimal columns
+        const fileWidth = files[0]?.size || 120;
+        const totalArea = files.reduce((sum, f) => sum + (f.size + spacing) * (f.height + spacing), 0);
+        // Aim for roughly square aspect ratio
+        let containerWidth = Math.max(Math.sqrt(totalArea * 1.2), fileWidth + spacing);
+        
+        // Skyline: array of {x, y, width} segments representing the top edge
+        // Initially one segment at y=0 spanning the full width
+        let skyline = [{ x: 0, y: 0, width: containerWidth }];
+        const placements = new Map();
+        
+        // Find the lowest position where a rectangle of given size can fit
+        function findPosition(w, h) {
+          let bestX = -1;
+          let bestY = Infinity;
+          let bestIndex = -1;
+          
+          // Try each skyline segment as a potential left edge
+          for (let i = 0; i < skyline.length; i++) {
+            const seg = skyline[i];
+            
+            // Check if rectangle fits starting at this segment
+            if (seg.x + w > containerWidth) continue;
+            
+            // Find the maximum y across all segments this rectangle would span
+            let maxY = seg.y;
+            let spanWidth = 0;
+            for (let j = i; j < skyline.length && spanWidth < w; j++) {
+              maxY = Math.max(maxY, skyline[j].y);
+              spanWidth += skyline[j].width;
+            }
+            
+            // Check if we have enough width
+            if (spanWidth < w && seg.x + spanWidth < containerWidth) continue;
+            
+            // This is a valid position - check if it's the best (lowest)
+            if (maxY < bestY) {
+              bestY = maxY;
+              bestX = seg.x;
+              bestIndex = i;
+            }
+          }
+          
+          return { x: bestX, y: bestY, index: bestIndex };
+        }
+        
+        // Update skyline after placing a rectangle
+        function updateSkyline(x, y, w, h) {
+          const newY = y + h;
+          const rightEdge = x + w;
+          
+          // Build new skyline
+          const newSkyline = [];
+          
+          for (const seg of skyline) {
+            const segRight = seg.x + seg.width;
+            
+            if (segRight <= x || seg.x >= rightEdge) {
+              // Segment doesn't overlap with placed rectangle
+              newSkyline.push(seg);
+            } else {
+              // Segment overlaps - need to split/modify
+              
+              // Part before the rectangle
+              if (seg.x < x) {
+                newSkyline.push({ x: seg.x, y: seg.y, width: x - seg.x });
+              }
+              
+              // The rectangle's top edge (only add once)
+              const existingNew = newSkyline.find(s => s.x === x && s.y === newY);
+              if (!existingNew) {
+                newSkyline.push({ x: x, y: newY, width: w });
+              }
+              
+              // Part after the rectangle
+              if (segRight > rightEdge) {
+                newSkyline.push({ x: rightEdge, y: seg.y, width: segRight - rightEdge });
+              }
+            }
+          }
+          
+          // Sort by x and merge adjacent segments at same height
+          newSkyline.sort((a, b) => a.x - b.x);
+          
+          const merged = [];
+          for (const seg of newSkyline) {
+            if (merged.length > 0) {
+              const last = merged[merged.length - 1];
+              if (Math.abs(last.x + last.width - seg.x) < 0.1 && Math.abs(last.y - seg.y) < 0.1) {
+                last.width += seg.width;
+                continue;
+              }
+            }
+            merged.push({ ...seg });
+          }
+          
+          skyline = merged;
+        }
+        
+        // Place each file
+        for (const file of sortedFiles) {
+          const w = file.size + spacing;
+          const h = file.height + spacing;
+          
+          let pos = findPosition(w, h);
+          
+          // If doesn't fit, expand container width
+          if (pos.x < 0) {
+            containerWidth += w;
+            skyline.push({ x: containerWidth - w, y: 0, width: w });
+            pos = findPosition(w, h);
+          }
+          
+          if (pos.x >= 0) {
+            placements.set(file, { x: pos.x, y: pos.y });
+            updateSkyline(pos.x, pos.y, w, h);
+          }
+        }
+        
+        // Calculate actual bounds
+        let maxX = 0, maxY = 0;
+        for (const [file, pos] of placements) {
+          maxX = Math.max(maxX, pos.x + file.size + spacing);
+          maxY = Math.max(maxY, pos.y + file.height + spacing);
+        }
+        
+        return { 
+          width: maxX - spacing, 
+          height: maxY - spacing,
+          placements 
+        };
+      }
+      
+      // Layout calculation helper for bounding box (must match actual layout)
+      function calculateSkylineLayout(files, spacing) {
+        if (files.length === 0) return { width: 0, height: 0 };
+        const { width, height } = skylinePack(files, spacing);
+        return { width, height };
+      }
+      
       // Calculate required vertical space for a directory's file grid
       // This MUST match the actual grid layout calculation
       function calculateFileSpace(dirPath, dirNode) {
         const files = dirToFiles.get(dirPath) || [];
         if (files.length === 0) return 0;
         
-        const fileCount = files.length;
-        const cols = Math.ceil(Math.sqrt(fileCount));
-        const rows = Math.ceil(fileCount / cols);
-        
-        // Use MAXIMUM file size (same as actual grid layout uses)
-        const maxWidth = Math.max(...files.map(f => f.size));
-        const maxHeight = maxWidth / 2;
-        const cellHeight = maxHeight + FILE_GRID_SPACING;
-        
-        // File grid height - exactly matching the actual layout
-        const fileGridHeight = rows * cellHeight - FILE_GRID_SPACING + 10; // +10 for DIR_FILE_GAP
-        
-        return fileGridHeight;
+        const { height } = calculateSkylineLayout(files, FILE_GRID_SPACING);
+        return height + 10; // +10 for DIR_FILE_GAP
       }
       
       // TOP-DOWN TREE LAYOUT
       // Position directories in a hierarchical tree structure (root at top, children below)
-      const VERTICAL_SPACING = 150; // Vertical gap between directory levels
+      const VERTICAL_SPACING = 180; // Vertical gap between directory levels (increased)
       const HORIZONTAL_SPACING = 20; // Minimum horizontal gap between sibling bounding boxes
       const ROOT_Y = 150; // Y position for root directories
       const FILE_GRID_SPACING = 4; // Must match FILE_SPACING used in file grid layout
@@ -2555,25 +2702,13 @@ export class FilesMapPanel {
           return { width: dirWidth, height: dirHeight };
         }
         
-        const fileCount = files.length;
-        const cols = Math.ceil(Math.sqrt(fileCount));
-        const rows = Math.ceil(fileCount / cols);
-        
-        // Use MAXIMUM file size (same as actual grid layout uses)
-        const maxWidth = Math.max(...files.map(f => f.size));
-        const maxHeight = maxWidth / 2;
-        const cellWidth = maxWidth + FILE_GRID_SPACING;
-        const cellHeight = maxHeight + FILE_GRID_SPACING;
-        
-        // File grid dimensions - exactly matching the actual layout
-        const fileGridWidth = cols * cellWidth - FILE_GRID_SPACING;
-        const fileGridHeight = rows * cellHeight - FILE_GRID_SPACING + 10; // +10 for DIR_FILE_GAP
+        const { width: fileGridWidth, height: fileGridHeight } = calculateSkylineLayout(files, FILE_GRID_SPACING);
         
         // Bounding box is the max width and combined height
         // Add margin to prevent any overlap between siblings
         return {
           width: Math.max(dirWidth, fileGridWidth) + 40,
-          height: dirHeight + fileGridHeight
+          height: dirHeight + fileGridHeight + 10 // +10 for DIR_FILE_GAP
         };
       }
       
@@ -2684,7 +2819,8 @@ export class FilesMapPanel {
         });
       }
       
-      // Position files in a square-ish grid layout below their parent directory
+      // Position files using Skyline Bottom-Left bin packing
+      // Free 2D placement for optimal space utilization
       const FILE_SPACING = 4; // Gap between files
       const DIR_FILE_GAP = 10; // Gap between directory box and file grid
       
@@ -2708,46 +2844,25 @@ export class FilesMapPanel {
           return;
         }
         
-        // Calculate optimal grid dimensions for a square-ish layout
-        // We want rows and cols to differ by at most 1
-        const cols = Math.ceil(Math.sqrt(fileCount));
-        const rows = Math.ceil(fileCount / cols);
+        // Run Skyline packing algorithm
+        const { width: gridWidth, height: gridHeight, placements } = skylinePack(files, FILE_SPACING);
         
-        // Use MAXIMUM file size for uniform grid cells to prevent overlap
-        const maxWidth = Math.max(...files.map(f => f.size));
-        const maxHeight = maxWidth / 2; // File height is size/2
-        
-        // Use uniform cell size based on max (to prevent overlap)
-        const cellWidth = maxWidth + FILE_SPACING;
-        const cellHeight = maxHeight + FILE_SPACING;
-        
-        // Calculate total grid dimensions
-        const gridWidth = cols * cellWidth - FILE_SPACING;
-        const gridHeight = rows * cellHeight - FILE_SPACING;
-        
-        // Sort files by name for consistent ordering
-        const sortedFiles = [...files].sort((a, b) => a.label.localeCompare(b.label));
-        
-        // Position each file in the grid
-        sortedFiles.forEach((file, index) => {
-          const row = Math.floor(index / cols);
-          const col = index % cols;
+        // Convert placements to grid offsets (centered under directory)
+        files.forEach(file => {
+          const pos = placements.get(file);
+          if (!pos) return;
           
-          // Calculate how many files are in this row (last row may have fewer)
-          const filesInThisRow = Math.min(cols, fileCount - row * cols);
+          const fileWidth = file.size;
+          const fileHeight = file.height;
           
-          // Center this row if it has fewer files than cols
-          const rowOffset = (cols - filesInThisRow) * cellWidth / 2;
-          
-          // Calculate position relative to grid center
-          const gridOffsetX = -gridWidth / 2 + col * cellWidth + cellWidth / 2 + rowOffset;
-          const gridOffsetY = dirHeight / 2 + DIR_FILE_GAP + row * cellHeight + cellHeight / 2;
+          // pos.x/pos.y are top-left, convert to center and center the grid
+          const gridOffsetX = -gridWidth / 2 + pos.x + fileWidth / 2;
+          const gridOffsetY = dirHeight / 2 + DIR_FILE_GAP + pos.y + fileHeight / 2;
           
           file.parentDir = parentDir;
           file.gridOffsetX = gridOffsetX;
           file.gridOffsetY = gridOffsetY;
           
-          // Set initial position
           file.x = parentDir.x + file.gridOffsetX;
           file.y = parentDir.y + file.gridOffsetY;
         });
@@ -2949,9 +3064,9 @@ export class FilesMapPanel {
       const fileRects = fileElements
         .append('rect')
         .attr('width', d => d.size)
-        .attr('height', d => d.size / 2)
+        .attr('height', d => d.height)
         .attr('x', d => -d.size / 2)
-        .attr('y', d => -d.size / 4)
+        .attr('y', d => -d.height / 2)
         .attr('class', 'file-rect')
         .style('fill', d => getFileColor(d))
         .style('stroke', '#333')
@@ -2991,7 +3106,7 @@ export class FilesMapPanel {
         })
         .attr('height', 9)
         .attr('x', d => -Math.max(14, String(d.lines).length * 4 + 4) / 2) // Center horizontally
-        .attr('y', d => -d.size / 4 + 3) // Position at top inside the box
+        .attr('y', d => -d.height / 2 + 3) // Position at top inside the box
         .attr('rx', 2)
         .attr('ry', 2)
         .style('fill', 'rgba(0, 0, 0, 0.5)')
@@ -3001,7 +3116,7 @@ export class FilesMapPanel {
       fileElements.append('text')
         .attr('class', 'node-sublabel')
         .attr('x', 0) // Center horizontally
-        .attr('y', d => -d.size / 4 + 7.5) // Center vertically in badge (3 + 9/2 = 7.5)
+        .attr('y', d => -d.height / 2 + 7.5) // Center vertically in badge (3 + 9/2 = 7.5)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'central')
         .style('font-size', '6px')
@@ -3017,7 +3132,7 @@ export class FilesMapPanel {
         .attr('transform', d => {
           // Position at bottom-right inside the box (with padding from edge)
           const x = d.size / 2 - 10;
-          const y = d.size / 4 - 10;
+          const y = d.height / 2 - 10;
           return \`translate(\${x}, \${y})\`;
         })
         .on('mouseenter', function(event, d) {
@@ -3064,7 +3179,7 @@ export class FilesMapPanel {
         .attr('transform', d => {
           // Position at bottom-left inside the box (with padding from edge)
           const x = -d.size / 2 + 10;
-          const y = d.size / 4 - 10;
+          const y = d.height / 2 - 10;
           return \`translate(\${x}, \${y})\`;
         })
         .on('mouseenter', function(event, d) {
@@ -3111,7 +3226,7 @@ export class FilesMapPanel {
         .attr('transform', d => {
           // Position at bottom-center inside the box (with padding from edge)
           const x = 0;
-          const y = d.size / 4 - 10;
+          const y = d.height / 2 - 10;
           return \`translate(\${x}, \${y})\`;
         })
         .on('mouseenter', function(event, d) {
@@ -3155,7 +3270,7 @@ export class FilesMapPanel {
         .attr('transform', d => {
           // Position at top-right corner inside the file box (with padding from edge)
           const x = d.size / 2 - 10;
-          const y = -d.size / 4 + 10;
+          const y = -d.height / 2 + 10;
           return \`translate(\${x}, \${y})\`;
         })
         .on('click', function(event, d) {
@@ -3243,7 +3358,7 @@ export class FilesMapPanel {
           const marginX = 4; // Small margin on left and right
           const marginY = 2; // Small margin on top and bottom
           const availableWidth = d.size - (marginX * 2);
-          const availableHeight = (d.size / 2) - (marginY * 2); // File height is size/2
+          const availableHeight = d.height - (marginY * 2);
           
           // Start with font size that fits height (font size ≈ line height)
           let maxFontSize = Math.min(availableHeight * 0.9, 14); // Cap at 14px max
